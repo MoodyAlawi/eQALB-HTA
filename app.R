@@ -204,6 +204,41 @@ HTA_EVIDENCE_NOTE <- paste(
   "determined by EVPPI alone."
 )
 
+# The same traffic-light rules, split into readable paragraphs for the on-demand
+# popover on the HTA decision-summary tab. HTA_SUMMARY_RULE_NOTE stays in its
+# single-line form because it is written into the exported results package, so
+# exports are unchanged.
+HTA_RULE_ITEMS <- c(
+  paste(
+    "Economic value is Green when the probability of cost-effectiveness is at",
+    "least 50% and the base-case ICER is at or below the reference threshold,",
+    "Red when the probability is below 5% and the ICER is above it, and Amber",
+    "otherwise."
+  ),
+  paste(
+    "Decision uncertainty reuses the value-of-information rule: Red only when",
+    "the less-preferred option wins in at least 40% of simulations or EVPI",
+    "exceeds \u20ac1,000 per patient."
+  ),
+  "Budget impact is Green at or below \u20ac1m, Amber up to \u20ac10m, and Red above.",
+  "Clinical evidence maturity is always Red because the evidence is simulated.",
+  paste(
+    "Implementation readiness is Amber when any readiness domain is Amber, and",
+    "Red when more than a quarter of domains are Red."
+  ),
+  "The overall status is the least favourable assessed domain.",
+  paste(
+    "These are presentation rules for this teaching app, not official NICE or",
+    "payer criteria."
+  )
+)
+
+# Accessible label for the traffic-light-rules information control.
+HTA_RULES_TRIGGER_LABEL <- paste(
+  "Traffic-light rules: show the educational rules used to set each domain",
+  "status"
+)
+
 # DHT readiness and implementation dashboard.
 # These are transparent illustrative rules for the fictional eQalb
 # digital therapeutic, not a validated assessment instrument or regulatory
@@ -1011,9 +1046,53 @@ EQALB_THEME <- bslib::bs_add_rules(
   .cc-subtitle {
     font-size: clamp(1rem, 2.4vw, 1.3rem);
     font-weight: 400;
-    margin: 0 0 2.25rem 0;
+    margin: 0 0 1.5rem 0;
     opacity: 0.72;
   }
+  /* Creator credit: subordinate to the title, no bolding or animation.
+     The 0.78 opacity keeps it clearly muted while staying above the WCAG AA
+     4.5:1 contrast ratio against both the light and the dark background. */
+  .cc-credit {
+    font-size: clamp(0.95rem, 2.1vw, 1.1rem);
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    opacity: 0.78;
+    margin: 0 0 0.6rem 0;
+  }
+  .cc-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem 1.4rem;
+    margin: 0 0 2.25rem 0;
+  }
+  .cc-link {
+    font-size: 0.95rem;
+    color: #176b73;
+    text-decoration: none;
+    padding: 0.15rem 0.1rem;
+    border-radius: 4px;
+    transition: color 150ms ease;
+  }
+  .cc-link:hover,
+  .cc-link:focus,
+  .cc-link:focus-visible {
+    color: #0f5057;
+    text-decoration: underline;
+  }
+  .cc-link:focus-visible {
+    outline: 2px solid #2fa3ad;
+    outline-offset: 2px;
+  }
+  [data-bs-theme='dark'] .cc-link,
+  body[data-bs-theme='dark'] .cc-link { color: #7fd1d8; }
+  [data-bs-theme='dark'] .cc-link:hover,
+  [data-bs-theme='dark'] .cc-link:focus,
+  [data-bs-theme='dark'] .cc-link:focus-visible,
+  body[data-bs-theme='dark'] .cc-link:hover,
+  body[data-bs-theme='dark'] .cc-link:focus,
+  body[data-bs-theme='dark'] .cc-link:focus-visible { color: #a5e3e8; }
   .cc-title-actions {
     display: flex;
     flex-direction: column;
@@ -1047,6 +1126,51 @@ EQALB_THEME <- bslib::bs_add_rules(
     text-align: left;
     max-width: 34rem;
   }
+  /* HTA decision-summary controls: the traffic-light-rules popover trigger and
+     the evidence-generation accordion. Presentation only. */
+  .cc-rules-trigger {
+    font-size: 0.875rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 6px;
+  }
+  /* Two classes plus the pseudo-class so these beat Bootstrap's own .btn focus
+     and hover rules in light mode as well as dark. */
+  .btn.cc-rules-trigger:hover,
+  .btn.cc-rules-trigger:focus,
+  .btn.cc-rules-trigger:focus-visible {
+    border-color: #176b73;
+    color: #176b73;
+  }
+  .btn.cc-rules-trigger:focus-visible {
+    outline: 2px solid #2fa3ad;
+    outline-offset: 2px;
+  }
+  [data-bs-theme='dark'] .btn.cc-rules-trigger:hover,
+  [data-bs-theme='dark'] .btn.cc-rules-trigger:focus,
+  body[data-bs-theme='dark'] .btn.cc-rules-trigger:hover,
+  body[data-bs-theme='dark'] .btn.cc-rules-trigger:focus {
+    border-color: #7fd1d8;
+    color: #7fd1d8;
+  }
+  /* Keep the popover readable in dark mode; bslib themes it from Bootstrap
+     variables, but the list needs a matching text colour. */
+  [data-bs-theme='dark'] .popover,
+  body[data-bs-theme='dark'] .popover {
+    background-color: #16242c;
+    border-color: #2b3d47;
+    color: #e6edf1;
+  }
+  [data-bs-theme='dark'] .popover-header,
+  body[data-bs-theme='dark'] .popover-header {
+    background-color: #1e3039;
+    border-bottom-color: #2b3d47;
+    color: #e6edf1;
+  }
+  [data-bs-theme='dark'] .popover-body,
+  body[data-bs-theme='dark'] .popover-body { color: #e6edf1; }
+  /* Accordion panel should not stretch to the full panel width on wide screens
+     and must not overflow on narrow ones. */
+  .accordion { max-width: 100%; }
   @keyframes cc-title-fade-up {
     from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: translateY(0); }
@@ -1058,6 +1182,7 @@ EQALB_THEME <- bslib::bs_add_rules(
   }
   @media (prefers-reduced-motion: reduce) {
     .cc-title-screen, .cc-title-block { animation: none; }
+    .cc-link { transition: none; }
   }
   "
 )
@@ -1098,9 +1223,29 @@ ui <- fluidPage(
       tags$div(
         class = "cc-title-block",
         tags$h1(class = "cc-title", "eQalb"),
+        tags$p(class = "cc-credit", "By Mahmood Alawi"),
         tags$p(
           class = "cc-subtitle",
           "Interactive health-technology-assessment model"
+        ),
+        tags$div(
+          class = "cc-links",
+          tags$a(
+            class = "cc-link",
+            href = "https://www.linkedin.com/in/mahmoodalawi",
+            target = "_blank",
+            rel = "noopener noreferrer",
+            `aria-label` = "Open Mahmood Alawi's LinkedIn profile",
+            "LinkedIn"
+          ),
+          tags$a(
+            class = "cc-link",
+            href = "https://github.com/MoodyAlawi/eQALB-HTA",
+            target = "_blank",
+            rel = "noopener noreferrer",
+            `aria-label` = "View the eQalb HTA source repository on GitHub",
+            "View source on GitHub"
+          )
         ),
         tags$div(
           class = "cc-title-actions",
@@ -1486,7 +1631,6 @@ ui <- fluidPage(
         mainPanel(
           tags$div(
             class = "alert alert-warning",
-            tags$strong(SIMULATED_DATA_NOTICE),
             tags$p("Educational simulation only; not based on a clinical trial."),
             tags$p(SIMULATED_EVENT_NOTE),
             tags$p(paste(
@@ -1503,14 +1647,14 @@ ui <- fluidPage(
             "economic model base case, so there is no Kaplan-Meier versus",
             "economic-model difference in these inputs."
           )),
-          tags$h4(SIMULATED_DATA_NOTICE),
+          tags$h4("Kaplan-Meier curve"),
           plotOutput("km_plot", height = "780px"),
           conditionalPanel(
             condition = "input.km_show_engaged_curves === true",
-            tags$h4("Exploratory engagement curves: ", SIMULATED_DATA_NOTICE),
+            tags$h4("Exploratory engagement curves"),
             plotOutput("km_engagement_plot", height = "520px")
           ),
-          tags$h4("Results table: ", SIMULATED_DATA_NOTICE),
+          tags$h4("Results table"),
           tableOutput("km_results"),
           tags$h4("Log-rank comparison"),
           textOutput("km_logrank"),
@@ -1523,19 +1667,17 @@ ui <- fluidPage(
               "a measure of treatment adherence."
             ))
           ),
-          tags$h4("Diagnostic table: ", SIMULATED_DATA_NOTICE),
+          tags$h4("Diagnostic table"),
           tags$p(paste(
             "Derived from the same simulated patient-level dataset that",
             "produced the curve above; no additional simulation is run."
           )),
           tableOutput("km_diagnostics"),
-          tags$h4(
-            "Yearly at-risk, event and censoring table: ", SIMULATED_DATA_NOTICE
-          ),
+          tags$h4("Yearly at-risk, event and censoring table"),
           tableOutput("km_yearly_diagnostics"),
-          tags$h4("eQalb arm check: ", SIMULATED_DATA_NOTICE),
+          tags$h4("eQalb arm check"),
           tableOutput("km_arm_check"),
-          tags$h4("Traffic-light interpretation: ", SIMULATED_DATA_NOTICE),
+          tags$h4("Traffic-light interpretation"),
           uiOutput("km_interpretation_panel"),
           uiOutput("km_downloads")
         )
@@ -1608,10 +1750,6 @@ ui <- fluidPage(
     ),
     tabPanel(
       "Value of information",
-      tags$div(
-        class = "alert alert-warning",
-        tags$strong("Simulated illustrative analysis — not clinical evidence.")
-      ),
       tags$h3("Value of information"),
       tags$p(paste(
         "Value of information asks how much it would be worth to remove decision",
@@ -1663,19 +1801,11 @@ ui <- fluidPage(
           "Only parameters that are actually present in the returned PSA draws are",
           "included, and EVPPI is shown only when at least 100 successful",
           "simulations are available."
-        )),
-        tags$li("Simulated illustrative analysis — not clinical evidence.")
+        ))
       )
     ),
     tabPanel(
       "HTA decision summary",
-      tags$div(
-        class = "alert alert-warning",
-        tags$strong(paste(
-          "Simulated illustrative analysis — not clinical evidence and not an",
-          "official HTA recommendation."
-        ))
-      ),
       tags$h3("HTA decision summary"),
       tags$p(paste(
         "This tab collects the existing outputs of the other tabs into an",
@@ -1689,16 +1819,25 @@ ui <- fluidPage(
       uiOutput("hta_dashboard"),
       tags$h4("Plain-language interpretation"),
       textOutput("hta_interpretation"),
-      tags$h4("Evidence-generation plan"),
-      tags$p(class = "text-muted", paste(
-        "An educational mapping of the model's uncertainties onto possible",
-        "evidence-generation activities. This is not a formal research",
-        "protocol."
-      )),
-      textOutput("hta_evidence_summary"),
-      tableOutput("hta_evidence_table"),
-      tags$p(class = "text-muted", style = "font-size:12px;",
-             HTA_EVIDENCE_NOTE),
+      tags$div(
+        style = "margin-top:1.5rem;",
+        bslib::accordion(
+          id = "hta_evidence_accordion",
+          open = FALSE,
+          bslib::accordion_panel(
+            "Evidence-generation plan",
+            tags$p(class = "text-muted", paste(
+              "An educational mapping of the model's uncertainties onto possible",
+              "evidence-generation activities. This is not a formal research",
+              "protocol."
+            )),
+            textOutput("hta_evidence_summary"),
+            tableOutput("hta_evidence_table"),
+            tags$p(class = "text-muted", style = "font-size:12px;",
+                   HTA_EVIDENCE_NOTE)
+          )
+        )
+      ),
       tags$h4("What is live and what is illustrative"),
       tags$ul(
         tags$li(paste(
@@ -2500,10 +2639,7 @@ server <- function(input, output, session) {
         class = "text-muted",
         style = "font-size:12px;",
         assessment$thresholds
-      ),
-      tags$p(tags$strong(
-        "Simulated illustrative analysis \u2014 not clinical evidence."
-      ))
+      )
     )
   })
 
@@ -3542,10 +3678,28 @@ server <- function(input, output, session) {
           domains$Basis[i], domains$Interpretation[i]
         )
       }),
-      tags$p(
-        class = "text-muted",
-        style = "font-size:12px;",
-        HTA_SUMMARY_RULE_NOTE
+      # The full rules text used to sit here permanently. It now lives in an
+      # on-demand popover so the dashboard leads with the decision itself.
+      tags$div(
+        style = "margin-top:0.75rem;",
+        bslib::popover(
+          tags$button(
+            type = "button",
+            class = "btn btn-default cc-rules-trigger",
+            `aria-label` = HTA_RULES_TRIGGER_LABEL,
+            "Traffic-light rules"
+          ),
+          title = "Educational traffic-light rules",
+          tags$ul(
+            style = "margin:0; padding-left:1.1rem;",
+            lapply(HTA_RULE_ITEMS, tags$li)
+          )
+        ),
+        tags$span(
+          class = "text-muted",
+          style = "font-size:12px; margin-left:0.5rem;",
+          "Teaching-app presentation rules"
+        )
       )
     )
   })

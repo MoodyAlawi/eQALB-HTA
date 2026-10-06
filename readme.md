@@ -47,6 +47,25 @@ The outputs must not be interpreted as:
 The purpose of the project is to learn how HTA models are structured,
 calculated, visualised, and interpreted.
 
+The disclaimer is stated once, prominently, rather than repeated on every tab:
+
+- The landing **Project description** view carries the project-level statement
+  that the results are illustrative simulations designed for learning.
+- The **Start analysis** landing view carries the short banner "Simulated
+  illustrative analysis - not clinical evidence and not an official HTA
+  recommendation."
+- This document carries the full statement above.
+
+Repeated copies of that banner were previously rendered at the top of several
+analysis tabs (value of information, HTA decision summary) and as a suffix on
+many Kaplan-Meier headings; those duplicates have been removed so the tabs lead
+with their results. Warnings that explain a *specific* result are deliberately
+kept, for example the PSA "distributions are illustrative" note, the
+budget-impact disclaimer, the Kaplan-Meier simulation and competing-death notes,
+and the "clinical evidence maturity is always Red because the evidence is
+simulated" domain card. Plot titles and captions also still name the simulated
+nature of the data, because they are part of the generated analysis output.
+
 ## How to run the app
 
 Open R or the R terminal in VS Code and set the working directory to the project
@@ -107,8 +126,25 @@ calculation, and the app behaves identically with or without it.
 ## Navigation
 
 The app opens on a centred title screen: the large title "eQalb", the
-subtitle "Interactive health-technology-assessment model", and three vertically
+creator credit "By Mahmood Alawi", the subtitle "Interactive
+health-technology-assessment model", two creator links, and three vertically
 stacked buttons.
+
+The credit is set as a refined subtitle — smaller than the title and slightly
+muted at `opacity: 0.78`, which keeps the effective contrast above the WCAG AA
+4.5:1 ratio in both light and dark mode without competing with the title. Below
+it sit two links in a centred row (`LinkedIn` and `View source on GitHub`) that
+wrap cleanly at narrow widths, use the theme's teal accent, underline on hover
+and keyboard focus, and open in a new tab with
+`rel="noopener noreferrer"`.
+
+| Link | Opens |
+|---|---|
+| LinkedIn | `https://www.linkedin.com/in/mahmoodalawi` |
+| View source on GitHub | `https://github.com/MoodyAlawi/eQALB-HTA` |
+
+Note that "eQalb" is the fictional digital health technology being assessed; the
+repository is the illustrative HTA learning tool that models it.
 
 | Button | Shows |
 |---|---|
@@ -840,6 +876,11 @@ results already computed in the other tabs, and no analysis is rerun.
 
 The overall status is the least favourable assessed domain.
 
+The full rule text is not shown permanently in the tab. It sits behind a
+compact "Traffic-light rules" popover next to the dashboard, titled
+"Educational traffic-light rules", so the tab leads with the decision itself.
+The same rules are stated as a table below.
+
 ### Provisional HTA position
 
 | Position | Rule |
@@ -854,6 +895,11 @@ These categories are educational and illustrative. They are not official NICE or
 payer criteria, and they are not a reimbursement recommendation.
 
 ### Evidence-generation plan
+
+The evidence-generation plan sits in a collapsed **Evidence-generation plan**
+accordion panel, so the tab does not open with the whole table expanded. The
+values are unchanged and still dynamic; the table simply renders when the panel
+is opened. Everything below describes its content.
 
 The tab also shows a dynamic evidence-priority table with eight columns:
 evidence gap, current model signal, current status, why it matters, evidence

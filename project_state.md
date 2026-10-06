@@ -42,7 +42,15 @@ explicitly documented otherwise.
   value, decision uncertainty, budget impact, clinical evidence maturity,
   implementation readiness), an overall status, a provisional HTA position, a
   dynamic plain-language interpretation and a dynamic nine-row evidence-priority
-  table.
+  table. The full traffic-light rules sit in an on-demand bslib popover
+  ("Traffic-light rules"), and the evidence-priority table sitd in a collapsed
+  bslib accordion ("Evidence-generation plan"), so the tab leads with the
+  decision and status.
+- Repeated "Simulated illustrative analysis" banners removed from the analysis
+  tabs (value of information, HTA decision summary) and from the Kaplan-Meier
+  headings. The landing Project description and Start analysis views keep the
+  project-level disclaimer, and warnings that explain a specific result are
+  retained.
 - Landing page shown on start-up: a centred title screen with an "Open analysis
   dashboard" button reachable from it, and a "Home" button inside the dashboard
   (show/hide toggles over the existing containers; no duplicated UI).
@@ -58,6 +66,9 @@ explicitly documented otherwise.
 - Centred landing title screen with "Start analysis", "Project description" and
   "Download results" subviews, each centred with a Back button and driven by one
   `conditionalPanel` per view over a hidden `nav_page` control.
+- Creator credit "By Mahmood Alawi" and two external links (LinkedIn and the
+  GitHub repository) on the title screen, styled as a subordinate subtitle with
+  a centred, wrapping link row.
 - Reproducible package environment managed with `renv` 1.3.1: `renv.lock` records
   R 4.5.1 and the exact version of all 130 packages, and `.Rprofile` activates
   the project library. Development-time only; no model behaviour changes.
@@ -165,6 +176,18 @@ explicitly documented otherwise.
   their fixed inline pastel colours so the traffic-light meanings stay identical
   in both modes, and static `ggplot` figures keep their light image backgrounds.
   No other appearance controls are implemented.
+- The HTA decision-summary tab keeps a small number of simulated-data mentions
+  that are *not* duplicates of the removed banner: the "Simulated illustrative
+  data" value and explanation on the always-Red clinical-evidence-maturity card,
+  and one trailing sentence inside the plain-language interpretation. The
+  trailing sentence is produced by `assess_hta_decision_summary()` in
+  `eqalb_markov.R` and is also written into the exported results package, so it
+  was left unchanged rather than editing a model output and the export contents.
+  Plot titles and captions likewise still name the simulated nature of the data
+  because they are part of the generated analysis output.
+- The traffic-light rules text exists in two forms: `HTA_RULE_ITEMS` (paragraphs
+  for the popover) and `HTA_SUMMARY_RULE_NOTE` (the single-line form written into
+  the exported package). The exported wording is deliberately untouched.
 - The app was renamed from "CardioConnect" to "eQalb". The CSS class prefix
   `cc-` (for example `cc-title`, `cc-panel-inner`) and the simulated
   `patient_id` prefix "CC" were deliberately left unchanged because they do not
@@ -195,14 +218,16 @@ explicitly documented otherwise.
 
 ## Current task
 
-Completed: added a reproducible package environment with `renv` 1.3.1.
-`install.packages("renv")`, `renv::init()` and `renv::snapshot()` were run in the
-project folder. Init linked the eight project dependencies (and their
-dependencies, 130 packages in total) from the existing user library into
-`renv/library/`, so nothing was downloaded, and wrote `renv.lock` recording R
-4.5.1 and every package version. `renv::status()` reports the project is in a
-consistent state. The app was verified to launch and run all analyses and
-exports through the launcher under the renv-activated library.
+Completed: reduced clutter in the HTA decision-summary tab and removed the
+repeated simulated-analysis notices. The full traffic-light rules text now sits
+in an on-demand bslib popover (trigger "Traffic-light rules", title "Educational
+traffic-light rules") and the evidence-generation plan in a collapsed bslib
+accordion, both keyboard accessible and readable in light and dark mode. The
+duplicate "Simulated illustrative analysis" banners were removed from the value-
+of-information and HTA tabs, the Kaplan-Meier heading suffixes and the VOI notes;
+the Project description and Start analysis disclaimers and all result-specific
+warnings were kept. Presentation only: no model, calculation, decision rule,
+output, navigation, export or existing ID changed.
 
 ## Next planned task
 
@@ -237,3 +262,5 @@ the live inputs and the CEAC curve is correctly aligned.
 | 2026-10-06 | Centre-aligned the content inside the three landing subviews (headings, text, bullet block and buttons) with CSS scoped to `.cc-panel-inner`, keeping the bullet text left-aligned | Yes - tested in the running app, both colour modes and 390px mobile |
 | 2026-10-06 | Renamed the application from CardioConnect to eQalb throughout (naming only): files `eqalb_markov.R` / `eqalb_survival.R` / `eqalb_owsa.R`, `eqalb_` symbol and download-filename prefixes, `EQALB_THEME`, "eQalb plus usual care" arm label | Yes - 18-value numeric probe identical before/after; app tested in the running app |
 | 2026-10-06 | Added a reproducible package environment with `renv` 1.3.1 (`renv::init()` + `renv::snapshot()`), linking 130 packages into a project library and writing `renv.lock` for R 4.5.1; no packages downloaded | Yes - `renv::status()` consistent; app launched and ran analyses and exports under the renv library |
+| 2026-10-06 | Added the creator credit "By Mahmood Alawi" and LinkedIn / GitHub links to the home title screen (subtle subtitle styling, centred wrapping link row, hover and focus states, new tab with `rel="noopener noreferrer"`); CSS and markup only | Yes - tested in the running app, light and dark mode, 1260px / 390px / 300px widths; model outputs unchanged |
+| 2026-10-06 | Simplified the HTA decision-summary tab: traffic-light rules moved into an on-demand bslib popover and the evidence-generation plan into a collapsed bslib accordion; removed the duplicated "Simulated illustrative analysis" banners from the analysis tabs and Kaplan-Meier headings | Yes - tested in the running app: accordion collapsed/expanded, popover by mouse and keyboard, light and dark mode, 390px width; model and HTA outputs identical |
