@@ -1,16 +1,5 @@
 # eQalb Interactive HTA Learning Model
 
-> **Name migration note.** This application was previously named
-> "CardioConnect". It was renamed to **eQalb** in a naming-only change: the
-> model, calculations, data, navigation, layout and styling are unchanged. The
-> three model source files were renamed to `eqalb_markov.R`, `eqalb_survival.R`
-> and `eqalb_owsa.R`, generated download and ZIP filenames now start with
-> `eqalb_`, the internal theme constant is `EQALB_THEME`, and the treatment arm
-> is labelled "eQalb plus usual care". The CSS class prefix `cc-` (for example
-> `cc-title`) was left unchanged because it does not contain the old name.
-> Because the source filenames changed, a Shiny session started before the
-> rename must be restarted.
-
 ## Project overview
 
 eQalb is a fictional prescription digital health technology for adults
