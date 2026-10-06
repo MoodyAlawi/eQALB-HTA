@@ -1,0 +1,32 @@
+{
+  // eQalb Shiny app launcher.
+  // Run with: Terminal > Run Task > "eQalb: run app (127.0.0.1:7788)"
+  // or press Ctrl+Shift+B (default build task).
+  //
+  // To start it automatically whenever this folder is opened, uncomment
+  // "runOptions" below and allow automatic tasks once when VS Code prompts
+  // (or set "task.allowAutomaticTasks": "on" in your user settings).
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "eQalb: run app (127.0.0.1:7788)",
+      "type": "shell",
+      "command": "& 'C:\\Program Files\\R\\R-4.5.1\\bin\\Rscript.exe' '${workspaceFolder}\\run_app.R'",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+      // "runOptions": { "runOn": "folderOpen" }
+    }
+  ]
+}
