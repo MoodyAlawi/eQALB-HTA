@@ -538,6 +538,21 @@ DHT_TRAFFIC_LEGEND <- c(
   "Red = major barrier needing resolution before broad deployment"
 )
 
+# Accessible labels for the on-demand traffic-light rules controls.
+DHT_RULES_TRIGGER_LABEL <- paste(
+  "Traffic-light rules: show what the readiness traffic-light key means"
+)
+
+KM_RULES_TRIGGER_LABEL <- paste(
+  "Traffic-light rules: show how the simulated survival results are",
+  "classified"
+)
+
+VOI_RULES_TRIGGER_LABEL <- paste(
+  "Traffic-light rules: show the educational bands used for decision",
+  "uncertainty"
+)
+
 dht_format_count <- function(value) {
   format(round(value), big.mark = ",", scientific = FALSE, trim = TRUE)
 }
@@ -1200,6 +1215,11 @@ CC_INFO_TEXT <- list(
   evpi = "The value of completely eliminating uncertainty about the decision.",
   evppi = paste(
     "The value of eliminating uncertainty about selected groups of inputs."
+  ),
+  healthcare_savings = paste(
+    "Estimated healthcare costs avoided because the intervention reduces",
+    "modelled clinical events. This is illustrative and does not represent",
+    "observed savings."
   )
 )
 
@@ -1228,6 +1248,26 @@ cc_info <- function(topic, key, id = NULL) {
 # icon stays aligned with the label it explains.
 cc_label <- function(text, topic, key, id) {
   tagList(text, tags$span(class = "cc-info", cc_info(topic, key, id)))
+}
+
+# Compact, keyboard-accessible traffic-light rules control. This is the same
+# on-demand popover pattern the HTA decision-summary tab uses, so a rules
+# explanation is never permanently visible in the analysis tabs.
+cc_rules_popover <- function(title, items, aria_label) {
+  bslib::popover(
+    tags$button(
+      type = "button",
+      class = "btn btn-default cc-rules-trigger",
+      `aria-label` = aria_label,
+      "Traffic-light rules"
+    ),
+    title = title,
+    options = list(customClass = "cc-rules-popover"),
+    tags$ul(
+      style = "margin:0; padding-left:1.1rem;",
+      lapply(items, tags$li)
+    )
+  )
 }
 
 # Modern visual theme (bslib only). This is presentation-only: it changes
@@ -2316,7 +2356,14 @@ ui <- fluidPage(
           ),
           column(
             4,
-            numericInput("savings", "Annual healthcare savings (€)", 20)
+            numericInput(
+              "savings",
+              cc_label(
+                "Annual healthcare savings (€)", "annual healthcare savings",
+                "healthcare_savings", "savings_info"
+              ),
+              20
+            )
           ),
           column(
             4,
@@ -2385,25 +2432,6 @@ ui <- fluidPage(
                        "utility_post_stroke_info"),
               0.60, min = 0, max = 1, step = 0.01
             )
-          )
-        ),
-        tags$h5("Deterministic sensitivity-analysis ranges"),
-        tags$p(class = "text-muted", paste(
-          "These low and high values are used only for deterministic sensitivity",
-          "analysis. They do not define the base-case values."
-        )),
-        fluidRow(
-          column(
-            6,
-            tags$strong("Post-MI utility"),
-            numericInput("ow_sa_low_utility_post_mi", "Low", 0.70, min = 0, max = 1, step = 0.01),
-            numericInput("ow_sa_high_utility_post_mi", "High", 0.90, min = 0, max = 1, step = 0.01)
-          ),
-          column(
-            6,
-            tags$strong("Post-stroke utility"),
-            numericInput("ow_sa_low_utility_post_stroke", "Low", 0.45, min = 0, max = 1, step = 0.01),
-            numericInput("ow_sa_high_utility_post_stroke", "High", 0.75, min = 0, max = 1, step = 0.01)
           )
         ),
         tags$details(
@@ -2496,13 +2524,6 @@ ui <- fluidPage(
             "change the global product assumptions shown above unless the PSA",
             "samples those parameters from their specified distributions."
           )),
-          tags$div(
-            class = "alert alert-warning",
-            tags$strong(paste(
-              "PSA distributions are illustrative unless linked to empirical",
-              "evidence."
-            ))
-          ),
           tags$p(paste(
             "Probabilities of cost-effectiveness are conditional on this model",
             "and its illustrative uncertainty distributions."
@@ -2554,10 +2575,6 @@ ui <- fluidPage(
             "Budget impact estimates payer affordability over time. It is",
             "separate from cost-effectiveness and does not replace the ICER."
           )),
-          tags$div(
-            class = "alert alert-warning",
-            tags$strong(BIA_DISCLAIMER)
-          ),
           uiOutput("bia_status"),
           tableOutput("bia_table"),
           tableOutput("bia_summary"),
@@ -2568,8 +2585,18 @@ ui <- fluidPage(
     ),
     tabPanel(
       "Sensitivity Analysis",
+      tags$h3("Sensitivity analysis"),
+      tags$p(paste(
+        "A sensitivity analysis changes model assumptions to show how much the",
+        "results depend on uncertainty in individual inputs."
+      )),
       sidebarLayout(
         sidebarPanel(
+          tags$h5("Deterministic sensitivity-analysis ranges"),
+          tags$p(class = "text-muted", paste(
+            "These low and high values are used only for deterministic",
+            "sensitivity analysis. They do not define the base-case values."
+          )),
           numericInput(
             "ow_sa_wtp",
             cc_label("Willingness to pay (€ per QALY)",
@@ -2589,6 +2616,12 @@ ui <- fluidPage(
           tags$strong("Follow-up engagement"),
           numericInput("ow_sa_low_engagement_followup", "Low", 0.20, min = 0, max = 1, step = 0.01),
           numericInput("ow_sa_high_engagement_followup", "High", 0.60, min = 0, max = 1, step = 0.01),
+          tags$strong("Post-MI utility"),
+          numericInput("ow_sa_low_utility_post_mi", "Low", 0.70, min = 0, max = 1, step = 0.01),
+          numericInput("ow_sa_high_utility_post_mi", "High", 0.90, min = 0, max = 1, step = 0.01),
+          tags$strong("Post-stroke utility"),
+          numericInput("ow_sa_low_utility_post_stroke", "Low", 0.45, min = 0, max = 1, step = 0.01),
+          numericInput("ow_sa_high_utility_post_stroke", "High", 0.75, min = 0, max = 1, step = 0.01),
           tags$strong("Annual healthcare-use savings"),
           numericInput("ow_sa_low_savings", "Low", 0, min = 0),
           numericInput("ow_sa_high_savings", "High", 60, min = 0),
@@ -2614,6 +2647,11 @@ ui <- fluidPage(
     ),
     tabPanel(
       "Kaplan–Meier Curve",
+      tags$h3("Kaplan-Meier curve"),
+      tags$p(paste(
+        "A Kaplan-Meier curve shows how the proportion of people remaining",
+        "event-free changes over time."
+      )),
       sidebarLayout(
         sidebarPanel(
           sliderInput("km_n_per_arm", "Number of patients per treatment arm",
@@ -2691,6 +2729,11 @@ ui <- fluidPage(
     ),
     tabPanel(
       "DHT Readiness & Implementation",
+      tags$h3("DHT readiness and implementation"),
+      tags$p(paste(
+        "This assessment considers whether the intervention appears prepared",
+        "for practical implementation across key readiness domains."
+      )),
       sidebarLayout(
         sidebarPanel(
           tags$h5("Population and access"),
@@ -2742,13 +2785,15 @@ ui <- fluidPage(
           actionButton("reset_readiness", "Reset values")
         ),
         mainPanel(
-          tags$div(
-            class = "alert alert-warning",
-            tags$strong(DHT_DISCLAIMER)
-          ),
           tags$p(DHT_THRESHOLD_NOTE),
-          tags$h4("Traffic-light key"),
-          tags$ul(lapply(DHT_TRAFFIC_LEGEND, tags$li)),
+          tags$div(
+            style = "margin: 0.25rem 0 0.75rem 0;",
+            cc_rules_popover(
+              "Educational traffic-light key",
+              DHT_TRAFFIC_LEGEND,
+              DHT_RULES_TRIGGER_LABEL
+            )
+          ),
           uiOutput("readiness_notice"),
           tags$h4("Readiness overview"),
           uiOutput("readiness_cards"),
@@ -3659,10 +3704,15 @@ server <- function(input, output, session) {
           "elsewhere in the app."
         )
       ),
-      tags$p(
-        class = "text-muted",
-        style = "font-size:12px;",
-        assessment$thresholds
+      tags$div(
+        style = "margin-top:0.25rem;",
+        cc_rules_popover(
+          "Educational traffic-light rules",
+          # The existing single-string rules text, split into readable bullets
+          # with the wording unchanged.
+          strsplit(assessment$thresholds, "; ", fixed = TRUE)[[1]],
+          VOI_RULES_TRIGGER_LABEL
+        )
       )
     )
   })
@@ -4355,9 +4405,13 @@ server <- function(input, output, session) {
       lapply(seq_len(nrow(domains)), function(i) {
         status_card(domains$Domain[i], domains$Status[i], domains$Explanation[i])
       }),
-      tags$details(
-        tags$summary("Traffic-light rules used"),
-        tags$ul(lapply(assessment$rules, tags$li))
+      tags$div(
+        style = "margin-top:0.5rem;",
+        cc_rules_popover(
+          "Traffic-light rules used",
+          assessment$rules,
+          KM_RULES_TRIGGER_LABEL
+        )
       )
     )
   })

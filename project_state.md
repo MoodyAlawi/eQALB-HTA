@@ -51,6 +51,12 @@ explicitly documented otherwise.
   headings. The landing Project description and Start analysis views keep the
   project-level disclaimer, and warnings that explain a specific result are
   retained.
+- Traffic-light rules are on demand in every analysis tab that uses them
+  (Kaplan-Meier, DHT Readiness, Value of information, HTA decision summary) and
+  in the tutorial summary, through the shared `cc_rules_popover()` control.
+- Short subheader explanations on the Sensitivity Analysis, Kaplan-Meier and
+  DHT Readiness tabs, and an information control next to Annual healthcare
+  savings.
 - Guided tutorial: a four-step beginner walkthrough (base cost effectiveness,
   budget impact, DHT readiness, tutorial decision summary) with Next, Back, an
   exit, a return-to-step-1 control on the budget-impact step, a Finish tutorial
@@ -262,19 +268,30 @@ explicitly documented otherwise.
   The icon sits inside the input label, so the label's accessible name includes
   its own explanation. The icon is drawn in CSS (a borderless button holding a
   small circled `i`), so no icon font or extra package is needed, and both the
-  information popovers and the two traffic-light-rules popovers carry a custom
+  information popovers and the traffic-light-rules popovers carry a custom
   class through the popover options (`cc-info-popover` and `cc-rules-popover`),
   which is the hook the scoped CSS uses to remove the heading margin that used
   to leave a light strip above the header.
+- Traffic-light rules are now on demand everywhere in the analysis area:
+  `cc_rules_popover()` wraps the same bslib popover pattern for the Kaplan-Meier
+  tab, the DHT readiness tab, the VOI tab, the tutorial summary and the HTA
+  decision summary, so no rules paragraph is permanently visible.
+- The three removed analysis-tab notice boxes are gone, but the same wording
+  still appears where it is result-level output rather than a repeated banner:
+  `BIA_DISCLAIMER` is part of `bia_interpretation` and `DHT_DISCLAIMER` is part
+  of the readiness `interpretation` string. Both were left unchanged because
+  they are generated output text, not standalone notices.
 
 ## Current task
 
-Completed: white-strip correction on the two traffic-light rules popovers. Both
-now pass `options = list(customClass = "cc-rules-popover")`, and the scoped CSS
-that already removed the heading margin for the information popovers was
-extended to that class, so the header starts at the top of the popover and the
-close button sits inside the header band in both the tutorial and the full
-analysis.
+Completed: GUI-only refinements to the full analysis. An information control was
+added next to Annual healthcare savings; the deterministic sensitivity-analysis
+ranges moved from Global Assumptions into the Sensitivity Analysis sidebar with
+their explanation and unchanged values; Sensitivity Analysis, Kaplan-Meier and
+DHT Readiness gained subheader explanations; the permanently visible
+traffic-light explanations in Kaplan-Meier, DHT Readiness and Value of
+Information became on-demand `cc_rules_popover()` buttons; and the redundant
+budget-impact, PSA-distribution and DHT notice boxes were removed.
 
 ## Next planned task
 
@@ -318,3 +335,4 @@ the live inputs and the CEAC curve is correctly aligned.
 | 2026-10-07 | Added 20 keyboard-accessible full-analysis information controls (`cc_info()` / `cc_label()` with text in `CC_INFO_TEXT`): 18 next to the main inputs (price, implementation cost, RRR, year-1 and follow-up engagement, the three utilities, PSA simulation count, PSA seed, both WTP thresholds, budget-impact population and uptake, sensitivity-analysis WTP, KM seed, DHT target population and review minutes) plus EVPI and EVPPI on their headings. GUI only, no input renamed, no calculation changed, and the Guided tutorial untouched | Yes - tested in the running app: every icon renders inside the correct existing label (verified by the label's `for` attribute) with the exact requested wording, popovers open by mouse click and by keyboard (Shift+Tab then Enter) with a visible focus outline, no duplicate ids (240 with 0 duplicates, and none created by an open popover), sliders still respond with the icon inside their label, base case ICER EUR 298,965.51 (EUR 2,439.28 / 0.00816), PSA (seed 12345, n=100) mean cost EUR 2,417.75 / mean QALYs 0.00781 / P(CE) 1.0%, EVPI EUR 0.11, readiness 63,750 eligible, tornado and KM modules render, ZIP export HTTP 200 with the same 12 files, tutorial shows 0 info controls and its 4 steps and completion card are unchanged, light and dark mode readable, 390px width with no horizontal overflow and the popover fitting inside the viewport, app.R parses |
 | 2026-10-07 | Two visual corrections to those information popovers: the popover now carries `customClass = "cc-info-popover"` and scoped CSS removes the heading top margin, so the header starts at the top with no light strip and the close button sits inside the header band; the plain `ⓘ` character was replaced by a CSS-drawn circular lowercase `i` in the teal brand colour. Popover text, control count, control placement, IDs and behaviour are unchanged, and other popovers keep their original styling | Yes - tested in the running app: header top gap is 1px (the popover border only) with `margin-top: 0`, header width equals the popover content width so it is full-bleed, and the close button (11-26px) lies inside the header (1-36px) in both light and dark mode; the arrow is unclipped; the 20 information controls each render a 14.4px circled `i` with their original aria-labels, keyboard Enter opens and Escape closes the popover with a 2px teal focus outline, the popover fits the 375px viewport with no horizontal overflow, the traffic-light rules popover still has `hasInfoClass: false` and its original 20px header margin, no duplicate ids (240), base case ICER EUR 298,965.51, PSA (seed 12345, n=100) mean cost EUR 2,417.75 / P(CE) 1.0%, EVPI EUR 0.11, ZIP export HTTP 200 with the same file set, tutorial unchanged, app.R parses |
 | 2026-10-07 | Applied the same header fix to the two traffic-light-rules popovers, which had kept the white strip: both now pass `options = list(customClass = "cc-rules-popover")` and the scoped CSS selectors were extended to cover that class. No text, ID or behaviour change | Yes - tested in the running app: both the tutorial rules popover and the full-analysis rules popover now report `headerMarginTop: 0px`, a 1px header top gap (the popover border only), a 7px top header radius matching the outer container, and the close button inside the header band in light and dark mode (`#1e3039` header on `#16242c` popover in dark); the arrow stays visible, popover text and item counts are unchanged, the popover fits the 375px viewport with no horizontal overflow, the 20 information popovers still behave as before, no duplicate ids (240), base case ICER EUR 298,965.51 and PSA (seed 12345, n=100) mean cost EUR 2,417.75 / P(CE) 1.0% unchanged, ZIP export HTTP 200 with the same file set, app.R parses |
+| 2026-10-07 | Final full-analysis GUI changes: an information control next to Annual healthcare savings; the deterministic sensitivity-analysis ranges moved out of Global Assumptions into the Sensitivity Analysis sidebar with their explanation and unchanged values/IDs; subheader explanations on Sensitivity Analysis, Kaplan-Meier and DHT Readiness; the permanently visible traffic-light explanations in Kaplan-Meier (a `<details>`), DHT Readiness (Traffic-light key list) and Value of information (thresholds paragraph) replaced by the shared `cc_rules_popover()` control; and the budget-impact, PSA-distribution and DHT notice boxes removed. No tutorial, model, ID or export change | Yes - tested in the running app: the savings control carries the exact requested text inside its own label; the four `ow_sa_*utility*` inputs now exist only in the Sensitivity Analysis sidebar with values 0.7/0.9/0.45/0.75 and the explanation appears exactly once, with no range control or explanation left on the Cost-effectiveness tab; all three subheaders present; all three rules popovers open by mouse click and by keyboard Enter, close on Escape, keep the original wording (3 DHT legend items, 5 KM rules, the VOI thresholds split into readable bullets) and report `headerMarginTop: 0px`, a 1px header top gap and the close button inside the header in light and dark mode; the three notice boxes are gone with no `.alert` left on the Cost-effectiveness tab, while the Project description and Start analysis disclaimers remain; base case ICER EUR 298,965.51 (EUR 2,439.28 / 0.00816), PSA (seed 12345, n=100) mean cost EUR 2,417.75 / mean QALYs 0.00781 / P(CE) 1.0%, EVPI EUR 0.11, budget impact, tornado and KM all render, ZIP export HTTP 200 with the same 12 files and sizes, 241 element ids with 0 duplicates, tutorial unchanged (4 steps, own rules button, centred completion card), app.R parses. Narrow-viewport table overflow at 390px was confirmed to be identical in the pre-change HEAD version (DHT scrollWidth 453, KM 1040) and is therefore pre-existing |
