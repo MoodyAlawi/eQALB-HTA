@@ -31,7 +31,11 @@ explicitly documented otherwise.
   RRR, horizon, sample-size, seed, event-definition and censoring values used.
 - Deterministic sensitivity analysis and tornado diagram.
 - Probabilistic sensitivity analysis and CEAC in the existing Cost-effectiveness
-  tab.
+  tab. One user-facing WTP control (Reference WTP threshold) drives the headline
+  probability of cost-effectiveness, the reference row of the PSA summary table,
+  the VOI thresholds and the HTA-summary rules. The CEAC x-axis upper limit is
+  derived internally from that one control, so no second threshold is exposed.
+  The CEAC subtitle explains how to read the curve.
 - DHT Readiness & Implementation tab.
 - Budget-impact analysis (five-year, deterministic) in the existing
   Cost-effectiveness tab.
@@ -102,7 +106,10 @@ explicitly documented otherwise.
 - Deterministic sensitivity analysis changes one input at a time.
 - PSA varies multiple uncertain inputs together.
 - CEAC shows the proportion of PSA simulations with positive net monetary
-  benefit at each WTP threshold.
+  benefit at each WTP threshold. Its x-axis limit is `max(2 x reference WTP,
+  €100,000)`, computed internally by `psa_ceac_wtp_max()` from the single
+  Reference WTP control, so the axis always contains the reference value and the
+  default view is unchanged from the previous explicit €200,000 limit.
 - The Kaplan–Meier risk table shows people who are event-free and still
   observed; it does not show app adherence.
 - The Kaplan–Meier traffic-light panel summarises the simulated arm contrast;
@@ -150,6 +157,10 @@ explicitly documented otherwise.
   assumptions panel reports the values the plotted run actually used.
 - Formal model validation is deferred until the current modules are stable.
 - PSA runtime is relatively long for large simulation counts.
+- The CEAC x-axis upper limit is no longer user-selectable: it is derived from
+  the Reference WTP control as `max(2 x reference, €100,000)`, so the plotted
+  range changes with the reference threshold. The CEAC probability values
+  themselves do not depend on the axis limit.
 - Budget-impact analysis is deterministic and illustrative; avoided-event
   savings default to €0 and are not linked to the Markov model, and no
   discounting is applied.
@@ -288,14 +299,16 @@ explicitly documented otherwise.
 
 ## Current task
 
-Completed: rewrote the Project Description content only. It now explains that
-eQalb is the fictional digital health intervention being assessed and that the
-interactive R Shiny application is the educational simulation around it, lists
-the analyses the app brings together, states the illustrative nature of all
-outputs and decision rules, and ends with a "Feedback and contact" section
-containing a `mailto:` link and the LinkedIn link. The copy is centred with the
-rest of the view, and the heading, card layout, Back button and all other views
-are unchanged.
+Completed: reduced the PSA willingness-to-pay controls to one visible input.
+The former "Maximum WTP threshold" control was removed from the UI, from the
+`psa_max_wtp` validate block and from the `run_psa_eqalb()` call, and the CEAC
+x-axis upper limit is now derived internally by `psa_ceac_wtp_max()` as
+`max(2 x reference WTP, EUR 100,000)`. The remaining control is relabelled
+"Reference WTP threshold - Main threshold used for the headline probability of
+cost-effectiveness" with a new information popover explaining that it is the
+amount used to judge cost-effectiveness for the main PSA result. The CEAC
+subtitle now explains what the curve and its axes show, placed before the
+existing illustrative-uncertainty sentence. No PSA or CEAC calculation changed.
 
 ## Next planned task
 
@@ -341,3 +354,4 @@ the live inputs and the CEAC curve is correctly aligned.
 | 2026-10-07 | Applied the same header fix to the two traffic-light-rules popovers, which had kept the white strip: both now pass `options = list(customClass = "cc-rules-popover")` and the scoped CSS selectors were extended to cover that class. No text, ID or behaviour change | Yes - tested in the running app: both the tutorial rules popover and the full-analysis rules popover now report `headerMarginTop: 0px`, a 1px header top gap (the popover border only), a 7px top header radius matching the outer container, and the close button inside the header band in light and dark mode (`#1e3039` header on `#16242c` popover in dark); the arrow stays visible, popover text and item counts are unchanged, the popover fits the 375px viewport with no horizontal overflow, the 20 information popovers still behave as before, no duplicate ids (240), base case ICER EUR 298,965.51 and PSA (seed 12345, n=100) mean cost EUR 2,417.75 / P(CE) 1.0% unchanged, ZIP export HTTP 200 with the same file set, app.R parses |
 | 2026-10-07 | Rewrote the Project Description content only: it now distinguishes the fictional intervention `eQalb` from the interactive R Shiny application that simulates a simplified HTA of it, lists the analyses included, states that all outputs and traffic-light rules are illustrative teaching rules, and adds a "Feedback and contact" section with a `mailto:` email link and the LinkedIn link opening in a new tab. Scoped `.cc-desc` CSS adds paragraph spacing and keeps the copy centred with the rest of the view; heading, card layout, Back button, IDs and all other views unchanged | Yes - tested in the running app: all five paragraphs and the contact paragraph read exactly as specified, every paragraph reports `text-align: center` in light and dark mode with a 1.6 line height, the email anchor href is `mailto:smalawi2018@gmail.com` and clicking it produced a `mailto:` request the browser hands to the mail client (`net::ERR_ABORTED`), the LinkedIn anchor href is exactly `https://www.linkedin.com/in/mahmoodalawi` with `target="_blank"` and `rel="noopener noreferrer"`, Back returns to the title screen, one card and one Back button only, at 390px the view has no horizontal overflow and the copy stays readable, 241 element ids with 0 duplicates, base case ICER EUR 298,965.51 (EUR 2,439.28 / 0.00816), PSA (seed 12345, n=100) mean cost EUR 2,417.75 / mean QALYs 0.00781 / P(CE) 1.0%, tutorial unchanged (4 steps, 0 info controls, centred completion card), six dashboard tabs in the same order, Start analysis disclaimer intact, ZIP export HTTP 200 with the same file set, app.R parses |
 | 2026-10-07 | Final full-analysis GUI changes: an information control next to Annual healthcare savings; the deterministic sensitivity-analysis ranges moved out of Global Assumptions into the Sensitivity Analysis sidebar with their explanation and unchanged values/IDs; subheader explanations on Sensitivity Analysis, Kaplan-Meier and DHT Readiness; the permanently visible traffic-light explanations in Kaplan-Meier (a `<details>`), DHT Readiness (Traffic-light key list) and Value of information (thresholds paragraph) replaced by the shared `cc_rules_popover()` control; and the budget-impact, PSA-distribution and DHT notice boxes removed. No tutorial, model, ID or export change | Yes - tested in the running app: the savings control carries the exact requested text inside its own label; the four `ow_sa_*utility*` inputs now exist only in the Sensitivity Analysis sidebar with values 0.7/0.9/0.45/0.75 and the explanation appears exactly once, with no range control or explanation left on the Cost-effectiveness tab; all three subheaders present; all three rules popovers open by mouse click and by keyboard Enter, close on Escape, keep the original wording (3 DHT legend items, 5 KM rules, the VOI thresholds split into readable bullets) and report `headerMarginTop: 0px`, a 1px header top gap and the close button inside the header in light and dark mode; the three notice boxes are gone with no `.alert` left on the Cost-effectiveness tab, while the Project description and Start analysis disclaimers remain; base case ICER EUR 298,965.51 (EUR 2,439.28 / 0.00816), PSA (seed 12345, n=100) mean cost EUR 2,417.75 / mean QALYs 0.00781 / P(CE) 1.0%, EVPI EUR 0.11, budget impact, tornado and KM all render, ZIP export HTTP 200 with the same 12 files and sizes, 241 element ids with 0 duplicates, tutorial unchanged (4 steps, own rules button, centred completion card), app.R parses. Narrow-viewport table overflow at 390px was confirmed to be identical in the pre-change HEAD version (DHT scrollWidth 453, KM 1040) and is therefore pre-existing |
+| 2026-10-07 | Reduced the PSA willingness-to-pay controls to one: removed the visible "Maximum WTP threshold" input, its `validate()` need and its `run_psa_eqalb(max_wtp = ...)` argument, and added `psa_ceac_wtp_max(reference_wtp)` so the CEAC x-axis limit is `max(2 x reference WTP, EUR 100,000)` internally. The remaining control is relabelled "Reference WTP threshold - Main threshold used for the headline probability of cost-effectiveness" with its own `CC_INFO_TEXT$reference_wtp` explanation, and the CEAC subtitle now explains the curve and its axes before the existing illustrative-uncertainty sentence. GUI and plotting-display only: no PSA sampling, CEAC probability calculation, ID (other than the removed input), export, tutorial or navigation change | Yes - tested in the running app: exactly one WTP input remains (`#psa_reference_wtp`, value 100000) with `#psa_max_wtp` and `#psa_max_wtp_info` absent from the DOM; PSA (seed 12345, n=1000) mean cost EUR 2,420.87 / mean QALYs 0.00796 / P(CE) at the reference EUR 100,000 = 1.5%, identical to a direct `run_psa_eqalb()` call and to `max_wtp = 400000` (the `results` data frame is `identical()`, only the `ceac` rows change), and the reference row of the PSA summary drives the headline probability; CEAC renders after the PSA with x-axis 0-200,000 and breaks 0 / 50,000 / 100,000 / 150,000 / 200,000, so it still contains the reference WTP, and `psa_ceac_wtp_max(30000)` gives a 0-100,000 axis that also contains its reference; the new subtitle string is verified by `strwrap()` (5 wrapped lines: explanation first, then the existing illustrative-uncertainty sentence) and the plot keeps 3.06 in of its 5 in height for the panel; the new information popover opens by mouse click and by keyboard Enter with `aria-label` "Information about the reference WTP threshold" and reads exactly as specified, keeping `cc-info-popover` scoping, `margin-top: 0` and a header-only strip in light (`rgb(30,48,57)`-style dark-mode check) and dark mode; base case ICER unchanged at EUR 298,965.51 (EUR 2,439.28 / 0.00816); all six tabs render in the same order with their subheaders and rules popovers, the tutorial is unchanged (4 steps, step 4 with only Finish tutorial, completion card with Open full analysis and Restart tutorial, centred); 0 duplicate ids in every view; 390px width with no horizontal overflow and the CEAC image fitting its 327px container; ZIP export HTTP 200 with the same file set and no reference to a maximum WTP; app.R parses with `shinyApp(` once and `runApp(` still absent |

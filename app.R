@@ -28,6 +28,18 @@ format_euros_signed <- function(value) {
   ifelse(value < 0, paste0("-", formatted), formatted)
 }
 
+# The CEAC x-axis upper limit is derived internally from the reference
+# willingness-to-pay threshold so that only one WTP control is exposed to the
+# user. The multiple keeps the default view identical to the previous explicit
+# €200,000 upper limit.
+psa_ceac_wtp_max <- function(reference_wtp) {
+  reference <- suppressWarnings(as.numeric(reference_wtp))
+  if (length(reference) == 0L || is.na(reference) || reference < 0) {
+    reference <- 0
+  }
+  max(2 * reference, 100000)
+}
+
 # ---------------------------------------------------------------------------
 # Consolidated results export: helpers for the "Download complete results
 # package" ZIP.
@@ -1206,6 +1218,10 @@ CC_INFO_TEXT <- list(
   ),
   willingness_to_pay = paste(
     "The maximum amount considered acceptable to pay for one additional QALY."
+  ),
+  reference_wtp = paste(
+    "The amount used to judge whether the intervention is cost-effective for",
+    "the main PSA result, expressed as euros per QALY."
   ),
   psa_simulations = paste(
     "The number of simulations used to explore uncertainty in the model",
@@ -2559,22 +2575,13 @@ ui <- fluidPage(
               "psa_reference_wtp",
               cc_label(
                 paste(
-                  "Reference WTP threshold — PSA plane line and probability",
-                  "summary (€ per QALY)"
+                  "Reference WTP threshold — Main threshold used for the",
+                  "headline probability of cost-effectiveness (€ per QALY)"
                 ),
-                "willingness-to-pay threshold", "willingness_to_pay",
+                "the reference WTP threshold", "reference_wtp",
                 "psa_reference_wtp_info"
               ),
               value = 100000, min = 0, step = 10000
-            ),
-            numericInput(
-              "psa_max_wtp",
-              cc_label(
-                "Maximum WTP threshold — CEAC x-axis upper limit (€ per QALY)",
-                "willingness-to-pay threshold", "willingness_to_pay",
-                "psa_max_wtp_info"
-              ),
-              value = 200000, min = 0, step = 10000
             ),
             actionButton("run_psa", "Run probabilistic analysis")
           )
@@ -3438,8 +3445,8 @@ server <- function(input, output, session) {
         "PSA random seed must be a positive integer."
       ),
       need(
-        is.numeric(input$psa_max_wtp) && input$psa_max_wtp >= 0,
-        "Maximum willingness-to-pay threshold must be non-negative."
+        is.numeric(input$psa_reference_wtp) && input$psa_reference_wtp >= 0,
+        "Reference willingness-to-pay threshold must be non-negative."
       )
     )
     progress <- shiny::Progress$new(session = session, min = 0, max = 1)
@@ -3453,7 +3460,7 @@ server <- function(input, output, session) {
       run_psa_eqalb(
         n_sim = input$psa_n_sim,
         seed = input$psa_seed,
-        max_wtp = input$psa_max_wtp,
+        max_wtp = psa_ceac_wtp_max(input$psa_reference_wtp),
         intervention_price = input$price,
         implementation = input$implementation,
         savings = input$savings,
@@ -3599,8 +3606,19 @@ server <- function(input, output, session) {
       ggplot2::labs(
         title = "Cost-effectiveness acceptability curve",
         subtitle = paste(
-          "Probability is conditional on this model and its illustrative",
-          "uncertainty distributions."
+          strwrap(
+            paste(
+              "The CEAC shows how the probability of cost-effectiveness changes",
+              "across different willingness-to-pay thresholds. The x-axis shows",
+              "the amount a decision-maker is willing to pay for one additional",
+              "QALY, and the y-axis shows the probability that the intervention",
+              "is cost-effective at each threshold.",
+              "Probability is conditional on this model and its illustrative",
+              "uncertainty distributions."
+            ),
+            width = 100
+          ),
+          collapse = "\n"
         ),
         x = "Willingness-to-pay threshold (€ per QALY)",
         y = "Probability cost-effective"
