@@ -1486,6 +1486,17 @@ EQALB_THEME <- bslib::bs_add_rules(
     max-width: 46rem;
     text-align: center;
   }
+  /* Project description content. The panel wrapper centres its content, so the
+     body copy stays centred too; this only adds readable paragraph spacing. */
+  .cc-desc p {
+    margin: 0 0 1rem 0;
+    line-height: 1.6;
+  }
+  .cc-desc p:last-child { margin-bottom: 0; }
+  .cc-desc h5 {
+    margin: 1.5rem 0 0.5rem 0;
+  }
+  .cc-desc a { text-decoration: underline; }
   /* Centre the bullet block itself while keeping the bullet text left-aligned
      and readable. Scoped to the three landing-page subviews only. */
   .cc-panel-inner .well > ul {
@@ -2277,14 +2288,65 @@ ui <- fluidPage(
         class = "cc-panel-inner",
         wellPanel(
           tags$h4("Project description"),
-          tags$p(paste(
-            "eQalb is an educational digital-health technology assessment",
-            "model for hypertension management. It explores cost effectiveness,",
-            "uncertainty, budget impact, clinical outcomes, implementation",
-            "readiness, and evidence priorities for a supplementary digital",
-            "intervention. All clinical and economic results are illustrative",
-            "simulations designed for learning and model exploration."
-          )),
+          tags$div(
+            class = "cc-desc",
+            tags$p(paste(
+              "eQalb is a fictional digital health intervention designed to",
+              "support hypertension management. In this project, eQalb is",
+              "assessed as a supplementary intervention alongside usual care.",
+              "It is not presented as a real product or validated clinical",
+              "technology."
+            )),
+            tags$p(paste(
+              "This interactive R Shiny application simulates a simplified",
+              "health technology assessment of eQalb. It brings together",
+              "cost-effectiveness analysis, deterministic and probabilistic",
+              "sensitivity analysis, value-of-information analysis, budget",
+              "impact, illustrative clinical-outcome simulation, implementation",
+              "readiness, and evidence-generation priorities."
+            )),
+            tags$p(paste(
+              "The application is designed as a practical learning and",
+              "exploration tool. It demonstrates how different types of",
+              "evidence can contribute to an HTA decision, how assumptions",
+              "affect costs and health outcomes, and how uncertainty may",
+              "influence the need for further evidence."
+            )),
+            tags$p(paste(
+              "All clinical outcomes, economic results, parameter values, and",
+              "decision rules are illustrative or simulated for educational",
+              "purposes. The application is not a validated HTA, clinical",
+              "prediction tool, regulatory assessment, reimbursement",
+              "submission, or official recommendation. The traffic-light",
+              "classifications are presentation rules created for this teaching",
+              "application and should not be interpreted as official NICE,",
+              "payer, or policy criteria."
+            )),
+            tags$p(paste(
+              "The model is intended to support learning about economic",
+              "evaluation and HTA rather than to guide real-world clinical,",
+              "funding, or policy decisions."
+            )),
+            tags$h5("Feedback and contact"),
+            tags$p(
+              paste(
+                "I welcome feedback on the model, its educational usefulness,",
+                "and possible improvements. You can contact me at"
+              ),
+              tags$a(
+                href = "mailto:smalawi2018@gmail.com",
+                "smalawi2018@gmail.com"
+              ),
+              "or connect with me on",
+              tags$a(
+                href = "https://www.linkedin.com/in/mahmoodalawi",
+                target = "_blank",
+                rel = "noopener noreferrer",
+                "LinkedIn"
+              ),
+              "."
+            )
+          ),
           actionButton("home_back_from_description", "Back")
         )
       )
