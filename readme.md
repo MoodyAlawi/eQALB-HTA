@@ -15,6 +15,7 @@ Every clinical effect, cost, utility, event risk, survival curve, and economic r
 What you can do with it:
 
 - Explore six analysis tabs covering cost effectiveness, uncertainty, affordability, survival, implementation readiness, and decision support.
+- Work through the guided tutorial if you are new to health economics.
 - Adjust the assumptions and see how each result responds.
 - Download every result available in the session as a single ZIP package.
 - Switch between a light and a dark colour mode.
@@ -38,15 +39,18 @@ https://01a11174-15b8-e5c7-dbb8-5ca8cb298ab0.share.connect.posit.cloud/
 
 Supporting functionality:
 
-- A landing page offering Start analysis, Project description, and Download results.
+- A landing page offering Start analysis, Guided tutorial, Project description, and Download results.
+- A Guided tutorial: a four step beginner walkthrough of the base cost effectiveness, budget impact, DHT readiness, and the tutorial decision summary, using the same base model as the full analysis.
+- A welcome prompt the first time you open the full analysis from the home page, suggesting the tutorial to newcomers.
 - A light and dark mode switch.
 - A Download results package button that exports the results already produced in the session, plus per-analysis download buttons inside the tabs.
 
 ## How to use the application
 
-1. Open the application. It starts on a title screen with three entry points.
-2. Select Start analysis to read the analysis areas, then select Open analysis dashboard.
-3. Work through the tabs from left to right. Results are produced when you press the action button for that analysis, so the numbers update on demand instead of on every keystroke.
+1. Open the application. It starts on a title screen with four entry points.
+2. New to the topic? Select Guided tutorial. It walks through four steps, lets you change a few assumptions, and explains what each one means.
+3. Select Start analysis to read the analysis areas, then select Open analysis dashboard.
+4. Work through the tabs from left to right. Results are produced when you press the action button for that analysis, so the numbers update on demand instead of on every keystroke.
 
 | Action button | Produces |
 |---|---|
@@ -61,6 +65,19 @@ Supporting functionality:
 5. Open the Evidence-generation plan panel in the HTA decision summary when you want the detail behind the priorities.
 6. Use the Download results view, or the download buttons inside each tab, to export outcomes. The ZIP package contains a README that lists what was included and what had not been run.
 7. Use the switch in the top right corner to change colour mode, and Home to return to the title screen.
+
+The first time you open the full analysis from the home page, a short welcome prompt suggests the tutorial. It appears once per browser session, and you can carry straight on to the full analysis instead.
+
+The guided tutorial uses the same illustrative base model as the full analysis and presents a simplified sequence for learning. It is not a complete HTA and does not represent clinical or reimbursement evidence. It covers four steps in order:
+
+| Step | Topic |
+|---|---|
+| 1 | Base cost effectiveness, with sliders for the price, the risk reduction among engaged users, year 1 engagement, follow-up engagement, and the utility used for QALYs. |
+| 2 | Budget impact, with a slider for the eligible population. The price set in step 1 carries into this analysis. |
+| 3 | DHT readiness, with a slider for clinician review minutes plus two yes or no questions on interoperability and language availability. The engagement assumptions come from step 1. |
+| 4 | Tutorial decision summary, covering cost effectiveness, budget impact, clinical evidence maturity, and implementation readiness, with a short traffic light rules popover, a compact list of evidence generation priorities, and a Finish tutorial button. |
+
+Finishing the tutorial shows a centred completion note that points to the full analysis and its uncertainty and value of information methods, without running any analysis automatically. From there you can open the full analysis or restart the tutorial.
 
 The default assumptions are illustrative starting values, for example an annual intervention price of EUR 360, an implementation cost of EUR 40 per new user, annual healthcare savings of EUR 20 per active user, a 10% relative risk reduction among engaged users, and 70% engagement in year 1 with 42% at follow-up.
 

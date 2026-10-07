@@ -239,6 +239,261 @@ HTA_RULES_TRIGGER_LABEL <- paste(
   "status"
 )
 
+# Concise tutorial-only version of the traffic-light rules. The full-analysis
+# popover (HTA_RULE_ITEMS) is unchanged; these simplified rules apply only
+# inside the guided tutorial.
+TUTORIAL_RULE_ITEMS <- c(
+  paste(
+    "Cost effectiveness is Green when eQalb costs less than usual care and adds",
+    "QALYs, Amber when it costs more but still adds QALYs so the ICER has to be",
+    "considered, and Red when it does not add QALYs."
+  ),
+  paste(
+    "Budget impact is Green below \u20ac5 million, Amber from \u20ac5 million up",
+    "to \u20ac10 million, and Red above \u20ac10 million."
+  ),
+  paste(
+    "Implementation readiness is Green when at least four readiness domains are",
+    "Green, Amber otherwise, and Red when the existing readiness assessment is",
+    "itself Red."
+  ),
+  paste(
+    "Clinical evidence maturity is always Red because the evidence in this",
+    "application is simulated. It is shown for transparency and does not set",
+    "the tutorial overall status."
+  ),
+  "The tutorial overall status is the least favourable assessed domain.",
+  paste(
+    "These are simplified teaching rules for this tutorial, not official payer",
+    "or NICE criteria."
+  )
+)
+
+TUTORIAL_RULES_TRIGGER_LABEL <- paste(
+  "Traffic-light rules: show the simplified teaching rules used in this",
+  "tutorial"
+)
+
+# Simplified, tutorial-only evidence-generation priorities. The full
+# evidence-priority table is not shown in the tutorial.
+TUTORIAL_EVIDENCE_ITEMS <- c(
+  "Collect stronger evidence on clinical outcomes.",
+  "Confirm sustained user engagement.",
+  "Assess implementation and interoperability in practice.",
+  "Validate costs and resource use in the target health system."
+)
+
+# Neutral card style used when a tutorial domain has no status, so status is
+# never communicated by colour alone.
+TUTORIAL_NEUTRAL_STATUS_STYLE <- c(
+  background = "#eceff1", border = "#cfd8dc", text = "#455a64"
+)
+
+# Tutorial overall status. This mirrors the shared rule but is applied to the
+# tutorial subsets only; the full-analysis overall status is unchanged.
+tutorial_overall_status <- function(statuses) {
+  assessed <- statuses[statuses %in% c("Green", "Amber", "Red")]
+  if (length(assessed) == 0L) {
+    return("Not assessed")
+  }
+  if (any(assessed == "Red")) {
+    return("Red")
+  }
+  if (any(assessed == "Amber")) {
+    return("Amber")
+  }
+  "Green"
+}
+
+# Tutorial-only decision rules. They are deliberately simpler than the
+# full-analysis thresholds in HTA_SUMMARY_THRESHOLDS, which are unchanged.
+TUTORIAL_BUDGET_GREEN_MAX <- 5e6
+TUTORIAL_BUDGET_AMBER_MAX <- 10e6
+TUTORIAL_READINESS_GREEN_DOMAINS <- 4L
+
+tutorial_ce_status <- function(incremental_cost, incremental_qalys) {
+  if (length(incremental_cost) == 0L || length(incremental_qalys) == 0L ||
+        is.na(incremental_cost) || is.na(incremental_qalys)) {
+    return("Not assessed")
+  }
+  if (incremental_cost <= 0 && incremental_qalys > 0) {
+    "Green"
+  } else if (incremental_qalys > 0) {
+    "Amber"
+  } else {
+    "Red"
+  }
+}
+
+tutorial_budget_status <- function(cumulative_budget_impact) {
+  if (length(cumulative_budget_impact) == 0L ||
+        is.na(cumulative_budget_impact)) {
+    return("Not assessed")
+  }
+  if (cumulative_budget_impact < TUTORIAL_BUDGET_GREEN_MAX) {
+    "Green"
+  } else if (cumulative_budget_impact <= TUTORIAL_BUDGET_AMBER_MAX) {
+    "Amber"
+  } else {
+    "Red"
+  }
+}
+
+# Reuses the readiness status the existing assessment already produced, so the
+# tutorial does not re-implement the readiness rule.
+tutorial_readiness_status <- function(readiness_domains, existing_status) {
+  if (identical(existing_status, "Red")) {
+    return("Red")
+  }
+  if (sum(readiness_domains$Status == "Green") >=
+        TUTORIAL_READINESS_GREEN_DOMAINS) {
+    "Green"
+  } else {
+    "Amber"
+  }
+}
+
+# Tutorial-only wording for the Engagement readiness domain. The existing
+# calculate_readiness() explanation is written from the follow-up value alone,
+# which reads as "follow-up engagement is low" even when follow-up engagement is
+# high and only year-1 engagement is low. The tutorial keeps the same
+# Green/Amber/Red classification but describes which of the two engagement
+# inputs is actually the concern.
+TUTORIAL_ENGAGEMENT_FAVOURABLE_PCT <- 60
+TUTORIAL_ENGAGEMENT_LOW_PCT <- 30
+
+tutorial_engagement_explanation <- function(year1_pct, followup_pct) {
+  if (length(year1_pct) == 0L || length(followup_pct) == 0L ||
+        is.na(year1_pct) || is.na(followup_pct)) {
+    return("Engagement is not available under the selected assumptions.")
+  }
+  year1_low <- year1_pct < TUTORIAL_ENGAGEMENT_LOW_PCT
+  followup_low <- followup_pct < TUTORIAL_ENGAGEMENT_LOW_PCT
+  if (year1_low && followup_low) {
+    paste(
+      "Year-1 and follow-up engagement are low, so fewer users may begin and",
+      "remain engaged over time."
+    )
+  } else if (year1_low) {
+    paste(
+      "Year-1 engagement is low, so fewer eligible users may begin or remain",
+      "engaged during the first year."
+    )
+  } else if (followup_low) {
+    paste(
+      "Follow-up engagement is low, so users may not remain engaged after the",
+      "first year."
+    )
+  } else if (year1_pct >= TUTORIAL_ENGAGEMENT_FAVOURABLE_PCT &&
+               followup_pct >= TUTORIAL_ENGAGEMENT_FAVOURABLE_PCT) {
+    paste(
+      "Year-1 and follow-up engagement are favourable under the selected",
+      "assumptions."
+    )
+  } else {
+    paste0(
+      "Year-1 engagement is ", year1_pct, "% and follow-up engagement is ",
+      followup_pct, "%, so some users may not remain engaged over time."
+    )
+  }
+}
+
+# Plain-language wording for each tutorial domain status.
+tutorial_status_text <- function(domain, status) {
+  switch(paste0(domain, "|", status),
+    "Cost-effectiveness|Green" = paste(
+      "eQalb costs less than usual care and adds QALYs, so it dominates the",
+      "comparator under these assumptions."
+    ),
+    "Cost-effectiveness|Amber" = paste(
+      "eQalb costs more than usual care but adds QALYs, so the ICER has to be",
+      "compared with a willingness-to-pay threshold before any judgement."
+    ),
+    "Cost-effectiveness|Red" = paste(
+      "eQalb does not add QALYs under these assumptions, so it is",
+      "unfavourable or dominated whatever the ICER."
+    ),
+    "Budget impact|Green" = paste(
+      "Low five-year cumulative net budget impact, so affordability is",
+      "unlikely to be a barrier at this scale."
+    ),
+    "Budget impact|Amber" = paste(
+      "Moderate five-year cumulative net budget impact, so affordability",
+      "depends on uptake and price."
+    ),
+    "Budget impact|Red" = paste(
+      "High five-year cumulative net budget impact, so affordability is a",
+      "material barrier under the selected uptake assumptions."
+    ),
+    "Clinical evidence maturity|Red" = paste(
+      "The clinical outcome evidence in this app is simulated illustrative",
+      "data, not observed clinical evidence, so this domain is always Red. It",
+      "is shown for transparency and does not set the tutorial overall status."
+    ),
+    "Implementation readiness|Green" = paste(
+      "At least four readiness domains are Green, so there is no obvious",
+      "implementation barrier under the selected assumptions."
+    ),
+    "Implementation readiness|Amber" = paste(
+      "Some readiness domains need mitigation before broad deployment; see",
+      "the readiness results above for the domain detail."
+    ),
+    "Implementation readiness|Red" = paste(
+      "The readiness assessment is Red, so major barriers need resolution",
+      "before broad deployment."
+    ),
+    "Not assessed"
+  )
+}
+
+# Tutorial-only decision summary. It reuses the existing readiness result and
+# the existing base-model output, but applies the simplified tutorial rules
+# above to the four domains the tutorial shows.
+build_tutorial_summary <- function(
+  incremental_cost,
+  incremental_qalys,
+  cumulative_budget_impact,
+  readiness_domains,
+  existing_readiness_status
+) {
+  ce_status <- tutorial_ce_status(incremental_cost, incremental_qalys)
+  budget_status <- tutorial_budget_status(cumulative_budget_impact)
+  readiness_status <- tutorial_readiness_status(
+    readiness_domains, existing_readiness_status
+  )
+  green_domains <- sum(readiness_domains$Status == "Green")
+
+  data.frame(
+    Domain = c(
+      "Cost-effectiveness", "Budget impact", "Clinical evidence maturity",
+      "Implementation readiness"
+    ),
+    Status = c(ce_status, budget_status, "Red", readiness_status),
+    Measure = c(
+      paste0(
+        "Incremental cost ", format_euros_signed(incremental_cost),
+        " per person; incremental QALYs ",
+        format(round(incremental_qalys, 5), nsmall = 5)
+      ),
+      paste0(
+        "Five-year cumulative net budget impact ",
+        format_euros_signed(cumulative_budget_impact)
+      ),
+      "Simulated illustrative data",
+      paste0(
+        green_domains, " of ", nrow(readiness_domains), " domains Green"
+      )
+    ),
+    Interpretation = c(
+      tutorial_status_text("Cost-effectiveness", ce_status),
+      tutorial_status_text("Budget impact", budget_status),
+      tutorial_status_text("Clinical evidence maturity", "Red"),
+      tutorial_status_text("Implementation readiness", readiness_status)
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
 # DHT readiness and implementation dashboard.
 # These are transparent illustrative rules for the fictional eQalb
 # digital therapeutic, not a validated assessment instrument or regulatory
@@ -903,6 +1158,78 @@ assess_km_interpretation <- function(
   )
 }
 
+# Explanations for the small information controls next to the main
+# full-analysis inputs. Presentation only: the text is shown in an on-demand
+# bslib popover and no calculation reads it.
+CC_INFO_TEXT <- list(
+  intervention_price = paste(
+    "The cost of the digital intervention per user over the modelled period."
+  ),
+  relative_risk_reduction = paste(
+    "The proportional reduction in event risk compared with usual care."
+  ),
+  year1_engagement = paste(
+    "The proportion of eligible users who engage with the intervention during",
+    "the first year."
+  ),
+  followup_engagement = paste(
+    "The proportion of users who remain engaged after the first year."
+  ),
+  utility = paste(
+    "A value representing health-related quality of life, used to calculate",
+    "QALYs."
+  ),
+  population_size = paste(
+    "The number of people in the eligible population used in the analysis."
+  ),
+  uptake = "The proportion of eligible people who adopt the intervention.",
+  intervention_cost = paste(
+    "The cost applied to each person receiving the intervention."
+  ),
+  review_minutes = paste(
+    "The clinician time required to review or support each active user."
+  ),
+  willingness_to_pay = paste(
+    "The maximum amount considered acceptable to pay for one additional QALY."
+  ),
+  psa_simulations = paste(
+    "The number of simulations used to explore uncertainty in the model",
+    "inputs."
+  ),
+  random_seed = "A fixed number that makes simulation results reproducible.",
+  evpi = "The value of completely eliminating uncertainty about the decision.",
+  evppi = paste(
+    "The value of eliminating uncertainty about selected groups of inputs."
+  )
+)
+
+# Small, keyboard-accessible information control. `topic` is used both for the
+# accessible label and, capitalised, as the popover title. The trigger is a real
+# button, so it opens by mouse click and by Enter or Space, not by hover alone.
+cc_info <- function(topic, key, id = NULL) {
+  title <- paste0(toupper(substring(topic, 1L, 1L)), substring(topic, 2L))
+  bslib::popover(
+    tags$button(
+      type = "button",
+      class = "btn cc-info-trigger",
+      `aria-label` = paste0("Information about ", topic),
+      tags$span(class = "cc-info-glyph", `aria-hidden` = "true", "i")
+    ),
+    id = id,
+    title = title,
+    # The custom class gives the popover CSS a hook scoped to these information
+    # controls, so no other popover in the app is affected.
+    options = list(customClass = "cc-info-popover"),
+    tags$div(CC_INFO_TEXT[[key]])
+  )
+}
+
+# Builds an input label with its information control on the same line, so the
+# icon stays aligned with the label it explains.
+cc_label <- function(text, topic, key, id) {
+  tagList(text, tags$span(class = "cc-info", cc_info(topic, key, id)))
+}
+
 # Modern visual theme (bslib only). This is presentation-only: it changes
 # colours, typography, spacing and component styling, and does not alter the
 # layout structure, any input or output ID, or any server logic.
@@ -1145,6 +1472,86 @@ EQALB_THEME <- bslib::bs_add_rules(
     outline: 2px solid #2fa3ad;
     outline-offset: 2px;
   }
+  /* Small information controls next to the main full-analysis inputs.
+     Deliberately subtle: a borderless circular glyph that inherits the label
+     line and uses the existing teal brand colour. */
+  .cc-info {
+    display: inline-block;
+    margin-left: 0.35rem;
+    line-height: 1;
+    vertical-align: middle;
+  }
+  .btn.cc-info-trigger {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    line-height: 1;
+    color: #176b73;
+    opacity: 0.85;
+    vertical-align: middle;
+  }
+  /* The glyph is drawn in CSS, so no icon font or extra package is needed. */
+  .cc-info-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 0.9rem;
+    height: 0.9rem;
+    box-sizing: border-box;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    font-size: 0.6rem;
+    font-weight: 700;
+    font-style: normal;
+    line-height: 1;
+    text-transform: lowercase;
+  }
+  .btn.cc-info-trigger:hover,
+  .btn.cc-info-trigger:focus,
+  .btn.cc-info-trigger:focus-visible {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    color: #0f4f56;
+    opacity: 1;
+  }
+  .btn.cc-info-trigger:focus-visible {
+    outline: 2px solid #2fa3ad;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  [data-bs-theme='dark'] .btn.cc-info-trigger,
+  body[data-bs-theme='dark'] .btn.cc-info-trigger { color: #7fd1d8; }
+  [data-bs-theme='dark'] .btn.cc-info-trigger:hover,
+  [data-bs-theme='dark'] .btn.cc-info-trigger:focus,
+  body[data-bs-theme='dark'] .btn.cc-info-trigger:hover,
+  body[data-bs-theme='dark'] .btn.cc-info-trigger:focus { color: #a8e6ec; }
+  /* On-demand popovers in this app (scoped by the class passed through each
+     popover's options, so no unrelated bslib popover is affected): the
+     information controls and the two traffic-light rules popovers.
+     The heading margin came from the app's own heading styling, which left a
+     light strip above the grey header with the close button sitting in it. */
+  .popover.cc-info-popover .popover-header,
+  .popover.cc-rules-popover .popover-header {
+    margin: 0;
+    border-top-left-radius: calc(0.5rem - 1px);
+    border-top-right-radius: calc(0.5rem - 1px);
+    padding-right: 2.1rem;
+  }
+  .popover.cc-info-popover .popover-body,
+  .popover.cc-rules-popover .popover-body {
+    border-bottom-left-radius: calc(0.5rem - 1px);
+    border-bottom-right-radius: calc(0.5rem - 1px);
+  }
+  /* The close button is a sibling of the body content, positioned against the
+     popover, so it is placed inside the header band. */
+  .popover.cc-info-popover .btn-close,
+  .popover.cc-rules-popover .btn-close {
+    top: 0.7rem;
+    right: 0.6rem;
+    background-color: transparent;
+  }
   [data-bs-theme='dark'] .btn.cc-rules-trigger:hover,
   [data-bs-theme='dark'] .btn.cc-rules-trigger:focus,
   body[data-bs-theme='dark'] .btn.cc-rules-trigger:hover,
@@ -1171,6 +1578,100 @@ EQALB_THEME <- bslib::bs_add_rules(
   /* Accordion panel should not stretch to the full panel width on wide screens
      and must not overflow on narrow ones. */
   .accordion { max-width: 100%; }
+
+  /* Guided tutorial. Presentation only. Prose and tables read best left
+     aligned, so the tutorial overrides the centred landing-page wrapper. */
+  .cc-tutorial { text-align: left; }
+  .cc-tutorial h3,
+  .cc-tutorial h4 { text-align: center; }
+  .cc-tutorial-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.25rem 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .cc-tutorial-head .cc-tutorial-step {
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+  .cc-tutorial-left { text-align: left; }
+  .cc-tutorial p { margin-bottom: 0.6rem; }
+  .cc-tutorial-explain {
+    padding-left: 1.1rem;
+    margin-bottom: 0.9rem;
+  }
+  .cc-tutorial-explain li { margin-bottom: 0.25rem; }
+  .cc-tutorial-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 1.25rem;
+  }
+  .cc-tutorial-nav .btn { border-radius: 8px; }
+  .cc-tutorial-hint {
+    font-size: 13px;
+    opacity: 0.8;
+    margin-top: 0.35rem;
+  }
+  /* Yes/no checklist items: the checkbox sits above its explanation. */
+  .cc-tutorial-check {
+    margin-bottom: 0.85rem;
+  }
+  .cc-tutorial-check .cc-tutorial-hint {
+    margin: 0 0 0 1.6rem;
+  }
+  .cc-tutorial-finish {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 1rem;
+  }
+  .cc-tutorial-finish .btn { border-radius: 8px; }
+  /* Tutorial completion page only: centre the heading, text and button group.
+     Scoped to `.cc-tutorial-complete` so no other tutorial step is affected. */
+  .cc-tutorial-complete { text-align: center; }
+  .cc-tutorial-complete .cc-tutorial-finish { justify-content: center; }
+  /* Welcome modal: keep it readable in dark mode. */
+  [data-bs-theme='dark'] .modal-content,
+  body[data-bs-theme='dark'] .modal-content {
+    background-color: #16242c;
+    border-color: #2b3d47;
+    color: #e6edf1;
+  }
+  [data-bs-theme='dark'] .modal-header,
+  [data-bs-theme='dark'] .modal-footer,
+  body[data-bs-theme='dark'] .modal-header,
+  body[data-bs-theme='dark'] .modal-footer { border-color: #2b3d47; }
+  [data-bs-theme='dark'] .modal-body,
+  body[data-bs-theme='dark'] .modal-body { color: #e6edf1; }
+  [data-bs-theme='dark'] .btn-close,
+  body[data-bs-theme='dark'] .btn-close { filter: invert(1) grayscale(1); }
+  /* Centre the welcome prompt only. The extra class is added to that one modal
+     (see welcome_modal_dialog()), so no other modal is affected. */
+  #shiny-modal.cc-welcome-modal .modal-header {
+    display: block;
+    text-align: center;
+  }
+  #shiny-modal.cc-welcome-modal .modal-title {
+    width: 100%;
+    text-align: center;
+  }
+  #shiny-modal.cc-welcome-modal .modal-body { text-align: center; }
+  .cc-modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    width: 100%;
+  }
   @keyframes cc-title-fade-up {
     from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: translateY(0); }
@@ -1203,7 +1704,8 @@ ui <- fluidPage(
     style = "display:none;",
     selectInput(
       "nav_page", NULL,
-      choices = c("home", "start", "description", "export", "dashboard"),
+      choices = c("home", "tutorial", "start", "description", "export",
+                  "dashboard"),
       selected = "home", selectize = FALSE
     )
   ),
@@ -1212,6 +1714,7 @@ ui <- fluidPage(
   # blank flash at start-up.
   conditionalPanel(
     condition = paste(
+      "input.nav_page !== 'tutorial'",
       "input.nav_page !== 'start'",
       "input.nav_page !== 'description'",
       "input.nav_page !== 'export'",
@@ -1252,12 +1755,432 @@ ui <- fluidPage(
           actionButton(
             "home_start_analysis", "Start analysis", class = "btn-primary"
           ),
+          actionButton("home_guided_tutorial", "Guided tutorial"),
           actionButton("home_project_description", "Project description"),
           actionButton("home_download_results", "Download results")
         )
       )
     )
   ),
+  # "Guided tutorial": a simplified sequence over the same base model. It reuses
+  # the existing model, budget-impact, sensitivity, readiness and HTA functions,
+  # so no calculation logic is duplicated here.
+  conditionalPanel(
+    condition = "input.nav_page === 'tutorial'",
+    tags$div(
+      class = "cc-panel-page",
+      tags$div(
+        class = "cc-panel-inner cc-tutorial",
+        tags$div(
+          class = "cc-tutorial-head",
+          tags$h3(style = "margin:0;", "Guided tutorial"),
+          tags$span(class = "cc-tutorial-step", "Simplified learning tutorial")
+        ),
+        tags$div(
+          class = "alert alert-info",
+          paste(
+            "This tutorial uses the same illustrative base model as the full",
+            "analysis but presents a simplified sequence for learning. It is not",
+            "a complete HTA and does not represent clinical or reimbursement",
+            "evidence."
+          )
+        ),
+        tags$div(
+          style = "display:none;",
+          selectInput(
+            "tutorial_step", NULL,
+            choices = c("1", "2", "3", "4", "done"),
+            selected = "1", selectize = FALSE
+          )
+        ),
+        uiOutput("tutorial_progress"),
+
+        # Step 1: base cost-effectiveness.
+        conditionalPanel(
+          condition = "input.tutorial_step === '1'",
+          wellPanel(
+            tags$h4("Step 1. Base cost-effectiveness"),
+            tags$p(paste(
+              "An economic evaluation compares two options: the new technology",
+              "and what is already done. The usual-care option is the",
+              "comparator, and eQalb is added on top of it."
+            )),
+            tags$ul(
+              class = "cc-tutorial-explain",
+              tags$li(paste(
+                "Incremental cost is how much more the eQalb strategy costs",
+                "than usual care."
+              )),
+              tags$li(paste(
+                "Incremental QALYs are the extra quality-adjusted life years",
+                "gained. One QALY is one year in full health."
+              )),
+              tags$li(paste(
+                "The ICER divides the extra cost by the extra QALYs. It is the",
+                "price of one additional QALY."
+              ))
+            ),
+            tags$p(tags$strong("Try changing these assumptions")),
+            sliderInput(
+              "tutorial_price",
+              "Annual price of the technology (EUR per person per year)",
+              min = 0, max = 900, value = 360, step = 10
+            ),
+            tags$div(
+              class = "cc-tutorial-hint",
+              paste(
+                "A higher price increases the incremental cost, so the ICER",
+                "gets worse."
+              )
+            ),
+            sliderInput(
+              "tutorial_rrr",
+              "Risk reduction for engaged users (%)",
+              min = 0, max = 30, value = 10, step = 1
+            ),
+            tags$div(
+              class = "cc-tutorial-hint",
+              paste(
+                "A larger risk reduction prevents more events, which adds",
+                "QALYs and improves the ICER."
+              )
+            ),
+            sliderInput(
+              "tutorial_engagement_year1",
+              "Share of users engaged in year 1 (%)",
+              min = 0, max = 100, value = 70, step = 1
+            ),
+            tags$div(
+              class = "cc-tutorial-hint",
+              paste(
+                "Only engaged users get the full benefit, so lower engagement",
+                "reduces the QALYs gained."
+              )
+            ),
+            sliderInput(
+              "tutorial_engagement_followup",
+              "Share of users still engaged after the first year (%)",
+              min = 0, max = 100, value = 42, step = 1
+            ),
+            tags$div(
+              class = "cc-tutorial-hint",
+              paste(
+                "Follow-up engagement is the proportion of users who remain",
+                "engaged after the first year. In this model year 1 uses the",
+                "year-1 share above and every later year uses this share, so it",
+                "also changes the base cost-effectiveness result."
+              )
+            ),
+            sliderInput(
+              "tutorial_utility_no_event",
+              "Utility: quality of life with no event (0 to 1)",
+              min = 0.50, max = 1.00, value = 0.86, step = 0.01
+            ),
+            tags$div(
+              class = "cc-tutorial-hint",
+              paste(
+                "Utility describes the quality of life associated with a health",
+                "state and helps convert survival and health outcomes into",
+                "QALYs."
+              )
+            ),
+            tags$div(
+              class = "cc-tutorial-hint",
+              paste(
+                "A higher utility means each year lived is worth more, so the",
+                "QALYs gained by the technology also change."
+              )
+            ),
+            tags$h4("Result from the base model"),
+            tableOutput("tutorial_ce_table"),
+            plotOutput("tutorial_ce_plot", height = "380px")
+          )
+        ),
+
+        # Step 2: budget impact.
+        conditionalPanel(
+          condition = "input.tutorial_step === '2'",
+          wellPanel(
+            tags$h4("Step 2. Budget impact"),
+            tags$p(paste(
+              "Cost effectiveness asks whether the technology is worth its",
+              "price. Budget impact asks something different: how much money",
+              "the payer would spend over the next few years. A technology can",
+              "be cost effective and still be unaffordable."
+            )),
+            tags$ul(
+              class = "cc-tutorial-explain",
+              tags$li(paste(
+                "Costs come from the price per active user plus a one-off",
+                "implementation cost for each new user."
+              )),
+              tags$li(paste(
+                "Savings come from assumed reductions in healthcare use for",
+                "active users."
+              )),
+              tags$li(paste(
+                "The net budget impact is costs minus savings, added up over",
+                "the horizon."
+              ))
+            ),
+            tags$p(tags$strong("Try changing the eligible population")),
+            sliderInput(
+              "tutorial_population",
+              "Eligible population (people)",
+              min = 10000, max = 500000, value = 100000, step = 10000
+            ),
+            tags$div(
+              class = "cc-tutorial-hint",
+              paste(
+                "A larger eligible population increases the number of users, so",
+                "both the cost and the net budget impact grow."
+              )
+            ),
+            tags$div(
+              class = "cc-tutorial-hint",
+              paste(
+                "The intervention price you set in step 1 is carried into this",
+                "budget-impact analysis. This shows how assumptions can affect",
+                "several parts of an HTA."
+              )
+            ),
+            tags$div(
+              style = "margin: 0.5rem 0 0.15rem 0;",
+              actionButton(
+                "tutorial_back_to_price",
+                "Want to see what changes when you adjust the price?"
+              )
+            ),
+            tags$h4("Result from the budget-impact analysis"),
+            textOutput("tutorial_bia_total"),
+            tableOutput("tutorial_bia_table"),
+            plotOutput("tutorial_bia_plot", height = "340px")
+          )
+        ),
+
+        # Step 3: digital health technology readiness. The tornado step was
+        # removed from the tutorial, so readiness follows cost effectiveness and
+        # budget impact directly.
+        conditionalPanel(
+          condition = "input.tutorial_step === '3'",
+          wellPanel(
+            tags$h4("Step 3. DHT readiness"),
+            tags$p(paste(
+              "A model can look favourable and still fail in practice. The",
+              "readiness assessment checks whether the technology can actually",
+              "reach and support patients."
+            )),
+            tags$ul(
+              class = "cc-tutorial-explain",
+              tags$li(paste(
+                "Reach combines the target population with access and digital",
+                "suitability, then with engagement."
+              )),
+              tags$li(paste(
+                "Workflow burden estimates the clinician time the pathway needs.",
+                "More review time means more strain on services."
+              )),
+              tags$li(paste(
+                "The traffic lights summarise the domains. Red means a barrier",
+                "to resolve before wide deployment, amber means mitigation may",
+                "be needed, and green means no obvious barrier under these",
+                "assumptions."
+              ))
+            ),
+            tags$p(tags$strong("Try changing the clinician review time")),
+            sliderInput(
+              "tutorial_review_minutes",
+              "Clinician review minutes per patient per month",
+              min = 0, max = 30, value = 10, step = 1
+            ),
+            tags$div(
+              class = "cc-tutorial-hint",
+              paste(
+                "More review minutes per patient means more total clinician",
+                "hours, which pushes the workflow domain towards amber or red."
+              )
+            ),
+            tags$div(
+              class = "cc-tutorial-hint",
+              paste(
+                "The engagement assumptions are the year-1 and follow-up",
+                "engagement values you set in step 1, so changing them there also",
+                "changes the readiness results here."
+              )
+            ),
+            tags$p(tags$strong("Two simple readiness questions")),
+            tags$div(
+              class = "cc-tutorial-check",
+              checkboxInput(
+                "tutorial_interop_available",
+                "Is the intervention interoperable?",
+                value = TRUE
+              ),
+              tags$div(
+                class = "cc-tutorial-hint",
+                paste(
+                  "Interoperability means the intervention can exchange and use",
+                  "information with other relevant health or digital systems."
+                )
+              )
+            ),
+            tags$div(
+              class = "cc-tutorial-check",
+              checkboxInput(
+                "tutorial_language_available",
+                "Is the intervention available in the required language?",
+                value = TRUE
+              ),
+              tags$div(
+                class = "cc-tutorial-hint",
+                paste(
+                  "Language availability means that users can understand and use",
+                  "the intervention in the language needed for the target",
+                  "population."
+                )
+              )
+            ),
+            tags$p(
+              class = "cc-tutorial-hint",
+              paste(
+                "Both answers feed the existing readiness calculation: they set",
+                "the interoperability and language-access domains. Algorithm",
+                "governance is not assessed in this simplified tutorial."
+              )
+            ),
+            uiOutput("tutorial_readiness_checks"),
+            tags$h4("Result from the readiness assessment"),
+            tableOutput("tutorial_readiness_numbers"),
+            uiOutput("tutorial_readiness_cards")
+          )
+        ),
+
+        # Step 4: HTA decision summary. Tutorial-only rules: the summary shows
+        # cost effectiveness, budget impact, clinical evidence maturity and
+        # implementation readiness, and the simulated evidence domain does not
+        # set the tutorial overall status. The full-analysis summary is separate
+        # and unchanged.
+        conditionalPanel(
+          condition = "input.tutorial_step === '4'",
+          wellPanel(
+            tags$h4("Step 4. Tutorial decision summary"),
+            tags$p(paste(
+              "The last step brings the earlier results together into one",
+              "picture. It reuses the base-model output and the readiness",
+              "assessment you have already seen, and does not recalculate",
+              "anything."
+            )),
+            tags$ul(
+              class = "cc-tutorial-explain",
+              tags$li(paste(
+                "Cost effectiveness compares the incremental cost with the",
+                "incremental QALYs."
+              )),
+              tags$li(paste(
+                "Budget impact asks whether the five-year net cost is",
+                "affordable, using simplified tutorial bands."
+              )),
+              tags$li(paste(
+                "Clinical evidence maturity is always red here, because the",
+                "evidence in this application is simulated. It is shown for",
+                "transparency but does not set the tutorial overall status."
+              )),
+              tags$li(paste(
+                "Implementation readiness summarises the readiness domains",
+                "from the previous step."
+              ))
+            ),
+            tags$div(
+              style = "margin: 0.25rem 0 0.75rem 0;",
+              bslib::popover(
+                tags$button(
+                  type = "button",
+                  class = "btn btn-default cc-rules-trigger",
+                  `aria-label` = TUTORIAL_RULES_TRIGGER_LABEL,
+                  "Traffic-light rules"
+                ),
+                title = "Tutorial traffic-light rules",
+                # Same scoped CSS hook as the information controls, so the
+                # header has no light strip above it here either.
+                options = list(customClass = "cc-rules-popover"),
+                tags$ul(
+                  style = "margin:0; padding-left:1.1rem;",
+                  lapply(TUTORIAL_RULE_ITEMS, tags$li)
+                )
+              )
+            ),
+            tags$h4("Tutorial decision summary"),
+            uiOutput("tutorial_hta_dashboard"),
+            tags$h4("Plain-language interpretation"),
+            textOutput("tutorial_hta_interpretation"),
+            bslib::accordion(
+              id = "tutorial_evidence_accordion",
+              open = FALSE,
+              bslib::accordion_panel(
+                "Tutorial evidence-generation priorities",
+                tags$ul(
+                  style = "margin-bottom:0;",
+                  lapply(TUTORIAL_EVIDENCE_ITEMS, tags$li)
+                )
+              )
+            ),
+            tags$div(
+              class = "cc-tutorial-finish",
+              actionButton(
+                "tutorial_finish", "Finish tutorial", class = "btn-primary"
+              )
+            )
+          )
+        ),
+
+        # Tutorial completion state. The centred layout is scoped to
+        # `.cc-tutorial-complete`.
+        conditionalPanel(
+          condition = "input.tutorial_step === 'done'",
+          wellPanel(
+            class = "cc-tutorial-complete",
+            tags$h4("Tutorial complete"),
+            tags$p(paste(
+              "You have completed the simplified tutorial. The full analysis",
+              "includes additional uncertainty and value-of-information",
+              "methods. Consider running a PSA next to explore how uncertainty",
+              "affects the decision."
+            )),
+            tags$div(
+              class = "cc-tutorial-finish",
+              actionButton(
+                "tutorial_open_full_done", "Open full analysis",
+                class = "btn-primary"
+              ),
+              actionButton("tutorial_restart", "Restart tutorial")
+            )
+          )
+        ),
+
+        tags$div(
+          class = "cc-tutorial-nav",
+          conditionalPanel(
+            condition = paste(
+              "input.tutorial_step === '2' ||",
+              "input.tutorial_step === '3' ||",
+              "input.tutorial_step === '4'"
+            ),
+            actionButton("tutorial_back", "Back")
+          ),
+          conditionalPanel(
+            condition = paste(
+              "input.tutorial_step === '1' ||",
+              "input.tutorial_step === '2' ||",
+              "input.tutorial_step === '3'"
+            ),
+            actionButton("tutorial_next", "Next", class = "btn-primary")
+          ),
+          actionButton("tutorial_exit", "Exit tutorial")
+        )
+      )
+    )
+  ),
+
   # "Start analysis" view: the existing analysis-area description and the
   # existing Open analysis dashboard button, unchanged, plus a Back button.
   conditionalPanel(
@@ -1371,11 +2294,25 @@ ui <- fluidPage(
         fluidRow(
           column(
             4,
-            numericInput("price", "Annual intervention price (€)", 360)
+            numericInput(
+              "price",
+              cc_label(
+                "Annual intervention price (€)", "intervention price",
+                "intervention_price", "price_info"
+              ),
+              360
+            )
           ),
           column(
             4,
-            numericInput("implementation", "Implementation cost (€)", 40)
+            numericInput(
+              "implementation",
+              cc_label(
+                "Implementation cost (€)", "intervention cost",
+                "intervention_cost", "implementation_info"
+              ),
+              40
+            )
           ),
           column(
             4,
@@ -1383,18 +2320,36 @@ ui <- fluidPage(
           ),
           column(
             4,
-            sliderInput("rrr", "Relative risk reduction (%)",
-                        min = 0, max = 30, value = 10)
+            sliderInput(
+              "rrr",
+              cc_label(
+                "Relative risk reduction (%)", "relative risk reduction",
+                "relative_risk_reduction", "rrr_info"
+              ),
+              min = 0, max = 30, value = 10
+            )
           ),
           column(
             4,
-            sliderInput("engagement_year1", "Year-1 engagement (%)",
-                        min = 0, max = 100, value = 70)
+            sliderInput(
+              "engagement_year1",
+              cc_label(
+                "Year-1 engagement (%)", "year-1 engagement",
+                "year1_engagement", "engagement_year1_info"
+              ),
+              min = 0, max = 100, value = 70
+            )
           ),
           column(
             4,
-            sliderInput("engagement_followup", "Follow-up engagement (%)",
-                        min = 0, max = 100, value = 42)
+            sliderInput(
+              "engagement_followup",
+              cc_label(
+                "Follow-up engagement (%)", "follow-up engagement",
+                "followup_engagement", "engagement_followup_info"
+              ),
+              min = 0, max = 100, value = 42
+            )
           )
         ),
         tags$h4("Health-state utilities"),
@@ -1406,18 +2361,30 @@ ui <- fluidPage(
         fluidRow(
           column(
             4,
-            numericInput("utility_no_event", "Base-case utility: no event",
-                         0.86, min = 0, max = 1, step = 0.01)
+            numericInput(
+              "utility_no_event",
+              cc_label("Base-case utility: no event", "utility", "utility",
+                       "utility_no_event_info"),
+              0.86, min = 0, max = 1, step = 0.01
+            )
           ),
           column(
             4,
-            numericInput("utility_post_mi", "Base-case utility: post-MI",
-                         0.80, min = 0, max = 1, step = 0.01)
+            numericInput(
+              "utility_post_mi",
+              cc_label("Base-case utility: post-MI", "utility", "utility",
+                       "utility_post_mi_info"),
+              0.80, min = 0, max = 1, step = 0.01
+            )
           ),
           column(
             4,
-            numericInput("utility_post_stroke", "Base-case utility: post-stroke",
-                         0.60, min = 0, max = 1, step = 0.01)
+            numericInput(
+              "utility_post_stroke",
+              cc_label("Base-case utility: post-stroke", "utility", "utility",
+                       "utility_post_stroke_info"),
+              0.60, min = 0, max = 1, step = 0.01
+            )
           )
         ),
         tags$h5("Deterministic sensitivity-analysis ranges"),
@@ -1486,17 +2453,37 @@ ui <- fluidPage(
           4,
           wellPanel(
             tags$strong("PSA controls"),
-            numericInput("psa_n_sim", "Number of PSA simulations",
-                         value = 1000, min = 100, max = 10000, step = 100),
-            numericInput("psa_seed", "PSA random seed", value = 12345, min = 1),
+            numericInput(
+              "psa_n_sim",
+              cc_label("Number of PSA simulations", "PSA simulation count",
+                       "psa_simulations", "psa_n_sim_info"),
+              value = 1000, min = 100, max = 10000, step = 100
+            ),
+            numericInput(
+              "psa_seed",
+              cc_label("PSA random seed", "random seed", "random_seed",
+                       "psa_seed_info"),
+              value = 12345, min = 1
+            ),
             numericInput(
               "psa_reference_wtp",
-              "Reference WTP threshold — PSA plane line and probability summary (€ per QALY)",
+              cc_label(
+                paste(
+                  "Reference WTP threshold — PSA plane line and probability",
+                  "summary (€ per QALY)"
+                ),
+                "willingness-to-pay threshold", "willingness_to_pay",
+                "psa_reference_wtp_info"
+              ),
               value = 100000, min = 0, step = 10000
             ),
             numericInput(
               "psa_max_wtp",
-              "Maximum WTP threshold — CEAC x-axis upper limit (€ per QALY)",
+              cc_label(
+                "Maximum WTP threshold — CEAC x-axis upper limit (€ per QALY)",
+                "willingness-to-pay threshold", "willingness_to_pay",
+                "psa_max_wtp_info"
+              ),
               value = 200000, min = 0, step = 10000
             ),
             actionButton("run_psa", "Run probabilistic analysis")
@@ -1537,10 +2524,19 @@ ui <- fluidPage(
               "Uses the global intervention price, implementation cost, and",
               "healthcare-use savings from the assumptions above."
             )),
-            numericInput("bia_population", "Eligible clinical target population",
-                         value = 100000, min = 0, step = 1000),
-            numericInput("bia_year1_uptake", "Year-1 eQalb uptake (%)",
-                         value = 10, min = 0, max = 100, step = 1),
+            numericInput(
+              "bia_population",
+              cc_label("Eligible clinical target population",
+                       "population size", "population_size",
+                       "bia_population_info"),
+              value = 100000, min = 0, step = 1000
+            ),
+            numericInput(
+              "bia_year1_uptake",
+              cc_label("Year-1 eQalb uptake (%)", "uptake", "uptake",
+                       "bia_year1_uptake_info"),
+              value = 10, min = 0, max = 100, step = 1
+            ),
             numericInput("bia_annual_uptake_increase",
                          "Annual uptake increase (percentage points)",
                          value = 5, min = 0, max = 100, step = 1),
@@ -1574,8 +2570,13 @@ ui <- fluidPage(
       "Sensitivity Analysis",
       sidebarLayout(
         sidebarPanel(
-          numericInput("ow_sa_wtp", "Willingness to pay (€ per QALY)",
-                       value = 100000, min = 0, step = 5000),
+          numericInput(
+            "ow_sa_wtp",
+            cc_label("Willingness to pay (€ per QALY)",
+                     "willingness-to-pay threshold", "willingness_to_pay",
+                     "ow_sa_wtp_info"),
+            value = 100000, min = 0, step = 5000
+          ),
           tags$strong("Annual intervention price"),
           numericInput("ow_sa_low_price", "Low", 180, min = 0),
           numericInput("ow_sa_high_price", "High", 540, min = 0),
@@ -1619,8 +2620,13 @@ ui <- fluidPage(
                       min = 250, max = 5000, value = 1000, step = 250),
           sliderInput("km_followup_years", "Follow-up duration (years)",
                       min = 1, max = 10, value = 10, step = 1),
-          numericInput("km_seed", "Random seed", value = 20261004,
-                       min = 0, max = .Machine$integer.max, step = 1),
+          numericInput(
+            "km_seed",
+            cc_label("Random seed", "random seed", "random_seed",
+                     "km_seed_info"),
+            value = 20261004,
+            min = 0, max = .Machine$integer.max, step = 1
+          ),
           checkboxInput("km_show_ci", "Show 95% confidence intervals", value = TRUE),
           checkboxInput("km_show_risk_table", "Show risk table", value = FALSE),
           checkboxInput("km_show_engaged_curves",
@@ -1688,9 +2694,12 @@ ui <- fluidPage(
       sidebarLayout(
         sidebarPanel(
           tags$h5("Population and access"),
-          numericInput("target_population",
-                       "Clinical target population",
-                       value = 100000, min = 0, step = 1000),
+          numericInput(
+            "target_population",
+            cc_label("Clinical target population", "population size",
+                     "population_size", "target_population_info"),
+            value = 100000, min = 0, step = 1000
+          ),
           sliderInput("digital_access",
                       "Smartphone/internet access (%)",
                       min = 0, max = 100, value = 85, step = 1),
@@ -1705,9 +2714,13 @@ ui <- fluidPage(
                       "Follow-up engagement (%)",
                       min = 0, max = 100, value = 42, step = 1),
           tags$h5("Workflow burden"),
-          numericInput("review_minutes",
-                       "Clinician-review minutes per patient per month",
-                       value = 10, min = 0, step = 1),
+          numericInput(
+            "review_minutes",
+            cc_label("Clinician-review minutes per patient per month",
+                     "review minutes", "review_minutes",
+                     "review_minutes_info"),
+            value = 10, min = 0, step = 1
+          ),
           tags$h5("Accessibility and language"),
           numericInput("supported_languages",
                        "Number of supported languages",
@@ -1763,11 +2776,17 @@ ui <- fluidPage(
       )),
       tags$h4("Current PSA / VOI assumptions"),
       uiOutput("voi_assumptions"),
-      tags$h4("Expected value of perfect information (EVPI)"),
+      tags$h4(
+        "Expected value of perfect information (EVPI)",
+        tags$span(class = "cc-info", cc_info("EVPI", "evpi", "evpi_info"))
+      ),
       uiOutput("voi_status"),
       tableOutput("voi_evpi"),
       uiOutput("voi_uncertainty"),
-      tags$h4("Expected value of partial perfect information (EVPPI)"),
+      tags$h4(
+        "Expected value of partial perfect information (EVPPI)",
+        tags$span(class = "cc-info", cc_info("EVPPI", "evppi", "evppi_info"))
+      ),
       uiOutput("voi_evppi_status"),
       tableOutput("voi_evppi_table"),
       plotOutput("voi_evppi_plot", height = "420px"),
@@ -2180,8 +3199,9 @@ server <- function(input, output, session) {
     )
   })
 
-  icer_plot_object <- reactive({
-    res <- model_result()
+  # Shared plot builder: used by the Cost-effectiveness tab and by the guided
+  # tutorial, so both draw the plane from the same definition.
+  build_icer_plot <- function(res) {
     plane <- data.frame(
       strategy = c("Usual care", "eQalb + usual care"),
       incremental_qalys = c(0, res$incremental_qalys),
@@ -2222,6 +3242,10 @@ server <- function(input, output, session) {
       ) +
       theme_minimal(base_size = 13) +
       theme(legend.position = "bottom")
+  }
+
+  icer_plot_object <- reactive({
+    build_icer_plot(model_result())
   })
 
   output$icer_plot <- renderPlot({
@@ -2862,9 +3886,9 @@ server <- function(input, output, session) {
     )
   }, striped = TRUE, bordered = TRUE, hover = TRUE)
 
-  bia_plot_object <- reactive({
-    result <- bia_result()
-    req(result)
+  # Shared plot builder: used by the Cost-effectiveness tab and by the guided
+  # tutorial, so both draw the budget-impact chart from the same definition.
+  build_bia_plot <- function(result) {
     result$direction <- ifelse(
       result$net_budget_impact >= 0, "Net cost", "Net saving"
     )
@@ -2891,6 +3915,12 @@ server <- function(input, output, session) {
       ) +
       ggplot2::theme_minimal(base_size = 13) +
       ggplot2::theme(legend.position = "bottom")
+  }
+
+  bia_plot_object <- reactive({
+    result <- bia_result()
+    req(result)
+    build_bia_plot(result)
   })
 
   output$bia_plot <- renderPlot({
@@ -3536,12 +4566,12 @@ server <- function(input, output, session) {
     bia_result()
   })
 
-  hta_summary <- reactive({
-    base <- hta_base()
+  # PSA-derived decision metrics, shared by the HTA decision summary and the
+  # guided tutorial so both read the same computation. Reading hta_psa() is safe
+  # when the PSA has not been run: it returns NULL without touching psa_result().
+  hta_psa_metrics <- reactive({
     psa <- hta_psa()
-    bia <- hta_bia()
     reference_wtp <- input$psa_reference_wtp
-
     probability <- if (is.null(psa)) {
       NA_real_
     } else {
@@ -3569,15 +4599,27 @@ server <- function(input, output, session) {
     } else {
       NA_real_
     }
+    list(
+      probability = probability,
+      mean_nmb = mean_nmb,
+      evpi = evpi,
+      highest_evppi = highest_evppi
+    )
+  })
+
+  hta_summary <- reactive({
+    base <- hta_base()
+    bia <- hta_bia()
+    metrics <- hta_psa_metrics()
     readiness <- readiness_state()
 
     assess_hta_decision_summary(
       icer = if (is.null(base)) NA_real_ else base$icer,
-      reference_wtp = reference_wtp,
-      probability_cost_effective = probability,
-      mean_incremental_nmb = mean_nmb,
-      evpi = evpi,
-      highest_evppi = highest_evppi,
+      reference_wtp = input$psa_reference_wtp,
+      probability_cost_effective = metrics$probability,
+      mean_incremental_nmb = metrics$mean_nmb,
+      evpi = metrics$evpi,
+      highest_evppi = metrics$highest_evppi,
       cumulative_budget_impact = if (is.null(bia)) {
         NA_real_
       } else {
@@ -3690,6 +4732,9 @@ server <- function(input, output, session) {
             "Traffic-light rules"
           ),
           title = "Educational traffic-light rules",
+          # Same scoped CSS hook as the information controls, so the header has
+          # no light strip above it here either.
+          options = list(customClass = "cc-rules-popover"),
           tags$ul(
             style = "margin:0; padding-left:1.1rem;",
             lapply(HTA_RULE_ITEMS, tags$li)
@@ -4130,13 +5175,459 @@ server <- function(input, output, session) {
     contentType = "application/zip"
   )
 
+  # ------------------------------------------------------------------
+  # Guided tutorial: a simpler presentation layer over the same base model.
+  #
+  # It never re-implements an equation. Every number comes from the existing
+  # functions: run_eqalb_model(), calculate_budget_impact(), the one-way
+  # sensitivity helpers in eqalb_owsa.R, calculate_readiness() and
+  # assess_hta_decision_summary(). The three assumptions the tutorial exposes
+  # are passed to run_eqalb_model(); every other assumption uses the same live
+  # global input as the full analysis.
+  # ------------------------------------------------------------------
+  tutorial_open <- reactive({
+    identical(input$nav_page, "tutorial")
+  })
+
+  tutorial_step_index <- reactive({
+    step <- suppressWarnings(as.integer(input$tutorial_step))
+    if (is.na(step)) 1L else step
+  })
+
+  # The tutorial's parameter values, in the argument names run_eqalb_model()
+  # expects. Only the tutorial controls differ from the full analysis; every
+  # other assumption reuses the same live global input as the full analysis.
+  tutorial_model_args <- function() {
+    list(
+      scenario_intervention_price = input$tutorial_price,
+      scenario_implementation_cost = input$implementation,
+      scenario_healthcare_savings = input$savings,
+      scenario_rrr = input$tutorial_rrr / 100,
+      scenario_engagement_year1 = input$tutorial_engagement_year1 / 100,
+      scenario_engagement_followup = input$tutorial_engagement_followup / 100,
+      scenario_utility_no_event = input$tutorial_utility_no_event,
+      scenario_utility_post_mi = input$utility_post_mi,
+      scenario_utility_post_stroke = input$utility_post_stroke,
+      scenario_cost_post_mi_year1 = cost_post_mi_year1,
+      scenario_cost_post_mi_followup = cost_post_mi_followup,
+      scenario_cost_post_stroke_year1 = cost_post_stroke_year1,
+      scenario_cost_post_stroke_followup = cost_post_stroke_followup
+    )
+  }
+
+  tutorial_ce <- reactive({
+    # Needed by step 1 and by the decision summary in step 4.
+    req(tutorial_open(), input$tutorial_step %in% c("1", "4"))
+    do.call(run_eqalb_model, tutorial_model_args())
+  })
+
+  tutorial_bia <- reactive({
+    # Needed by step 2 and by the decision summary in step 4. The intervention
+    # price is the one shared with step 1, so this reuses the existing
+    # calculate_budget_impact() with the tutorial price.
+    req(tutorial_open(), input$tutorial_step %in% c("2", "4"))
+    calculate_budget_impact(
+      population = input$tutorial_population,
+      year1_uptake_pct = input$bia_year1_uptake,
+      annual_uptake_increase_pp = input$bia_annual_uptake_increase,
+      horizon_years = input$bia_horizon,
+      intervention_price = input$tutorial_price,
+      implementation_cost_per_new_user = input$implementation,
+      healthcare_savings_per_active_user = input$savings,
+      avoided_event_savings_per_active_user = input$bia_avoided_event_savings,
+      followup_engagement_pct = input$engagement_followup
+    )
+  })
+
+  # The tutorial's two yes/no readiness questions are mapped onto the existing
+  # readiness inputs, so calculate_readiness() still does all the scoring.
+  tutorial_interoperability <- reactive({
+    if (isTRUE(input$tutorial_interop_available)) {
+      "FHIR-based exchange"
+    } else {
+      "No data exchange"
+    }
+  })
+
+  tutorial_language_count <- reactive({
+    if (isTRUE(input$tutorial_language_available)) 3 else 1
+  })
+
+  tutorial_readiness <- reactive({
+    # Needed by step 3 and by the decision summary in step 4. The engagement
+    # assumptions are the tutorial's own step-1 values, so changing follow-up
+    # engagement in step 1 is reflected here without a second engagement input.
+    # calculate_readiness() is called unchanged.
+    req(tutorial_open(), input$tutorial_step %in% c("3", "4"))
+    calculate_readiness(
+      target_population = input$target_population,
+      digital_access = input$digital_access,
+      digital_suitability = input$digital_suitability,
+      readiness_year1_engagement = input$tutorial_engagement_year1,
+      readiness_followup_engagement = input$tutorial_engagement_followup,
+      review_minutes = input$tutorial_review_minutes,
+      supported_languages = tutorial_language_count(),
+      accessibility_features = isTRUE(input$accessibility_features),
+      interoperability = tutorial_interoperability(),
+      algorithm_governance = input$algorithm_governance
+    )
+  })
+
+  # Algorithm governance is deliberately not assessed in the simplified
+  # tutorial, so its domain is dropped from the tutorial presentation only. The
+  # full DHT readiness model is unchanged and the full analysis still reports
+  # all seven domains.
+  tutorial_readiness_domains <- reactive({
+    domains <- tutorial_readiness()$domains
+    domains[domains$Domain != "Algorithm governance", , drop = FALSE]
+  })
+
+  tutorial_readiness_cards <- reactive({
+    cards <- tutorial_readiness()$cards
+    cards <- cards[cards$Domain != "Algorithm governance", , drop = FALSE]
+    # The Engagement description is rewritten for the tutorial so it names the
+    # engagement input that is actually the concern. The status itself still
+    # comes from calculate_readiness().
+    engagement <- cards$Domain == "Engagement"
+    if (any(engagement)) {
+      cards$Explanation[engagement] <- tutorial_engagement_explanation(
+        input$tutorial_engagement_year1,
+        input$tutorial_engagement_followup
+      )
+    }
+    cards
+  })
+
+  tutorial_hta <- reactive({
+    req(tutorial_open(), identical(input$tutorial_step, "4"))
+    # The tutorial has no PSA, so the two decision metrics that depend on it are
+    # read from the shared helper: they carry real values when the PSA has been
+    # run in this session, and are otherwise NA, which the existing summary
+    # reports as not yet available.
+    metrics <- hta_psa_metrics()
+    assess_hta_decision_summary(
+      icer = tutorial_ce()$icer,
+      reference_wtp = input$psa_reference_wtp,
+      probability_cost_effective = metrics$probability,
+      mean_incremental_nmb = metrics$mean_nmb,
+      evpi = metrics$evpi,
+      highest_evppi = metrics$highest_evppi,
+      cumulative_budget_impact = sum(tutorial_bia()$net_budget_impact),
+      readiness_domains = tutorial_readiness_domains()
+    )
+  })
+
+  output$tutorial_progress <- renderUI({
+    steps <- c(
+      "Base cost-effectiveness", "Budget impact", "DHT readiness",
+      "HTA decision summary"
+    )
+    if (identical(input$tutorial_step, "done")) {
+      return(tags$p(
+        class = "text-muted",
+        style = "font-size:13px; margin-bottom:0.9rem;",
+        sprintf("All %d steps completed. Tutorial complete.", length(steps))
+      ))
+    }
+    index <- tutorial_step_index()
+    tags$p(
+      class = "text-muted",
+      style = "font-size:13px; margin-bottom:0.9rem;",
+      sprintf(
+        "Step %d of %d. %s", index, length(steps), steps[[index]]
+      )
+    )
+  })
+
+  output$tutorial_ce_table <- renderTable({
+    result <- tutorial_ce()
+    data.frame(
+      Measure = c(
+        "Incremental cost (EUR per person)",
+        "Incremental QALYs (per person)",
+        "ICER (EUR per QALY)"
+      ),
+      Value = c(
+        format_euros(result$incremental_cost),
+        format(round(result$incremental_qalys, 5), nsmall = 5),
+        paste0(format_euros(result$icer), "/QALY")
+      ),
+      stringsAsFactors = FALSE
+    )
+  }, striped = TRUE, bordered = TRUE, hover = TRUE)
+
+  output$tutorial_ce_plot <- renderPlot({
+    build_icer_plot(tutorial_ce())
+  }, height = 380)
+
+  output$tutorial_bia_total <- renderText({
+    result <- tutorial_bia()
+    total <- sum(result$net_budget_impact)
+    paste0(
+      "Net budget impact over ", nrow(result), " years: ",
+      format_euros_signed(total), "."
+    )
+  })
+
+  output$tutorial_bia_table <- renderTable({
+    result <- tutorial_bia()
+    data.frame(
+      Year = result$year,
+      `Active users` = format(round(result$active_users), big.mark = ","),
+      `Net budget impact` = format_euros_signed(result$net_budget_impact),
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+  }, striped = TRUE, bordered = TRUE, hover = TRUE)
+
+  output$tutorial_bia_plot <- renderPlot({
+    build_bia_plot(tutorial_bia())
+  }, height = 340)
+
+  output$tutorial_readiness_numbers <- renderTable({
+    result <- tutorial_readiness()
+    result$numbers
+  }, striped = TRUE, bordered = TRUE, hover = TRUE)
+
+  # Shows the two tutorial checklist answers through the readiness domains the
+  # existing calculation already produced, so neither answer looks decorative.
+  output$tutorial_readiness_checks <- renderUI({
+    domains <- tutorial_readiness()$domains
+    status_of <- function(name) {
+      row <- domains[domains$Domain == name, , drop = FALSE]
+      if (nrow(row) == 0L) {
+        return(NULL)
+      }
+      sprintf("%s: %s", name, row$Status[1])
+    }
+    lines <- c(status_of("Interoperability"), status_of("Language access"))
+    if (length(lines) == 0L) {
+      return(NULL)
+    }
+    tags$div(
+      class = "cc-tutorial-hint",
+      tags$strong("Readiness domains set by these two answers: "),
+      paste(lines, collapse = " | ")
+    )
+  })
+
+  output$tutorial_readiness_cards <- renderUI({
+    cards <- tutorial_readiness_cards()
+    lapply(seq_len(nrow(cards)), function(i) {
+      style <- DHT_STATUS_STYLES[[cards$Status[i]]]
+      tags$div(
+        style = paste0(
+          "background-color:", style[["background"]], ";",
+          "border:1px solid ", style[["border"]], ";",
+          "color:", style[["text"]], ";",
+          "border-radius:4px;padding:10px;margin-bottom:10px;"
+        ),
+        tags$strong(paste0(cards$Domain[i], " - ", cards$Status[i])),
+        tags$br(),
+        cards$Explanation[i]
+      )
+    })
+  })
+
+  output$tutorial_hta_dashboard <- renderUI({
+    summary <- tutorial_hta()
+    rows <- build_tutorial_summary(
+      incremental_cost = tutorial_ce()$incremental_cost,
+      incremental_qalys = tutorial_ce()$incremental_qalys,
+      cumulative_budget_impact = sum(tutorial_bia()$net_budget_impact),
+      readiness_domains = tutorial_readiness_domains(),
+      existing_readiness_status = summary$domains$Status[
+        summary$domains$Domain == "Implementation readiness"
+      ]
+    )
+
+    # Simulated clinical evidence stays Red for transparency but is excluded
+    # from the tutorial overall status.
+    scored <- rows$Status[rows$Domain != "Clinical evidence maturity"]
+    overall <- tutorial_overall_status(scored)
+    overall_style <- if (overall %in% names(KM_STATUS_STYLES)) {
+      KM_STATUS_STYLES[[overall]]
+    } else {
+      TUTORIAL_NEUTRAL_STATUS_STYLE
+    }
+
+    tags$div(
+      tags$div(
+        style = paste0(
+          "background-color:", overall_style[["background"]], ";",
+          "border:1px solid ", overall_style[["border"]], ";",
+          "color:", overall_style[["text"]], ";",
+          "border-radius:4px;padding:12px;margin-bottom:12px;"
+        ),
+        tags$h4(
+          style = "margin-top:0;",
+          paste0("Tutorial overall status - ", overall)
+        ),
+        tags$span(
+          paste(
+            "Simplified tutorial status over cost effectiveness, budget impact",
+            "and implementation readiness. Simulated clinical evidence is shown",
+            "below but does not set this status."
+          )
+        )
+      ),
+      lapply(seq_len(nrow(rows)), function(i) {
+        status <- rows$Status[i]
+        style <- if (status %in% names(KM_STATUS_STYLES)) {
+          KM_STATUS_STYLES[[status]]
+        } else {
+          TUTORIAL_NEUTRAL_STATUS_STYLE
+        }
+        tags$div(
+          style = paste0(
+            "background-color:", style[["background"]], ";",
+            "border:1px solid ", style[["border"]], ";",
+            "color:", style[["text"]], ";",
+            "border-radius:4px;padding:10px;margin-bottom:10px;"
+          ),
+          tags$h4(
+            style = "margin-top:0;",
+            paste0(rows$Domain[i], " - ", status)
+          ),
+          tags$strong("Current values: "), rows$Measure[i], tags$br(),
+          rows$Interpretation[i]
+        )
+      })
+    )
+  })
+
+  output$tutorial_hta_interpretation <- renderText({
+    rows <- build_tutorial_summary(
+      incremental_cost = tutorial_ce()$incremental_cost,
+      incremental_qalys = tutorial_ce()$incremental_qalys,
+      cumulative_budget_impact = sum(tutorial_bia()$net_budget_impact),
+      readiness_domains = tutorial_readiness_domains(),
+      existing_readiness_status = tutorial_hta()$domains$Status[
+        tutorial_hta()$domains$Domain == "Implementation readiness"
+      ]
+    )
+    scored <- rows$Status[rows$Domain != "Clinical evidence maturity"]
+    overall <- tutorial_overall_status(scored)
+    paste0(
+      "This tutorial summary is not a complete HTA and is not a reimbursement ",
+      "recommendation. Under the assumptions you selected the least favourable ",
+      "assessed domain is ", overall, ", based on cost effectiveness, budget ",
+      "impact and implementation readiness. The full analysis adds uncertainty ",
+      "and value-of-information methods, so consider running the PSA there to ",
+      "see how uncertainty would affect the decision."
+    )
+  })
+
   # Landing-page navigation. Presentation only: it switches which container is
   # visible and does not touch any analysis, calculation or input value.
+  #
+  # The beginner welcome modal is shown the first time the full analysis is
+  # opened from the home page in this session. Because this observer only fires
+  # on "Open analysis dashboard", the modal is never shown while moving between
+  # analysis tabs, and it is never shown again after the first time.
+  welcome_modal_shown <- reactiveVal(FALSE)
+
+  # Adds a marker class to the Shiny modal so the CSS can centre this one
+  # prompt without affecting any other modal. The id stays "shiny-modal",
+  # which Shiny's own modal machinery depends on.
+  welcome_modal_dialog <- function(...) {
+    dialog <- modalDialog(...)
+    dialog$attribs$class <- paste(
+      c(dialog$attribs$class, "cc-welcome-modal"), collapse = " "
+    )
+    dialog
+  }
+
   observeEvent(input$open_dashboard, {
     updateSelectInput(session, "nav_page", selected = "dashboard")
+    if (isTRUE(welcome_modal_shown())) {
+      return(NULL)
+    }
+    welcome_modal_shown(TRUE)
+    showModal(welcome_modal_dialog(
+      title = "New to economic evaluation or HTA?",
+      tags$p(
+        "You may find it helpful to start with the guided tutorial before",
+        "exploring the full analysis."
+      ),
+      easyClose = TRUE,
+      footer = tags$div(
+        class = "cc-modal-actions",
+        actionButton(
+          "welcome_start_tutorial", "Start tutorial", class = "btn-primary"
+        ),
+        actionButton("welcome_continue", "Continue to full analysis"),
+        modalButton("Close")
+      )
+    ))
+  })
+
+  observeEvent(input$welcome_start_tutorial, {
+    removeModal()
+    updateSelectInput(session, "tutorial_step", selected = "1")
+    updateSelectInput(session, "nav_page", selected = "tutorial")
+  })
+
+  observeEvent(input$welcome_continue, {
+    removeModal()
   })
 
   observeEvent(input$go_home, {
+    updateSelectInput(session, "nav_page", selected = "home")
+  })
+
+  observeEvent(input$home_guided_tutorial, {
+    updateSelectInput(session, "tutorial_step", selected = "1")
+    updateSelectInput(session, "nav_page", selected = "tutorial")
+  })
+
+  # Tutorial step navigation. Presentation only: it moves a hidden step selector
+  # and never recalculates anything. The tornado step was removed from the
+  # tutorial, so there are four steps followed by the completion state.
+  advance_tutorial_step <- function(by) {
+    total <- 4L
+    next_step <- min(max(tutorial_step_index() + by, 1L), total)
+    updateSelectInput(session, "tutorial_step", selected = as.character(next_step))
+  }
+
+  go_to_tutorial_step <- function(step) {
+    updateSelectInput(session, "tutorial_step", selected = as.character(step))
+  }
+
+  observeEvent(input$tutorial_next, {
+    advance_tutorial_step(1L)
+  })
+
+  observeEvent(input$tutorial_back, {
+    advance_tutorial_step(-1L)
+  })
+
+  # Step 2 sends the user back to the shared price assumption in step 1. Because
+  # every tutorial value lives in the DOM inputs, the tutorial state is
+  # preserved across the jump.
+  observeEvent(input$tutorial_back_to_price, {
+    go_to_tutorial_step(1L)
+  })
+
+  observeEvent(input$tutorial_finish, {
+    updateSelectInput(session, "tutorial_step", selected = "done")
+  })
+
+  observeEvent(input$tutorial_restart, {
+    go_to_tutorial_step(1L)
+  })
+
+  # Opens the full analysis without running anything. Used from the tutorial
+  # completion message.
+  open_full_analysis <- function() {
+    updateSelectInput(session, "nav_page", selected = "dashboard")
+  }
+
+  observeEvent(input$tutorial_open_full_done, {
+    open_full_analysis()
+  })
+
+  observeEvent(input$tutorial_exit, {
     updateSelectInput(session, "nav_page", selected = "home")
   })
 

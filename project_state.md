@@ -51,6 +51,17 @@ explicitly documented otherwise.
   headings. The landing Project description and Start analysis views keep the
   project-level disclaimer, and warnings that explain a specific result are
   retained.
+- Guided tutorial: a four-step beginner walkthrough (base cost effectiveness,
+  budget impact, DHT readiness, tutorial decision summary) with Next, Back, an
+  exit, a return-to-step-1 control on the budget-impact step, a Finish tutorial
+  button and a centred tutorial-specific completion card offering Open full
+  analysis or Restart tutorial. It reuses the existing model, budget-impact and
+  readiness functions and the existing `assess_hta_decision_summary()` readiness
+  result, and shares the Cost-effectiveness plane and budget-impact chart
+  builders with the full analysis.
+- A dismissible welcome prompt shown the first time the full analysis is opened
+  from the home page in a session, offering the tutorial or the full analysis.
+  Its title, text and buttons are centre-aligned.
 - Landing page shown on start-up: a centred title screen with an "Open analysis
   dashboard" button reachable from it, and a "Home" button inside the dashboard
   (show/hide toggles over the existing containers; no duplicated UI).
@@ -188,6 +199,35 @@ explicitly documented otherwise.
 - The traffic-light rules text exists in two forms: `HTA_RULE_ITEMS` (paragraphs
   for the popover) and `HTA_SUMMARY_RULE_NOTE` (the single-line form written into
   the exported package). The exported wording is deliberately untouched.
+- The guided tutorial recomputes the base model through the existing model
+  function rather than reading the Cost-effectiveness tab's cached result, so a
+  tutorial slider changes the tutorial's own numbers and does not alter the full
+  analysis inputs. At the default slider values the two agree exactly. The
+  tutorial deliberately excludes the PSA, EVPI, EVPPI, tornado diagram and
+  Kaplan-Meier modules, so it shows no economic-value or decision-uncertainty
+  domain at all. Its decision summary therefore uses the simpler tutorial-only
+  rules in `tutorial_ce_status()`, `tutorial_budget_status()` and
+  `tutorial_readiness_status()` (cost effectiveness by incremental cost and QALY
+  sign; budget impact Green below EUR 5m, Amber to EUR 10m, Red above;
+  readiness Green with at least four Green domains unless the existing readiness
+  result is Red). These are deliberately different from the full-analysis
+  thresholds in `HTA_SUMMARY_THRESHOLDS`, which are unchanged. Clinical evidence
+  maturity is always Red and never contributes to the tutorial overall status.
+- The tutorial's readiness step takes its engagement assumptions from the
+  tutorial's own step-1 sliders rather than the full-analysis readiness sliders,
+  so the follow-up engagement value carries across steps without a second input.
+  It also maps its two yes/no questions onto existing readiness inputs
+  (interoperability maturity and the supported-language count) and drops the
+  algorithm-governance domain from the tutorial presentation only.
+  `calculate_readiness()` is called unchanged, so the full DHT Readiness tab still
+  reports all seven domains. Because the shared explanation is written from the
+  follow-up value alone, the tutorial rewrites the Engagement description via
+  `tutorial_engagement_explanation()` so it names whichever engagement input is
+  limiting instead of describing a high follow-up value as low.
+- The welcome prompt is shown once per browser session. It is not stored across
+  sessions, so it reappears after a page reload; a persistent "do not show again"
+  would need browser storage. Its centring is scoped to a marker class added to
+  that one modal, so the global Shiny modal id used by `removeModal()` is intact.
 - The app was renamed from "CardioConnect" to "eQalb". The CSS class prefix
   `cc-` (for example `cc-title`, `cc-panel-inner`) and the simulated
   `patient_id` prefix "CC" were deliberately left unchanged because they do not
@@ -215,19 +255,26 @@ explicitly documented otherwise.
   so the title screen is centred within the page rather than strictly within the
   viewport when the browser window is very short. The two animations are the
   only motion in the app and both are disabled under `prefers-reduced-motion`.
+- The full-analysis information controls are built by `cc_info()` / `cc_label()`
+  and their text lives in `CC_INFO_TEXT`. They are deliberately limited to the
+  main inputs and the EVPI and EVPPI headings; the tutorial has none, and no
+  discount-rate control exists in the model, so no control was added for it.
+  The icon sits inside the input label, so the label's accessible name includes
+  its own explanation. The icon is drawn in CSS (a borderless button holding a
+  small circled `i`), so no icon font or extra package is needed, and both the
+  information popovers and the two traffic-light-rules popovers carry a custom
+  class through the popover options (`cc-info-popover` and `cc-rules-popover`),
+  which is the hook the scoped CSS uses to remove the heading margin that used
+  to leave a light strip above the header.
 
 ## Current task
 
-Completed: reduced clutter in the HTA decision-summary tab and removed the
-repeated simulated-analysis notices. The full traffic-light rules text now sits
-in an on-demand bslib popover (trigger "Traffic-light rules", title "Educational
-traffic-light rules") and the evidence-generation plan in a collapsed bslib
-accordion, both keyboard accessible and readable in light and dark mode. The
-duplicate "Simulated illustrative analysis" banners were removed from the value-
-of-information and HTA tabs, the Kaplan-Meier heading suffixes and the VOI notes;
-the Project description and Start analysis disclaimers and all result-specific
-warnings were kept. Presentation only: no model, calculation, decision rule,
-output, navigation, export or existing ID changed.
+Completed: white-strip correction on the two traffic-light rules popovers. Both
+now pass `options = list(customClass = "cc-rules-popover")`, and the scoped CSS
+that already removed the heading margin for the information popovers was
+extended to that class, so the header starts at the top of the popover and the
+close button sits inside the header band in both the tutorial and the full
+analysis.
 
 ## Next planned task
 
@@ -264,3 +311,10 @@ the live inputs and the CEAC curve is correctly aligned.
 | 2026-10-06 | Added a reproducible package environment with `renv` 1.3.1 (`renv::init()` + `renv::snapshot()`), linking 130 packages into a project library and writing `renv.lock` for R 4.5.1; no packages downloaded | Yes - `renv::status()` consistent; app launched and ran analyses and exports under the renv library |
 | 2026-10-06 | Added the creator credit "By Mahmood Alawi" and LinkedIn / GitHub links to the home title screen (subtle subtitle styling, centred wrapping link row, hover and focus states, new tab with `rel="noopener noreferrer"`); CSS and markup only | Yes - tested in the running app, light and dark mode, 1260px / 390px / 300px widths; model outputs unchanged |
 | 2026-10-06 | Simplified the HTA decision-summary tab: traffic-light rules moved into an on-demand bslib popover and the evidence-generation plan into a collapsed bslib accordion; removed the duplicated "Simulated illustrative analysis" banners from the analysis tabs and Kaplan-Meier headings | Yes - tested in the running app: accordion collapsed/expanded, popover by mouse and keyboard, light and dark mode, 390px width; model and HTA outputs identical |
+| 2026-10-07 | Added a five-step Guided tutorial for beginners plus a once-per-session welcome prompt, reusing the existing model, budget-impact, sensitivity, readiness and HTA functions and sharing the CE plane and BIA chart builders | Yes - tested in the running app: step order, slider updates, Next/Back/Exit/finish, modal buttons and tab switching, light and dark mode, 390px width; tutorial values match the model functions exactly and all existing analysis outputs are unchanged |
+| 2026-10-07 | Refined the Guided tutorial and welcome prompt only: added utility and follow-up engagement controls to step 1, a price-carryover note and return-to-step-1 control in step 2, interoperability and language yes/no items replacing algorithm governance in the readiness step, a tutorial decision summary with no "Not available" labels, a tutorial overall status excluding simulated clinical evidence, a short tutorial traffic-light rules popover, a collapsed tutorial evidence-priorities accordion, a Finish tutorial completion note recommending a PSA, and centre-aligned welcome prompt content. The tornado step was removed from the tutorial and remains in the full analysis | Yes - tested in the running app: both new step-1 controls change the result and match `run_eqalb_model()` exactly, price carried into the budget impact, state preserved across the return control, both checklist items change existing readiness domains, tutorial overall status stays Amber while simulated evidence shows Red, popover and accordion open by mouse and keyboard, Finish and both full-analysis routes work, welcome prompt centred and not repeated, no duplicate IDs, 390px width and dark mode fine; full-analysis base case, PSA (seed 12345, n=100), VOI, budget impact, tornado, readiness (7 domains), HTA summary and ZIP export all unchanged |
+| 2026-10-07 | Tutorial-only follow-up: step-1 follow-up engagement now drives the step-3 readiness results through `calculate_readiness()`; the tutorial decision summary shows only cost effectiveness, budget impact, clinical evidence maturity and implementation readiness with tutorial-only thresholds (`build_tutorial_summary()`, `tutorial_ce_status()`, `tutorial_budget_status()`, `tutorial_readiness_status()`) and no longer shows economic value or decision uncertainty; step 4 keeps only Finish tutorial; the completion card offers Open full analysis and Restart tutorial and is centre-aligned with CSS scoped to `.cc-tutorial-complete`; the now-unused `main_tab` id and the `Open Value of information` route were removed | Yes - tested in the running app: follow-up 42 to 10 changes active users at follow-up 26,775 to 6,375 and the Engagement domain Amber to Red in step 3, cost-effectiveness bands Green/Amber verified, budget bands EUR 1.548m Green, EUR 6.192m Amber, EUR 15.48m Red, readiness Green at four Green domains and Red when the existing readiness result is Red, no "Not available" or economic-value/decision-uncertainty boxes, completion card centred with Exit tutorial below it, no duplicate IDs (225 elements), light/dark and 390px fine; full-analysis base case ICER EUR 298,965.51, PSA (seed 12345, n=100) mean cost EUR 2,417.75 / mean QALYs 0.00781 / P(CE) 1.0%, EVPI EUR 0.11, readiness 63,750 eligible, tornado, HTA summary and the ZIP export unchanged |
+| 2026-10-07 | Tutorial-only wording fix for the Engagement readiness description: `tutorial_engagement_explanation()` names year-1 engagement, follow-up engagement or both according to which input is limiting, so a high follow-up value is no longer described as low. The Green/Amber/Red classification and the shared `calculate_readiness()` text are unchanged | Yes - tested in the running app: year-1 20 / follow-up 90 gives the year-1 wording with status Green, follow-up 20 gives the follow-up wording with Red, both 20 gives the combined wording, both 70 and both 60 give the favourable wording, and 45/45 gives a neutral numeric wording; the full DHT Readiness tab and `dht_readiness_results.csv` still carry the original wording, base case ICER EUR 298,965.51, PSA (seed 12345, n=100) unchanged, ZIP export HTTP 200 with the same file set, 220 element ids with no duplicates, app.R parses |
+| 2026-10-07 | Added 20 keyboard-accessible full-analysis information controls (`cc_info()` / `cc_label()` with text in `CC_INFO_TEXT`): 18 next to the main inputs (price, implementation cost, RRR, year-1 and follow-up engagement, the three utilities, PSA simulation count, PSA seed, both WTP thresholds, budget-impact population and uptake, sensitivity-analysis WTP, KM seed, DHT target population and review minutes) plus EVPI and EVPPI on their headings. GUI only, no input renamed, no calculation changed, and the Guided tutorial untouched | Yes - tested in the running app: every icon renders inside the correct existing label (verified by the label's `for` attribute) with the exact requested wording, popovers open by mouse click and by keyboard (Shift+Tab then Enter) with a visible focus outline, no duplicate ids (240 with 0 duplicates, and none created by an open popover), sliders still respond with the icon inside their label, base case ICER EUR 298,965.51 (EUR 2,439.28 / 0.00816), PSA (seed 12345, n=100) mean cost EUR 2,417.75 / mean QALYs 0.00781 / P(CE) 1.0%, EVPI EUR 0.11, readiness 63,750 eligible, tornado and KM modules render, ZIP export HTTP 200 with the same 12 files, tutorial shows 0 info controls and its 4 steps and completion card are unchanged, light and dark mode readable, 390px width with no horizontal overflow and the popover fitting inside the viewport, app.R parses |
+| 2026-10-07 | Two visual corrections to those information popovers: the popover now carries `customClass = "cc-info-popover"` and scoped CSS removes the heading top margin, so the header starts at the top with no light strip and the close button sits inside the header band; the plain `ⓘ` character was replaced by a CSS-drawn circular lowercase `i` in the teal brand colour. Popover text, control count, control placement, IDs and behaviour are unchanged, and other popovers keep their original styling | Yes - tested in the running app: header top gap is 1px (the popover border only) with `margin-top: 0`, header width equals the popover content width so it is full-bleed, and the close button (11-26px) lies inside the header (1-36px) in both light and dark mode; the arrow is unclipped; the 20 information controls each render a 14.4px circled `i` with their original aria-labels, keyboard Enter opens and Escape closes the popover with a 2px teal focus outline, the popover fits the 375px viewport with no horizontal overflow, the traffic-light rules popover still has `hasInfoClass: false` and its original 20px header margin, no duplicate ids (240), base case ICER EUR 298,965.51, PSA (seed 12345, n=100) mean cost EUR 2,417.75 / P(CE) 1.0%, EVPI EUR 0.11, ZIP export HTTP 200 with the same file set, tutorial unchanged, app.R parses |
+| 2026-10-07 | Applied the same header fix to the two traffic-light-rules popovers, which had kept the white strip: both now pass `options = list(customClass = "cc-rules-popover")` and the scoped CSS selectors were extended to cover that class. No text, ID or behaviour change | Yes - tested in the running app: both the tutorial rules popover and the full-analysis rules popover now report `headerMarginTop: 0px`, a 1px header top gap (the popover border only), a 7px top header radius matching the outer container, and the close button inside the header band in light and dark mode (`#1e3039` header on `#16242c` popover in dark); the arrow stays visible, popover text and item counts are unchanged, the popover fits the 375px viewport with no horizontal overflow, the 20 information popovers still behave as before, no duplicate ids (240), base case ICER EUR 298,965.51 and PSA (seed 12345, n=100) mean cost EUR 2,417.75 / P(CE) 1.0% unchanged, ZIP export HTTP 200 with the same file set, app.R parses |
