@@ -1286,6 +1286,464 @@ cc_rules_popover <- function(title, items, aria_label) {
   )
 }
 
+# ---------------------------------------------------------------------------
+# Read-only "Model assumptions and inputs" overlay.
+#
+# Presentation only. It renders the values that already exist (the constants in
+# the model file are read at render time, so no constant is duplicated here) and
+# the current values of the existing inputs. It adds no input, no output, no
+# reactive dependency and no calculation.
+# ---------------------------------------------------------------------------
+
+# Compact table used by the overlay sections.
+cc_assumptions_table <- function(rows) {
+  tags$table(
+    class = "table table-sm table-striped cc-assumptions-table",
+    tags$thead(tags$tr(lapply(names(rows), tags$th))),
+    tags$tbody(lapply(seq_len(nrow(rows)), function(i) {
+      tags$tr(lapply(rows[i, , drop = FALSE], function(cell) {
+        tags$td(as.character(cell))
+      }))
+    }))
+  )
+}
+
+cc_assumptions_modal <- function(values) {
+  get_value <- function(name, default = NA) {
+    value <- values[[name]]
+    if (is.null(value) || length(value) == 0L) default else value[[1]]
+  }
+  as_number <- function(x) {
+    x <- suppressWarnings(as.numeric(x))
+    if (length(x) == 0L || is.na(x)) NA_real_ else x
+  }
+  money <- function(x, digits = 0) {
+    x <- as_number(x)
+    if (is.na(x)) {
+      return("not available")
+    }
+    paste0(
+      "\u20ac",
+      format(round(x, digits), big.mark = ",", nsmall = digits,
+             scientific = FALSE, trim = TRUE)
+    )
+  }
+  rate <- function(x, digits = 1) {
+    x <- as_number(x)
+    if (is.na(x)) {
+      return("not available")
+    }
+    paste0(format(round(x, digits), nsmall = digits, scientific = FALSE), "%")
+  }
+  proportion_rate <- function(x, digits = 1) {
+    x <- as_number(x)
+    if (is.na(x)) {
+      return("not available")
+    }
+    rate(100 * x, digits)
+  }
+  number <- function(x, digits = NULL) {
+    x <- as_number(x)
+    if (is.na(x)) {
+      return("not available")
+    }
+    if (is.null(digits)) {
+      format(x, big.mark = ",", scientific = FALSE, trim = TRUE)
+    } else {
+      format(round(x, digits), big.mark = ",", nsmall = digits,
+             scientific = FALSE, trim = TRUE)
+    }
+  }
+  yes_no <- function(x) {
+    if (isTRUE(x)) "Yes" else if (identical(x, FALSE)) "No" else "not available"
+  }
+  percent_input <- function(name) {
+    x <- as_number(get_value(name))
+    if (is.na(x)) "not available" else paste0(number(x), "%")
+  }
+  seed_value <- function(name) {
+    x <- as_number(get_value(name))
+    if (is.na(x)) "not available" else format(x, scientific = FALSE, trim = TRUE)
+  }
+
+  # Adjustable inputs -------------------------------------------------------
+  global_inputs <- data.frame(
+    Input = c(
+      "Annual intervention price (€ per active user per year)",
+      "Implementation cost (€ per new user, one-off)",
+      "Annual healthcare savings (€ per active user per year)",
+      "Relative risk reduction",
+      "Year-1 engagement", "Follow-up engagement",
+      "Base-case utility: no event", "Base-case utility: post-MI",
+      "Base-case utility: post-stroke"
+    ),
+    `Current value` = c(
+      money(get_value("price")), money(get_value("implementation")),
+      money(get_value("savings")), percent_input("rrr"),
+      percent_input("engagement_year1"), percent_input("engagement_followup"),
+      number(get_value("utility_no_event"), 2),
+      number(get_value("utility_post_mi"), 2),
+      number(get_value("utility_post_stroke"), 2)
+    ),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+
+  psa_inputs <- data.frame(
+    Input = c(
+      "Number of PSA simulations (computational setting)",
+      "PSA random seed (reproducibility setting)",
+      "Reference WTP threshold for the headline probability"
+    ),
+    `Current value` = c(
+      number(get_value("psa_n_sim")), seed_value("psa_seed"),
+      paste0(money(get_value("psa_reference_wtp")), " per QALY")
+    ),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+
+  bia_inputs <- data.frame(
+    Input = c(
+      "Eligible clinical target population", "Year-1 uptake",
+      "Annual uptake increase", "Budget-impact horizon",
+      "Avoided-event savings per active user (not linked to the Markov model)"
+    ),
+    `Current value` = c(
+      number(get_value("bia_population")), percent_input("bia_year1_uptake"),
+      paste0(number(get_value("bia_annual_uptake_increase")), " percentage points"),
+      paste0(number(get_value("bia_horizon")), " years"),
+      money(get_value("bia_avoided_event_savings"))
+    ),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+
+  ow_sa_inputs <- data.frame(
+    Parameter = c(
+      "Willingness to pay (used for the DSA incremental net monetary benefit)",
+      "Annual intervention price", "Relative risk reduction",
+      "Year-1 engagement", "Follow-up engagement", "Post-MI utility",
+      "Post-stroke utility", "Annual healthcare-use savings",
+      "Implementation cost", "Post-MI cost (year-1 anchor)",
+      "Post-stroke cost (year-1 anchor)"
+    ),
+    Low = c(
+      paste0(money(get_value("ow_sa_wtp")), " per QALY"),
+      money(get_value("ow_sa_low_price")), number(get_value("ow_sa_low_rrr"), 2),
+      number(get_value("ow_sa_low_engagement_year1"), 2),
+      number(get_value("ow_sa_low_engagement_followup"), 2),
+      number(get_value("ow_sa_low_utility_post_mi"), 2),
+      number(get_value("ow_sa_low_utility_post_stroke"), 2),
+      money(get_value("ow_sa_low_savings")),
+      money(get_value("ow_sa_low_implementation")),
+      money(get_value("ow_sa_low_post_mi_cost")),
+      money(get_value("ow_sa_low_post_stroke_cost"))
+    ),
+    High = c(
+      "same as the value above",
+      money(get_value("ow_sa_high_price")), number(get_value("ow_sa_high_rrr"), 2),
+      number(get_value("ow_sa_high_engagement_year1"), 2),
+      number(get_value("ow_sa_high_engagement_followup"), 2),
+      number(get_value("ow_sa_high_utility_post_mi"), 2),
+      number(get_value("ow_sa_high_utility_post_stroke"), 2),
+      money(get_value("ow_sa_high_savings")),
+      money(get_value("ow_sa_high_implementation")),
+      money(get_value("ow_sa_high_post_mi_cost")),
+      money(get_value("ow_sa_high_post_stroke_cost"))
+    ),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+
+  km_inputs <- data.frame(
+    Input = c(
+      "Number of patients per treatment arm", "Follow-up duration",
+      "Random seed (reproducibility setting)", "Show 95% confidence intervals",
+      "Show risk table", "Show engaged versus non-engaged exploratory curves"
+    ),
+    `Current value` = c(
+      number(get_value("km_n_per_arm")),
+      paste0(number(get_value("km_followup_years")), " years"),
+      seed_value("km_seed"),
+      yes_no(get_value("km_show_ci")), yes_no(get_value("km_show_risk_table")),
+      yes_no(get_value("km_show_engaged_curves"))
+    ),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+
+  readiness_inputs <- data.frame(
+    Input = c(
+      "Clinical target population", "Smartphone/internet access",
+      "Digitally suitable population", "Year-1 engagement",
+      "Follow-up engagement", "Clinician-review minutes per patient per month",
+      "Number of supported languages", "Accessibility features available",
+      "Interoperability maturity", "Algorithm change approach"
+    ),
+    `Current value` = c(
+      number(get_value("target_population")),
+      percent_input("digital_access"), percent_input("digital_suitability"),
+      percent_input("readiness_year1_engagement"),
+      percent_input("readiness_followup_engagement"),
+      number(get_value("review_minutes")),
+      number(get_value("supported_languages")),
+      yes_no(get_value("accessibility_features")),
+      as.character(get_value("interoperability", "not available")),
+      as.character(get_value("algorithm_governance", "not available"))
+    ),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+
+  tutorial_inputs <- data.frame(
+    Input = c(
+      "Annual price of the technology", "Risk reduction for engaged users",
+      "Share of users engaged in year 1",
+      "Share of users still engaged after the first year",
+      "Utility: quality of life with no event", "Eligible population",
+      "Clinician review minutes per patient per month",
+      "Is the intervention interoperable?",
+      "Is the intervention available in the required language?"
+    ),
+    `Current value` = c(
+      money(get_value("tutorial_price")), percent_input("tutorial_rrr"),
+      percent_input("tutorial_engagement_year1"),
+      percent_input("tutorial_engagement_followup"),
+      number(get_value("tutorial_utility_no_event"), 2),
+      number(get_value("tutorial_population")),
+      number(get_value("tutorial_review_minutes")),
+      yes_no(get_value("tutorial_interop_available")),
+      yes_no(get_value("tutorial_language_available"))
+    ),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+
+  user_adjustable <- tagList(
+    tags$p(class = "cc-assumptions-note", paste(
+      "Values below are read from the current session. Change them in the",
+      "labelled control and reopen this panel to see the update."
+    )),
+    tags$h6("Global assumptions (Cost-effectiveness tab)"),
+    cc_assumptions_table(global_inputs),
+    tags$h6("Probabilistic sensitivity analysis"),
+    cc_assumptions_table(psa_inputs),
+    tags$h6("Budget impact"),
+    cc_assumptions_table(bia_inputs),
+    tags$h6("Deterministic sensitivity-analysis ranges"),
+    tags$p(class = "cc-assumptions-note", paste(
+      "Used only for one-way sensitivity analysis; they do not define the",
+      "base-case values."
+    )),
+    cc_assumptions_table(ow_sa_inputs),
+    tags$h6("Kaplan-Meier simulation"),
+    cc_assumptions_table(km_inputs),
+    tags$h6("DHT readiness and implementation"),
+    cc_assumptions_table(readiness_inputs),
+    tags$h6("Guided tutorial only"),
+    tags$p(class = "cc-assumptions-note", paste(
+      "Post-event utilities in the tutorial are fixed at the model values",
+      sprintf("%.2f (post-MI) and %.2f (post-stroke)",
+              utility_post_mi, utility_post_stroke),
+      "and are not user-adjustable there."
+    )),
+    cc_assumptions_table(tutorial_inputs)
+  )
+
+  # Fixed model inputs ------------------------------------------------------
+  fixed_inputs <- data.frame(
+    `Model input` = c(
+      "Annual MI risk under usual care", "Annual stroke risk under usual care",
+      "Other-cause death risk", "Post-MI death risk", "Post-stroke death risk",
+      "Post-MI cost, year 1", "Post-MI follow-up cost",
+      "Post-stroke cost, year 1", "Post-stroke follow-up cost",
+      "No-event cost", "Cost discount rate", "QALY discount rate",
+      "Time horizon", "Cycle length"
+    ),
+    Value = c(
+      proportion_rate(p_mi_usual_care), proportion_rate(p_stroke_usual_care),
+      proportion_rate(p_other_death), proportion_rate(p_death_post_mi),
+      proportion_rate(p_death_post_stroke),
+      money(cost_post_mi_year1), money(cost_post_mi_followup),
+      money(cost_post_stroke_year1), money(cost_post_stroke_followup),
+      money(cost_no_event), proportion_rate(discount_rate_cost, digits = 0),
+      proportion_rate(discount_rate_effect, digits = 0),
+      paste0(as.integer(cycles), " years"), "1 year"
+    ),
+    `User-editable?` = rep("Not user-editable in this version", 14),
+    `Source note` = c(
+      rep("Illustrative model constant", 6),
+      "Illustrative placeholder; source not yet documented",
+      "Illustrative model constant",
+      "Illustrative placeholder; source not yet documented",
+      "Illustrative model constant",
+      rep("Illustrative model constant; source not documented", 4)
+    ),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+
+  fixed_model_inputs <- tagList(
+    tags$p(class = "cc-assumptions-note", paste(
+      "These values are set in the model file and are held at the same value in",
+      "the base case, the PSA and the tutorial. They are not user-editable in",
+      "this version, because the application exposes no control for them."
+    )),
+    cc_assumptions_table(fixed_inputs),
+    tags$p(class = "cc-assumptions-note", paste(
+      "Source status: the two follow-up event costs are illustrative",
+      "placeholders whose source is not yet documented. Several other fixed",
+      "values are supplied without a cited source, so they are labelled as not",
+      "documented rather than as evidence-based."
+    ))
+  )
+
+  # Structural assumptions --------------------------------------------------
+  structure_notes <- tagList(
+    tags$ul(
+      tags$li(paste(
+        "Four health states: no event, post-MI, post-stroke and death. The",
+        "cohort starts in no event and is normalised to one person, so every",
+        "result is per person."
+      )),
+      tags$li(paste(
+        "MI and stroke are competing first events from the no-event state, and",
+        "other-cause death is a third outcome. Post-event states are absorbing",
+        "for further events, so only death exits them. There is no recovery",
+        "and no second event."
+      )),
+      tags$li(paste(
+        "Treatment effect: the relative risk reduction is applied only to the",
+        "engaged fraction in the year, with",
+        "engagement = year-1 value in cycle 1 and the follow-up value in later",
+        "cycles. Non-engaged users keep usual-care risk. Engagement is",
+        "deterministic, not resampled."
+      )),
+      tags$li(paste(
+        "Event-state costs: post-MI and post-stroke costs use the year-1 value",
+        "in the first cycle spent in that state and the follow-up value",
+        "afterwards. These costs appear in both arms."
+      )),
+      tags$li(paste(
+        "Post-event mortality is identical in both arms, so the intervention",
+        "cannot extend survival after an event; it acts on event incidence",
+        "only."
+      )),
+      tags$li(paste(
+        "Routine usual-care costs (medication, monitoring, visits) are assumed",
+        "identical in both arms and are therefore omitted. This is a modelling",
+        "assumption, not an estimate that usual care costs nothing."
+      )),
+      tags$li(paste(
+        "Annual cycles over a fixed horizon of", as.integer(cycles),
+        "years; a typical annual digital-therapeutic price is charged in every",
+        "cycle and every alive state, with a one-off implementation cost in",
+        "cycle 1 and the healthcare-use saving subtracted every cycle."
+      )),
+      tags$li(paste(
+        "Discounting: costs and QALYs use the discount factors above with",
+        "1/(1+r)^(cycle-1), so cycle 1 is undiscounted and later cycles are",
+        "discounted."
+      )),
+      tags$li(paste(
+        "No half-cycle correction is applied, so each annual cycle is treated",
+        "as a full year in the state."
+      ))
+    )
+  )
+
+  # PSA and CEAC ------------------------------------------------------------
+  psa_parameter_rows <- psa_parameter_table(
+    price = get_value("price", intervention_price_annual),
+    implementation = get_value("implementation", implementation_cost),
+    savings = get_value("savings", healthcare_use_savings_annual),
+    rrr = as_number(get_value("rrr", 100 * rrr_base)) / 100,
+    engagement_year1 = as_number(get_value("engagement_year1", 100 * engagement_year_1)) / 100,
+    engagement_followup = as_number(
+      get_value("engagement_followup", 100 * engagement_years_2_to_10)
+    ) / 100,
+    no_event_utility = get_value("utility_no_event", utility_no_event),
+    post_mi_utility = get_value("utility_post_mi", utility_post_mi),
+    post_stroke_utility = get_value("utility_post_stroke", utility_post_stroke)
+  )
+  psa_sampled <- data.frame(
+    Parameter = psa_parameter_rows$parameter,
+    Distribution = psa_parameter_rows$distribution,
+    Mean = vapply(psa_parameter_rows$mean, number, character(1), digits = 2),
+    `Standard deviation` = vapply(
+      psa_parameter_rows$sd, number, character(1), digits = 2
+    ),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+  reference_wtp_value <- as_number(get_value("psa_reference_wtp", 100000))
+  psa_ceac <- tagList(
+    tags$p(class = "cc-assumptions-note", paste(
+      "Simulation count and seed are computational and reproducibility",
+      "settings, not clinical or economic assumptions."
+    )),
+    tags$p(sprintf(
+      paste(
+        "Reference WTP threshold: %s per QALY. The CEAC is drawn on %d equally",
+        "spaced WTP points from \u20ac0 to %s, where the upper limit is derived",
+        "internally as twice the reference threshold (never below \u20ac100,000)."
+      ),
+      money(reference_wtp_value), 201,
+      money(psa_ceac_wtp_max(reference_wtp_value))
+    )),
+    tags$p(paste(
+      "Cost-effectiveness classification uses net monetary benefit:",
+      "incremental NMB = WTP x incremental QALYs - incremental cost, and an",
+      "option is counted as cost-effective when incremental NMB is strictly",
+      "greater than zero. A probability reported at a threshold is the share",
+      "of simulations with positive incremental NMB at that threshold."
+    )),
+    tags$p(paste0(
+      "The three probabilities shown in the PSA summary (",
+      paste(vapply(c(50000, 100000, 150000), money, character(1)),
+            collapse = ", "),
+      " per QALY) use the same rule at fixed thresholds, alongside the ",
+      "reference threshold row."
+    )),
+    tags$h6("Sampled PSA parameters"),
+    cc_assumptions_table(psa_sampled)
+  )
+
+  # Scope and limitations ---------------------------------------------------
+  scope_notes <- tagList(
+    tags$ul(
+      tags$li("Perspective: German payer (stated in the model file)."),
+      tags$li("Currency: euros (\u20ac)."),
+      tags$li("Price year: 2025 (stated in the model file)."),
+      tags$li(paste(
+        "Educational purpose: eQalb is a fictional digital therapeutic and this",
+        "application is a teaching simulation of a simplified HTA, not a",
+        "validated assessment, a regulatory document or a reimbursement",
+        "submission."
+      )),
+      tags$li(paste(
+        "Results depend on the model assumptions and illustrative inputs. No",
+        "clinical, cost or utility value in this application is evidence from a",
+        "trial, and the traffic-light rules are presentation rules created for",
+        "teaching."
+      ))
+    )
+  )
+
+  sections <- bslib::accordion(
+    open = FALSE,
+    bslib::accordion_panel("User-adjustable inputs", user_adjustable),
+    bslib::accordion_panel("Fixed model inputs", fixed_model_inputs),
+    bslib::accordion_panel("Model structure", structure_notes),
+    bslib::accordion_panel("PSA and CEAC", psa_ceac),
+    bslib::accordion_panel("Scope and limitations", scope_notes)
+  )
+
+  dialog <- modalDialog(
+    title = "Model assumptions and inputs",
+    sections,
+    easyClose = TRUE,
+    size = "l",
+    footer = modalButton("Close")
+  )
+  dialog$attribs$class <- paste(
+    c(dialog$attribs$class, "cc-assumptions-modal"), collapse = " "
+  )
+  dialog
+}
+
 # Modern visual theme (bslib only). This is presentation-only: it changes
 # colours, typography, spacing and component styling, and does not alter the
 # layout structure, any input or output ID, or any server logic.
@@ -1645,6 +2103,55 @@ EQALB_THEME <- bslib::bs_add_rules(
   /* Accordion panel should not stretch to the full panel width on wide screens
      and must not overflow on narrow ones. */
   .accordion { max-width: 100%; }
+  /* Read-only model-assumptions overlay. Scoped to its own modal class (added
+     in cc_assumptions_modal()), so no other modal is affected. */
+  #shiny-modal.cc-assumptions-modal .modal-body {
+    max-height: 68vh;
+    overflow-y: auto;
+  }
+  #shiny-modal.cc-assumptions-modal .accordion-body { padding: 0.75rem; }
+  #shiny-modal.cc-assumptions-modal .cc-assumptions-note {
+    font-size: 13px;
+    opacity: 0.85;
+  }
+  #shiny-modal.cc-assumptions-modal h6 {
+    margin: 0.9rem 0 0.35rem 0;
+    font-weight: 600;
+  }
+  #shiny-modal.cc-assumptions-modal ul {
+    padding-left: 1.1rem;
+    margin-bottom: 0.5rem;
+  }
+  #shiny-modal.cc-assumptions-modal ul li { margin-bottom: 0.35rem; }
+  #shiny-modal.cc-assumptions-modal .cc-assumptions-table {
+    font-size: 13px;
+    margin-bottom: 0.5rem;
+  }
+  #shiny-modal.cc-assumptions-modal .cc-assumptions-table th,
+  #shiny-modal.cc-assumptions-modal .cc-assumptions-table td {
+    overflow-wrap: anywhere;
+    vertical-align: top;
+  }
+  /* Keyboard access: the accordion headers and the Close button are native
+     buttons, so they are focusable and respond to Enter and Space. This adds a
+     visible focus ring that works in light and dark mode, because it uses the
+     theme's current text colour rather than a fixed colour. */
+  #shiny-modal.cc-assumptions-modal .accordion-button:focus-visible,
+  #shiny-modal.cc-assumptions-modal .btn:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+  #shiny-modal.cc-assumptions-modal .accordion-button:focus {
+    box-shadow: none;
+  }
+  #shiny-modal.cc-assumptions-modal .accordion-button:not(.collapsed) {
+    box-shadow: none;
+  }
+  /* Short interpretive note under the base-case results table. */
+  .cc-icer-note {
+    font-size: 13px;
+    margin: 0.5rem 0 0.75rem 0;
+  }
 
   /* Guided tutorial. Presentation only. Prose and tables read best left
      aligned, so the tutorial overrides the centred landing-page wrapper. */
@@ -1685,6 +2192,27 @@ EQALB_THEME <- bslib::bs_add_rules(
     font-size: 13px;
     opacity: 0.8;
     margin-top: 0.35rem;
+  }
+  /* Read-only block for values a tutorial step holds fixed. Compact and
+     full-width-safe so it stays readable on narrow screens. */
+  .cc-tutorial-fixed {
+    margin: 0.5rem 0 0.7rem 0;
+    padding: 0.5rem 0.75rem;
+    max-width: 100%;
+    font-size: 13px;
+    border-left: 3px solid #287D78;
+    border-radius: 0 6px 6px 0;
+    background-color: rgba(40, 125, 120, 0.07);
+  }
+  .cc-tutorial-fixed-values {
+    margin: 0.25rem 0 0 0;
+    padding-left: 1.1rem;
+  }
+  .cc-tutorial-fixed-values li { margin-bottom: 0.15rem; }
+  [data-bs-theme='dark'] .cc-tutorial-fixed,
+  body[data-bs-theme='dark'] .cc-tutorial-fixed {
+    border-left-color: #7fd1d8;
+    background-color: rgba(127, 209, 216, 0.12);
   }
   /* Yes/no checklist items: the checkbox sits above its explanation. */
   .cc-tutorial-check {
@@ -1757,11 +2285,19 @@ EQALB_THEME <- bslib::bs_add_rules(
 
 ui <- fluidPage(
   theme = EQALB_THEME,
-  # Shared light/dark switch. A single control is placed above both containers so
-  # it stays available on the landing page and in the analysis dashboard header
-  # without duplicating the widget (and therefore its ID).
+  # Shared light/dark switch, plus a read-only "Assumptions" button. A single
+  # control is placed above both containers so it stays available on the landing
+  # page and in the analysis dashboard header without duplicating the widget
+  # (and therefore its ID).
   tags$div(
-    style = "display:flex; justify-content:flex-end; margin-bottom:0.5rem;",
+    style = paste0(
+      "display:flex; justify-content:flex-end; align-items:center; ",
+      "gap:0.5rem; margin-bottom:0.5rem;"
+    ),
+    actionButton(
+      "show_assumptions", "Assumptions",
+      title = "Show the model assumptions and inputs"
+    ),
     bslib::input_dark_mode(id = "color_mode", mode = "light")
   ),
   # Landing-page navigation. Presentation only: a hidden control decides which
@@ -1942,6 +2478,25 @@ ui <- fluidPage(
               "tutorial_utility_no_event",
               "Utility: quality of life with no event (0 to 1)",
               min = 0.50, max = 1.00, value = 0.86, step = 0.01
+            ),
+            tags$div(
+              class = "cc-tutorial-fixed",
+              tags$strong("Fixed post-event utilities used in this tutorial"),
+              tags$ul(
+                class = "cc-tutorial-fixed-values",
+                tags$li(sprintf("Post-MI utility: %.2f", utility_post_mi)),
+                tags$li(sprintf(
+                  "Post-stroke utility: %.2f", utility_post_stroke
+                ))
+              ),
+              tags$div(
+                class = "cc-tutorial-hint",
+                paste(
+                  "These fixed values are applied to time spent after MI or",
+                  "stroke when calculating QALYs. The slider above controls the",
+                  "no-event utility."
+                )
+              )
             ),
             tags$div(
               class = "cc-tutorial-hint",
@@ -2415,7 +2970,8 @@ ui <- fluidPage(
             numericInput(
               "price",
               cc_label(
-                "Annual intervention price (€)", "intervention price",
+                "Annual intervention price (€ per active user per year)",
+                "intervention price",
                 "intervention_price", "price_info"
               ),
               360
@@ -2426,7 +2982,8 @@ ui <- fluidPage(
             numericInput(
               "implementation",
               cc_label(
-                "Implementation cost (€)", "intervention cost",
+                "Implementation cost (€ per new user, one-off)",
+                "intervention cost",
                 "intervention_cost", "implementation_info"
               ),
               40
@@ -2437,7 +2994,8 @@ ui <- fluidPage(
             numericInput(
               "savings",
               cc_label(
-                "Annual healthcare savings (€)", "annual healthcare savings",
+                "Annual healthcare savings (€ per active user per year)",
+                "annual healthcare savings",
                 "healthcare_savings", "savings_info"
               ),
               20
@@ -2548,6 +3106,15 @@ ui <- fluidPage(
         column(
           8,
           tableOutput("results"),
+          tags$p(
+            class = "text-muted cc-icer-note",
+            paste(
+              "Interpret the ICER alongside incremental costs, incremental",
+              "QALYs, and net monetary benefit. The ICER may be unavailable or",
+              "difficult to interpret when incremental QALYs are zero or",
+              "negative."
+            )
+          ),
           plotOutput("icer_plot", height = "480px"),
           uiOutput("ce_downloads")
         )
@@ -3304,7 +3871,11 @@ server <- function(input, output, session) {
     res <- model_result()
 
     data.frame(
-      Measure = c("Incremental cost", "Incremental QALYs", "ICER"),
+      Measure = c(
+        "Incremental cost (EUR per person)",
+        "Incremental QALYs (per person)",
+        "ICER (EUR per QALY)"
+      ),
       Value = c(
         format_euros(res$incremental_cost),
         format(round(res$incremental_qalys, 5), nsmall = 5),
@@ -3506,7 +4077,7 @@ server <- function(input, output, session) {
       result$results, reference_wtp
     )
     reference_label <- paste0(
-      "Probability cost-effective at reference WTP (€",
+      "Probability cost-effective at selected WTP (€",
       format(reference_wtp, big.mark = ",", scientific = FALSE),
       "/QALY)"
     )
@@ -5357,8 +5928,8 @@ server <- function(input, output, session) {
 
   tutorial_bia <- reactive({
     # Needed by step 2 and by the decision summary in step 4. The intervention
-    # price is the one shared with step 1, so this reuses the existing
-    # calculate_budget_impact() with the tutorial price.
+    # price and the follow-up engagement are the tutorial's own step-1 values,
+    # so this reuses the existing calculate_budget_impact() with them.
     req(tutorial_open(), input$tutorial_step %in% c("2", "4"))
     calculate_budget_impact(
       population = input$tutorial_population,
@@ -5369,7 +5940,7 @@ server <- function(input, output, session) {
       implementation_cost_per_new_user = input$implementation,
       healthcare_savings_per_active_user = input$savings,
       avoided_event_savings_per_active_user = input$bia_avoided_event_savings,
-      followup_engagement_pct = input$engagement_followup
+      followup_engagement_pct = input$tutorial_engagement_followup
     )
   })
 
@@ -5704,6 +6275,14 @@ server <- function(input, output, session) {
 
   observeEvent(input$welcome_continue, {
     removeModal()
+  })
+
+  # Read-only "Model assumptions and inputs" overlay. Presentation only: it
+  # renders the current input values and the existing model constants, and does
+  # not add an input, an output or a reactive dependency. All input reads are
+  # isolated, so changing an input never re-opens the modal.
+  observeEvent(input$show_assumptions, {
+    showModal(cc_assumptions_modal(isolate(reactiveValuesToList(input))))
   })
 
   observeEvent(input$go_home, {
