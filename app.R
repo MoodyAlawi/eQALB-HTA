@@ -1236,6 +1236,68 @@ CC_INFO_TEXT <- list(
     "Estimated healthcare costs avoided because the intervention reduces",
     "modelled clinical events. This is illustrative and does not represent",
     "observed savings."
+  ),
+  # Guided-tutorial explanations. These are the texts that used to sit
+  # permanently under the step-1 sliders; they are now shown on demand so the
+  # tutorial reads as a compact set of controls.
+  tutorial_price = paste(
+    "This is the extra technology cost. Increasing the annual price usually",
+    "increases incremental cost and makes the ICER worse, unless other savings",
+    "or health gains offset it. Example: an extra \u20ac100 adds about \u20ac100",
+    "per active person-year before avoided event costs."
+  ),
+  tutorial_rrr = paste(
+    "This reduces MI and stroke risk for engaged users. Example: a 10%",
+    "reduction changes a 1.5% event risk to about 1.35% for the users receiving",
+    "the effect. Fewer events can reduce costs and increase QALYs."
+  ),
+  tutorial_engagement_year1 = paste(
+    "This is the share of users who receive the treatment effect in the first",
+    "year. At 70% engagement, about 70 of 100 users receive the risk-reduction",
+    "benefit. Higher engagement usually increases QALYs and avoided event",
+    "costs."
+  ),
+  tutorial_engagement_followup = paste(
+    "This determines how much of the treatment effect continues in later",
+    "years. Higher follow-up engagement usually increases long-term benefits",
+    "and avoided event costs."
+  ),
+  tutorial_utility_no_event = paste(
+    "This is the quality-of-life weight for a year without MI or stroke. A",
+    "utility of 0.86 means one year in this state contributes 0.86 QALYs.",
+    "Changing it can change the incremental QALY difference and therefore the",
+    "ICER."
+  ),
+  tutorial_bia_explain = paste(
+    "A technology can be cost effective and still be unaffordable. Costs come",
+    "from the price per active user plus a one-off implementation cost for each",
+    "new user. Savings come from assumed reductions in healthcare use for",
+    "active users. The net budget impact is costs minus savings, added up over",
+    "the horizon."
+  ),
+  tutorial_population = paste(
+    "A larger eligible population increases the number of users, so both the",
+    "cost and the net budget impact grow."
+  ),
+  tutorial_readiness_explain = paste(
+    "Reach combines the target population with access and digital suitability,",
+    "then with engagement. Workflow burden estimates the clinician time the",
+    "pathway needs; more review time means more strain on services. The traffic",
+    "lights summarise the domains: Red means a barrier to resolve before wide",
+    "deployment, Amber means mitigation may be needed, and Green means no",
+    "obvious barrier under these assumptions."
+  ),
+  tutorial_review_minutes = paste(
+    "More review minutes per patient means more total clinician hours, which",
+    "pushes the workflow domain towards amber or red."
+  ),
+  tutorial_interop_definition = paste(
+    "Interoperability means the intervention can exchange and use information",
+    "with other relevant health or digital systems."
+  ),
+  tutorial_language_definition = paste(
+    "Language availability means that users can understand and use the",
+    "intervention in the language needed for the target population."
   )
 )
 
@@ -1308,7 +1370,7 @@ cc_assumptions_table <- function(rows) {
   )
 }
 
-cc_assumptions_modal <- function(values) {
+cc_assumptions_modal <- function(values, open_section = NULL) {
   get_value <- function(name, default = NA) {
     value <- values[[name]]
     if (is.null(value) || length(value) == 0L) default else value[[1]]
@@ -1722,8 +1784,11 @@ cc_assumptions_modal <- function(values) {
     )
   )
 
+  # `open_section` lets a caller open the overlay with one named section
+  # already expanded (the PSA explanation links to "PSA and CEAC"). Every other
+  # section stays collapsed.
   sections <- bslib::accordion(
-    open = FALSE,
+    open = if (is.null(open_section)) FALSE else open_section,
     bslib::accordion_panel("User-adjustable inputs", user_adjustable),
     bslib::accordion_panel("Fixed model inputs", fixed_model_inputs),
     bslib::accordion_panel("Model structure", structure_notes),
@@ -1742,6 +1807,18 @@ cc_assumptions_modal <- function(values) {
     c(dialog$attribs$class, "cc-assumptions-modal"), collapse = " "
   )
   dialog
+}
+
+# Inline link-styled trigger that opens the read-only assumptions overlay with a
+# named section already expanded. It is a real Shiny action button (so it works
+# by mouse, keyboard and touch and reports to the server like any other input)
+# styled as a link, and it reuses the existing modal and accordion structure.
+cc_assumptions_link <- function(id, text, aria_label) {
+  shiny::actionButton(
+    id, text,
+    class = "cc-assumptions-link",
+    `aria-label` = aria_label
+  )
 }
 
 # Modern visual theme (bslib only). This is presentation-only: it changes
@@ -2147,10 +2224,90 @@ EQALB_THEME <- bslib::bs_add_rules(
   #shiny-modal.cc-assumptions-modal .accordion-button:not(.collapsed) {
     box-shadow: none;
   }
+  /* Inline link that opens the assumptions overlay at a named section. It is a
+     Shiny action button, so the default button chrome is neutralised here and
+     the element is styled as an in-sentence link. */
+  .btn.cc-assumptions-link {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    color: #176b73;
+    font: inherit;
+    line-height: inherit;
+    vertical-align: baseline;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    white-space: normal;
+  }
+  .btn.cc-assumptions-link:hover,
+  .btn.cc-assumptions-link:focus {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    color: #0f4f56;
+    text-decoration: underline;
+  }
+  .btn.cc-assumptions-link:focus-visible {
+    outline: 2px solid #2fa3ad;
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+  [data-bs-theme='dark'] .btn.cc-assumptions-link,
+  body[data-bs-theme='dark'] .btn.cc-assumptions-link { color: #7fd1d8; }
+  [data-bs-theme='dark'] .btn.cc-assumptions-link:hover,
+  [data-bs-theme='dark'] .btn.cc-assumptions-link:focus,
+  body[data-bs-theme='dark'] .btn.cc-assumptions-link:hover,
+  body[data-bs-theme='dark'] .btn.cc-assumptions-link:focus { color: #a8e6ec; }
+
   /* Short interpretive note under the base-case results table. */
   .cc-icer-note {
     font-size: 13px;
     margin: 0.5rem 0 0.75rem 0;
+  }
+  /* Progressive-disclosure blocks in the Guided tutorial: a compact summary
+     card, the linked-price row, and collapsible detail sections. */
+  .cc-tutorial-summary {
+    background-color: rgba(23, 107, 115, 0.06);
+    border-left: 3px solid #176b73;
+    border-radius: 0 6px 6px 0;
+    padding: 0.6rem 0.8rem;
+    margin: 0.5rem 0 0.9rem 0;
+  }
+  .cc-tutorial-summary p:last-child { margin-bottom: 0; }
+  .cc-tutorial-linkrow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin: 0.5rem 0 0.9rem 0;
+    font-size: 13px;
+  }
+  .cc-tutorial-linkrow .shiny-text-output { opacity: 0.85; }
+  .cc-tutorial-linkrow .btn { border-radius: 8px; }
+  .cc-tutorial-details {
+    margin-top: 0.9rem;
+    border-top: 1px solid rgba(128, 128, 128, 0.25);
+    padding-top: 0.5rem;
+  }
+  .cc-tutorial-details > summary {
+    cursor: pointer;
+    font-weight: 600;
+    padding: 0.15rem 0;
+  }
+  .cc-tutorial-details > summary:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+  .cc-tutorial-details[open] > summary { margin-bottom: 0.5rem; }
+  [data-bs-theme='dark'] .cc-tutorial-summary,
+  body[data-bs-theme='dark'] .cc-tutorial-summary {
+    background-color: rgba(127, 209, 216, 0.12);
+    border-left-color: #7fd1d8;
+  }
+  [data-bs-theme='dark'] .cc-tutorial-details,
+  body[data-bs-theme='dark'] .cc-tutorial-details {
+    border-top-color: rgba(230, 237, 241, 0.25);
   }
 
   /* Guided tutorial. Presentation only. Prose and tables read best left
@@ -2426,57 +2583,48 @@ ui <- fluidPage(
             tags$p(tags$strong("Try changing these assumptions")),
             sliderInput(
               "tutorial_price",
-              "Annual price of the technology (EUR per person per year)",
+              cc_label(
+                "Annual price of the technology (EUR per person per year)",
+                "the annual price of the technology", "tutorial_price",
+                "tutorial_price_info"
+              ),
               min = 0, max = 900, value = 360, step = 10
-            ),
-            tags$div(
-              class = "cc-tutorial-hint",
-              paste(
-                "A higher price increases the incremental cost, so the ICER",
-                "gets worse."
-              )
             ),
             sliderInput(
               "tutorial_rrr",
-              "Risk reduction for engaged users (%)",
+              cc_label(
+                "Risk reduction for engaged users (%)",
+                "the risk reduction for engaged users", "tutorial_rrr",
+                "tutorial_rrr_info"
+              ),
               min = 0, max = 30, value = 10, step = 1
-            ),
-            tags$div(
-              class = "cc-tutorial-hint",
-              paste(
-                "A larger risk reduction prevents more events, which adds",
-                "QALYs and improves the ICER."
-              )
             ),
             sliderInput(
               "tutorial_engagement_year1",
-              "Share of users engaged in year 1 (%)",
+              cc_label(
+                "Share of users engaged in year 1 (%)",
+                "the share of users engaged in year 1", "tutorial_engagement_year1",
+                "tutorial_engagement_year1_info"
+              ),
               min = 0, max = 100, value = 70, step = 1
-            ),
-            tags$div(
-              class = "cc-tutorial-hint",
-              paste(
-                "Only engaged users get the full benefit, so lower engagement",
-                "reduces the QALYs gained."
-              )
             ),
             sliderInput(
               "tutorial_engagement_followup",
-              "Share of users still engaged after the first year (%)",
+              cc_label(
+                "Share of users still engaged after the first year (%)",
+                "the share of users still engaged after the first year",
+                "tutorial_engagement_followup",
+                "tutorial_engagement_followup_info"
+              ),
               min = 0, max = 100, value = 42, step = 1
-            ),
-            tags$div(
-              class = "cc-tutorial-hint",
-              paste(
-                "Follow-up engagement is the proportion of users who remain",
-                "engaged after the first year. In this model year 1 uses the",
-                "year-1 share above and every later year uses this share, so it",
-                "also changes the base cost-effectiveness result."
-              )
             ),
             sliderInput(
               "tutorial_utility_no_event",
-              "Utility: quality of life with no event (0 to 1)",
+              cc_label(
+                "Utility: quality of life with no event (0 to 1)",
+                "the no-event utility", "tutorial_utility_no_event",
+                "tutorial_utility_no_event_info"
+              ),
               min = 0.50, max = 1.00, value = 0.86, step = 0.01
             ),
             tags$div(
@@ -2498,21 +2646,6 @@ ui <- fluidPage(
                 )
               )
             ),
-            tags$div(
-              class = "cc-tutorial-hint",
-              paste(
-                "Utility describes the quality of life associated with a health",
-                "state and helps convert survival and health outcomes into",
-                "QALYs."
-              )
-            ),
-            tags$div(
-              class = "cc-tutorial-hint",
-              paste(
-                "A higher utility means each year lived is worth more, so the",
-                "QALYs gained by the technology also change."
-              )
-            ),
             tags$h4("Result from the base model"),
             tableOutput("tutorial_ce_table"),
             plotOutput("tutorial_ce_plot", height = "380px")
@@ -2523,60 +2656,44 @@ ui <- fluidPage(
         conditionalPanel(
           condition = "input.tutorial_step === '2'",
           wellPanel(
-            tags$h4("Step 2. Budget impact"),
+            tags$h4(
+              "Step 2. Budget impact ",
+              cc_info(
+                "how budget impact is calculated", "tutorial_bia_explain",
+                "tutorial_bia_explain_info"
+              )
+            ),
             tags$p(paste(
               "Cost effectiveness asks whether the technology is worth its",
-              "price. Budget impact asks something different: how much money",
-              "the payer would spend over the next few years. A technology can",
-              "be cost effective and still be unaffordable."
+              "price. Budget impact asks a different question: how much money the",
+              "payer would spend over the next few years."
             )),
-            tags$ul(
-              class = "cc-tutorial-explain",
-              tags$li(paste(
-                "Costs come from the price per active user plus a one-off",
-                "implementation cost for each new user."
-              )),
-              tags$li(paste(
-                "Savings come from assumed reductions in healthcare use for",
-                "active users."
-              )),
-              tags$li(paste(
-                "The net budget impact is costs minus savings, added up over",
-                "the horizon."
-              ))
-            ),
-            tags$p(tags$strong("Try changing the eligible population")),
             sliderInput(
               "tutorial_population",
-              "Eligible population (people)",
+              cc_label(
+                "Eligible population (people)", "the eligible population",
+                "tutorial_population", "tutorial_population_info"
+              ),
               min = 10000, max = 500000, value = 100000, step = 10000
             ),
             tags$div(
-              class = "cc-tutorial-hint",
-              paste(
-                "A larger eligible population increases the number of users, so",
-                "both the cost and the net budget impact grow."
-              )
-            ),
-            tags$div(
-              class = "cc-tutorial-hint",
-              paste(
-                "The intervention price you set in step 1 is carried into this",
-                "budget-impact analysis. This shows how assumptions can affect",
-                "several parts of an HTA."
-              )
-            ),
-            tags$div(
-              style = "margin: 0.5rem 0 0.15rem 0;",
+              class = "cc-tutorial-linkrow",
+              textOutput("tutorial_bia_linked_price", inline = TRUE),
               actionButton(
-                "tutorial_back_to_price",
-                "Want to see what changes when you adjust the price?"
+                "tutorial_back_to_price", "Adjust linked price in Step 1"
               )
             ),
             tags$h4("Result from the budget-impact analysis"),
-            textOutput("tutorial_bia_total"),
-            tableOutput("tutorial_bia_table"),
-            plotOutput("tutorial_bia_plot", height = "340px")
+            tags$div(
+              class = "cc-tutorial-summary",
+              textOutput("tutorial_bia_total")
+            ),
+            tags$details(
+              class = "cc-tutorial-details",
+              tags$summary("View annual breakdown"),
+              tableOutput("tutorial_bia_table"),
+              plotOutput("tutorial_bia_plot", height = "340px")
+            )
           )
         ),
 
@@ -2586,94 +2703,71 @@ ui <- fluidPage(
         conditionalPanel(
           condition = "input.tutorial_step === '3'",
           wellPanel(
-            tags$h4("Step 3. DHT readiness"),
+            tags$h4(
+              "Step 3. DHT readiness ",
+              cc_info(
+                "how readiness is assessed", "tutorial_readiness_explain",
+                "tutorial_readiness_explain_info"
+              )
+            ),
             tags$p(paste(
               "A model can look favourable and still fail in practice. The",
               "readiness assessment checks whether the technology can actually",
               "reach and support patients."
             )),
-            tags$ul(
-              class = "cc-tutorial-explain",
-              tags$li(paste(
-                "Reach combines the target population with access and digital",
-                "suitability, then with engagement."
-              )),
-              tags$li(paste(
-                "Workflow burden estimates the clinician time the pathway needs.",
-                "More review time means more strain on services."
-              )),
-              tags$li(paste(
-                "The traffic lights summarise the domains. Red means a barrier",
-                "to resolve before wide deployment, amber means mitigation may",
-                "be needed, and green means no obvious barrier under these",
-                "assumptions."
-              ))
-            ),
-            tags$p(tags$strong("Try changing the clinician review time")),
+            tags$h5("Readiness domain statuses"),
+            uiOutput("tutorial_readiness_cards"),
             sliderInput(
               "tutorial_review_minutes",
-              "Clinician review minutes per patient per month",
+              cc_label(
+                "Clinician review minutes per patient per month",
+                "the clinician review time", "tutorial_review_minutes",
+                "tutorial_review_minutes_info"
+              ),
               min = 0, max = 30, value = 10, step = 1
-            ),
-            tags$div(
-              class = "cc-tutorial-hint",
-              paste(
-                "More review minutes per patient means more total clinician",
-                "hours, which pushes the workflow domain towards amber or red."
-              )
-            ),
-            tags$div(
-              class = "cc-tutorial-hint",
-              paste(
-                "The engagement assumptions are the year-1 and follow-up",
-                "engagement values you set in step 1, so changing them there also",
-                "changes the readiness results here."
-              )
-            ),
-            tags$p(tags$strong("Two simple readiness questions")),
-            tags$div(
-              class = "cc-tutorial-check",
-              checkboxInput(
-                "tutorial_interop_available",
-                "Is the intervention interoperable?",
-                value = TRUE
-              ),
-              tags$div(
-                class = "cc-tutorial-hint",
-                paste(
-                  "Interoperability means the intervention can exchange and use",
-                  "information with other relevant health or digital systems."
-                )
-              )
-            ),
-            tags$div(
-              class = "cc-tutorial-check",
-              checkboxInput(
-                "tutorial_language_available",
-                "Is the intervention available in the required language?",
-                value = TRUE
-              ),
-              tags$div(
-                class = "cc-tutorial-hint",
-                paste(
-                  "Language availability means that users can understand and use",
-                  "the intervention in the language needed for the target",
-                  "population."
-                )
-              )
             ),
             tags$p(
               class = "cc-tutorial-hint",
               paste(
-                "Both answers feed the existing readiness calculation: they set",
-                "the interoperability and language-access domains. Algorithm",
-                "governance is not assessed in this simplified tutorial."
+                "Engagement is shared with Step 1, so changing the year-1 or",
+                "follow-up engagement there also changes these domains."
               )
             ),
-            uiOutput("tutorial_readiness_checks"),
-            tags$h4("Result from the readiness assessment"),
-            tableOutput("tutorial_readiness_numbers"),
-            uiOutput("tutorial_readiness_cards")
+            tags$h5("Implementation conditions"),
+            tags$div(
+              class = "cc-tutorial-summary",
+              checkboxInput(
+                "tutorial_interop_available",
+                cc_label(
+                  "Is the intervention interoperable?", "interoperability",
+                  "tutorial_interop_definition", "tutorial_interop_info"
+                ),
+                value = TRUE
+              ),
+              checkboxInput(
+                "tutorial_language_available",
+                cc_label(
+                  "Is the intervention available in the required language?",
+                  "language availability", "tutorial_language_definition",
+                  "tutorial_language_info"
+                ),
+                value = TRUE
+              ),
+              tags$p(
+                class = "cc-tutorial-hint",
+                paste(
+                  "Both answers set the interoperability and language-access",
+                  "domains. Algorithm governance is not assessed in this",
+                  "simplified tutorial."
+                )
+              )
+            ),
+            tags$details(
+              class = "cc-tutorial-details",
+              tags$summary("View readiness calculations"),
+              tableOutput("tutorial_readiness_numbers"),
+              uiOutput("tutorial_readiness_checks")
+            )
           )
         ),
 
@@ -3155,11 +3249,22 @@ ui <- fluidPage(
         ),
         column(
           8,
-          tags$p(class = "text-muted", paste(
-            "PSA varies multiple uncertain parameters together. It does not",
-            "change the global product assumptions shown above unless the PSA",
-            "samples those parameters from their specified distributions."
-          )),
+          tags$p(
+            class = "text-muted",
+            "PSA varies ",
+            cc_assumptions_link(
+              "psa_parameters_link", "multiple uncertain parameters",
+              paste(
+                "Open the model assumptions and inputs overlay at the",
+                "PSA and CEAC section"
+              )
+            ),
+            paste0(
+              " together. It does not change the global product assumptions",
+              " shown above unless the PSA samples those parameters from their",
+              " specified distributions."
+            )
+          ),
           tags$p(paste(
             "Probabilities of cost-effectiveness are conditional on this model",
             "and its illustrative uncertainty distributions."
@@ -6074,6 +6179,17 @@ server <- function(input, output, session) {
     )
   })
 
+  # Keeps the linked intervention price visible on the budget-impact step
+  # without duplicating the Step-1 control. Presentation only: it reads the
+  # existing tutorial price input and performs no calculation.
+  output$tutorial_bia_linked_price <- renderText({
+    paste0(
+      "Intervention price from Step 1: ",
+      format_euros_signed(input$tutorial_price),
+      " per active user per year."
+    )
+  })
+
   output$tutorial_bia_table <- renderTable({
     result <- tutorial_bia()
     data.frame(
@@ -6283,6 +6399,16 @@ server <- function(input, output, session) {
   # isolated, so changing an input never re-opens the modal.
   observeEvent(input$show_assumptions, {
     showModal(cc_assumptions_modal(isolate(reactiveValuesToList(input))))
+  })
+
+  # Inline trigger inside the PSA explanation. Reuses the same read-only
+  # overlay, opened with the "PSA and CEAC" section already expanded and the
+  # other sections left collapsed.
+  observeEvent(input$psa_parameters_link, {
+    showModal(cc_assumptions_modal(
+      isolate(reactiveValuesToList(input)),
+      open_section = "PSA and CEAC"
+    ))
   })
 
   observeEvent(input$go_home, {
