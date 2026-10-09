@@ -6,9 +6,11 @@ An interactive Shiny application for exploring health technology assessment meth
 
 This repository contains an interactive Shiny application that works through a simplified health technology assessment (HTA) of eQalb.
 
-eQalb is a fictional prescription digital health technology for adults with uncontrolled hypertension. It is the technology being assessed, not the name of the application. The interactive Shiny application is the learning tool that assesses it, showing how an HTA model is structured, calculated, visualised, and interpreted.
+eQalb is a fictional prescription digital health technology for adults with uncontrolled hypertension. It is the technology being assessed, and it also names this application, which was originally called CardioConnect and was renamed to eQalb. The interactive Shiny application is the learning tool that assesses it, showing how an HTA model is structured, calculated, visualised, and interpreted.
 
 At its core the application runs a two-strategy Markov model that compares eQalb plus usual care with usual care alone. Around that core model it adds views for uncertainty, affordability, clinical outcomes, implementation readiness, and evidence priorities, so the whole assessment can be explored in one place.
+
+The reference willingness-to-pay threshold is EUR 100,000 per QALY, and every threshold control in the application defaults to it: the PSA reference threshold, the one-way sensitivity-analysis willingness-to-pay value, the VOI thresholds, the HTA decision-summary rules, and the Part 2 value-for-money test.
 
 Every clinical effect, cost, utility, event risk, survival curve, and economic result comes from simulated data and illustrative assumptions produced by the code in this repository. The project is an educational model, not clinical evidence, a validated HTA, or an official NICE, payer, regulatory, reimbursement, or policy recommendation.
 
@@ -41,6 +43,7 @@ Supporting functionality:
 
 - A landing page offering Start analysis, Guided tutorial, Project description, and Download results.
 - A Guided tutorial: a four step beginner walkthrough of the base cost effectiveness, budget impact, DHT readiness, and the tutorial decision summary, using the same base model as the full analysis.
+- An optional Guided tutorial Part 2 commissioning case challenge: three randomly drawn complete cases with a negotiated-price lever, a coverage cap, a DHT readiness exercise, and a recommendation checklist.
 - A welcome prompt the first time you open the full analysis from the home page, suggesting the tutorial to newcomers.
 - A light and dark mode switch.
 - A Download results package button that exports the results already produced in the session, plus per-analysis download buttons inside the tabs.
@@ -77,9 +80,30 @@ The guided tutorial uses the same illustrative base model as the full analysis a
 | 3 | DHT readiness, with a slider for clinician review minutes plus two yes or no questions on interoperability and language availability. The engagement assumptions come from step 1. |
 | 4 | Tutorial decision summary, covering cost effectiveness, budget impact, clinical evidence maturity, and implementation readiness, with a short traffic light rules popover, a compact list of evidence generation priorities, and a Finish tutorial button. |
 
-Finishing the tutorial shows a centred completion note that points to the full analysis and its uncertainty and value of information methods, without running any analysis automatically. From there you can open the full analysis or restart the tutorial.
+Finishing the tutorial shows a centred completion note that points to the full analysis and its uncertainty and value of information methods, without running any analysis automatically. From there you can open the full analysis, restart the tutorial, or continue to Guided Tutorial Part 2.
 
-The default assumptions are illustrative starting values, for example an annual intervention price of EUR 360, an implementation cost of EUR 40 per new user, annual healthcare savings of EUR 20 per active user, a 10% relative risk reduction among engaged users, and 70% engagement in year 1 with 42% at follow-up.
+### Guided Tutorial Part 2: commissioning case challenge
+
+Part 2 is an optional continuation, reachable only from the Part 1 completion note. It is a five-section tutorial-only commissioning case and it changes nothing in Part 1 or in the analysis tabs.
+
+Three complete cases are predefined, and the application draws one at random when the session opens. The chosen case stays fixed for the whole run, so changing a control or moving between sections never switches it, and a short banner always names the active case. A Case facts button in the top row opens a read-only overlay of the same facts.
+
+The case has two levers:
+
+- The negotiated annual price (EUR 150 to EUR 360), which changes only this case's per-person result.
+- The programme coverage cap (10% to 100% of the potentially eligible population), which changes only the five-year budget impact.
+
+| Section | What the learner does |
+|---|---|
+| Case brief | Reads the fixed case facts, including the manufacturer's minimum acceptable price of EUR 150 per active user per year. |
+| Value for money | Finds the highest annual price that still passes the payer's EUR 100,000/QALY threshold, using the price slider, with an ICER curve across the whole slider range and feedback stating whether the price is below the maximum, at the maximum, or above the threshold. |
+| Budget impact | Finds the highest coverage cap that stays within the five-year EUR 3 million budget, with a live status line and a collapsible annual breakdown. |
+| DHT readiness | Answers four case-based questions on interoperability, algorithm governance, workflow burden, and follow-up engagement. This is a learning exercise and shows no traffic-light verdicts of its own. |
+| Recommendation | Shows the readiness traffic lights for the selected answers, the checklist for value for money, budget impact, readiness and coverage, and the resulting recommendation. |
+
+The "Retry Part 2 with different assumptions" button on the completion card draws a different case, returns the price, the coverage cap, the section, and the four readiness answers to their defaults, and reopens the case brief.
+
+The default assumptions are illustrative starting values, for example an annual intervention price of EUR 360, an implementation cost of EUR 40 per new user, annual healthcare savings of EUR 20 per active user, a 10% relative risk reduction among engaged users, and 70% engagement in year 1 with 42% at follow-up. These are the full-analysis and Part 1 tutorial defaults; Part 2 uses the values of whichever case it drew.
 
 ## Technical stack
 
@@ -173,7 +197,7 @@ Screenshots are not committed to the repository yet. The hosted demo above is th
 
 ## License
 
-This project is licensed under the MIT License. See `LICENSE` for details.
+This project is licensed under the MIT License. See `License` for details.
 
 ## Educational disclaimer
 

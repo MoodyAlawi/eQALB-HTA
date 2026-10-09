@@ -1,6 +1,6 @@
 # eQalb project state
 
-Last verified: 2026-10-05
+Last verified: 2026-10-09
 
 ## Project purpose
 
@@ -15,8 +15,12 @@ explicitly documented otherwise.
 
 - `app.R`: Shiny UI and server logic.
 - `eqalb_markov.R`: economic model and reusable model functions.
-- `AGENTS.md`: permanent instructions for the coding agent.
-- `PROJECT_STATE.md`: current verified project state and next task.
+- `eqalb_owsa.R`: reusable one-way sensitivity-analysis helper.
+- `eqalb_survival.R`: reusable simulated survival (Kaplan-Meier) helper.
+- `readme.md`: project overview and user-facing documentation.
+- `run_app.R`: launcher that pins the address to 127.0.0.1:7788.
+- `agents.md`: permanent instructions for the coding agent.
+- `project_state.md`: current verified project state and next task.
 
 ## Working modules
 
@@ -34,14 +38,36 @@ explicitly documented otherwise.
   tab. One user-facing WTP control (Reference WTP threshold) drives the headline
   probability of cost-effectiveness, the reference row of the PSA summary table,
   the VOI thresholds and the HTA-summary rules. The CEAC x-axis upper limit is
-  derived internally from that one control, so no second threshold is exposed.
-  The CEAC subtitle explains how to read the curve.
-- DHT Readiness & Implementation tab.
+  derived internally from that one control, so the CEAC exposes no second
+  threshold of its own; the one-way sensitivity section keeps its own
+  willingness-to-pay input for its incremental net monetary benefit column, and
+  every threshold input in the app defaults to €100,000/QALY. The CEAC subtitle
+  explains how to read the curve.
+- DHT Readiness & Implementation tab: quantitative reach and workload
+  outputs, a seven-row "Domain assessment" table (domain, status, current input
+  and plain-language interpretation) and the readiness inputs (target
+  population, access, suitability, review minutes, languages, accessibility,
+  interoperability and algorithm governance). Engagement is not adjustable here:
+  the assessment reads the live year-1 and follow-up engagement values from
+  Global Settings, so there is one engagement control in the app. The
+  tab no longer shows a "Readiness overview" section; the per-domain detail
+  lives in the Domain assessment table only, which is rendered inside a
+  `.cc-readiness-domain` wrapper with a fixed column layout so the four-column
+  table stays inside the panel at mobile widths.
 - Budget-impact analysis (five-year, deterministic) in the existing
   Cost-effectiveness tab.
-- Value of information (VOI) tab: EVPI per patient, a decision-uncertainty
-  traffic light, and regression-based EVPPI per patient for the nine sampled PSA
-  parameters.
+- Value of information (VOI) tab: EVPI per patient and regression-based EVPPI per
+  patient for the nine sampled PSA parameters. The tab carries no traffic light
+  of its own. Its interpretation sits behind a green on-demand "Decision context
+  and interpretation" button (`cc_context_popover()`, trigger class
+  `cc-context-trigger`, popover class `cc-context-popover`), which opens a short
+  panel holding one dynamic headline (`assessment$label` from
+  `voi_uncertainty_status()`), one plain-language paragraph built from the
+  preferred option, the current EVPI and a magnitude word, and one example
+  sentence. The "Method and limitations" list is a collapsed-by-default bslib
+  accordion (`voi_method_accordion`) with the same six items. Decision
+  uncertainty is shown as a traffic light only in the HTA decision summary,
+  which calls the same `voi_uncertainty_status()` helper.
 - HTA decision summary tab: a five-domain traffic-light dashboard (economic
   value, decision uncertainty, budget impact, clinical evidence maturity,
   implementation readiness), an overall status, a provisional HTA position, a
@@ -65,10 +91,11 @@ explicitly documented otherwise.
   budget impact, DHT readiness, tutorial decision summary) with Next, Back, an
   exit, a return-to-step-1 control on the budget-impact step, a Finish tutorial
   button and a centred tutorial-specific completion card offering Open full
-  analysis or Restart tutorial. It reuses the existing model, budget-impact and
-  readiness functions and the existing `assess_hta_decision_summary()` readiness
-  result, and shares the Cost-effectiveness plane and budget-impact chart
-  builders with the full analysis. Step 1 also shows a compact read-only block
+  analysis, Restart tutorial or Start Part 2: Commissioning case. It reuses the
+  existing model, budget-impact and readiness functions and the existing
+  `assess_hta_decision_summary()` readiness result, and shares the
+  Cost-effectiveness plane and budget-impact chart builders with the full
+  analysis. Step 1 also shows a compact read-only block
   under the no-event utility slider listing the fixed post-event utilities the
   tutorial applies (post-MI and post-stroke) with a short explanation. The
   five step-1 sliders (price, risk reduction, year-1 engagement, follow-up
@@ -90,19 +117,29 @@ explicitly documented otherwise.
   It is a five-section tutorial-only case (Case brief, Value for money, Budget
   impact, DHT readiness, Recommendation) held in its own `tutorial_step` value
   (`part2`) with its own sub-step input (`tutorial_part2_step`), so every Part 1
-  panel is untouched. The case facts are fixed and rendered read-only from
-  `part2_case_facts()` (the utilities are read from the model file, so they
-  cannot drift): RRR 10%, year-1 engagement 70%, follow-up engagement 42%,
-  utilities 0.86 / 0.80 / 0.60, population 100,000, review 10 minutes,
-  interoperability Yes, language Yes, WTP €100,000, five-year ceiling
-  €3,000,000, no Red domain allowed, plus the manufacturer's minimum acceptable
-  price of €150 per active user per year. The case has two levers: the negotiated
-  price and a programme coverage cap. The price lever is
+  panel is untouched. Three complete, internally consistent cases are predefined
+  in `PART2_CASES` (Case A "Regional roll-out", Case B "Integrated pilot", Case C
+  "Fragmented deployment"), and `part2_case_index` draws one at session start and
+  holds it for the whole run, so navigating or moving a lever never changes it.
+  Every displayed fact, every model input and the budget, readiness and
+  recommendation calculations read that one case through `part2_case_facts()`
+  (the utilities are read from the model file, so they cannot drift), and an
+  "Active case" banner plus the read-only Case facts overlay always name it. The
+  facts are fixed per case, not globally: Case A is RRR 10%, year-1 engagement
+  70%, follow-up engagement 42%, utilities 0.86 / 0.80 / 0.60, population
+  100,000, review 10 minutes, 3 languages; Cases B and C differ on those values.
+  Interoperability reads Yes in every case, while required-language availability
+  reads Yes when the case supports at least three languages and No otherwise, so
+  Case C (2 languages) reads No. WTP €100,000, the five-year ceiling
+  €3,000,000, no Red domain allowed and the manufacturer's minimum acceptable
+  price of €150 per active user per year are identical in all three cases. The
+  case has two levers: the negotiated price and a programme coverage cap. The
+  price lever is
   `part2_price` (€150-360, default 360, step 5), which is passed into the
   existing `run_eqalb_model()` / `calculate_budget_impact()` and
   `calculate_readiness()` and affects the case only. The coverage lever is
   `part2_coverage` ("Programme coverage cap (% of eligible population)",
-  10-100, default 100, step 5); it scales the 100,000 potentially eligible
+  10-100, default 100, step 5); it scales the case's own potentially eligible
   population passed to `calculate_budget_impact()` for the Part 2 budget impact
   only, via `part2_coverage_pct()` and `part2_covered_population()`, so the
   annual table, chart, five-year total, affordability status and recommendation
@@ -334,10 +371,11 @@ explicitly documented otherwise.
   therefore changes Part 2 as well, exactly as they change the Part 1 tutorial.
   The case's own inputs are the negotiated price, the programme coverage cap and
   the four readiness-exercise choices.
-- Part 2 fixes the three utilities at the model constants (0.86 / 0.80 / 0.60)
-  and the no-event utility at 0.86, so unlike the Part 1 tutorial it does not
-  follow the editable no-event utility slider. This is intentional: the case
-  facts are declared evidence facts, not learner levers.
+- Part 2 fixes the three utilities at the active case's own values (Case A
+  0.86 / 0.80 / 0.60, with Cases B and C differing) rather than at the model
+  constants, so unlike the Part 1 tutorial it does not follow the editable
+  no-event utility slider. This is intentional: the case facts are declared
+  evidence facts, not learner levers.
 - Part 2's readiness summary shows all seven readiness domains, including
   Algorithm governance, which the Part 1 tutorial deliberately drops from its
   simplified view. It is rendered in the Recommendation section, while the five
@@ -356,15 +394,21 @@ explicitly documented otherwise.
   economic model and the budget impact keep the fixed 42% case value, so the
   case fact and the exercise can show different follow-up assumptions side by
   side. At High 90% the existing "Engagement retention" row (follow-up / year-1)
-  reads above 100%, which is the existing formula rather than a new one. The
-  card text repeats what the question describes, so a learner sees the
-  engagement choice echoed as "Follow-up engagement is sustained..." rather than
-  a plain 90%.
+  reads above 100%, which is the existing formula rather than a new one. Part 2
+  restates the card text from the learner's own answer, so the choice is named
+  as "Follow-up engagement is low / moderate / high" rather than echoed as a
+  traffic-light band.
 - The readiness exercise is a single-radio group per question with correct answer
   "C" in three of the four questions. That is intentional teaching: the options
   describe progressively better implementation positions. The exercise has no
   scoring or feedback of its own, so the only consequence of a weak answer is the
   Recommendation verdict.
+- The full-analysis DHT Readiness tab has no engagement control of its own. Its
+  engagement domain and the follow-up reach figure read the global year-1 and
+  follow-up engagement values, so the same figures serve the economic model and
+  the readiness assessment and the two can never disagree. The tab still
+  requires "Assess readiness" to be clicked, so a global engagement change is
+  reflected only after the next assessment.
 - The five-year net budget impact is exactly linear in the Part 2 levers:
   total = covered population x 15,000 x price + 360,000, and the covered
   population is the coverage cap times 100,000. At the minimum price of €150 the
@@ -561,24 +605,28 @@ explicitly documented otherwise.
 
 ## Current task
 
-Completed: the two confirmed findings from the Part 2 end-to-end audit were
-fixed. "Retry Part 2 with different assumptions" now returns all four readiness
-answers to their defaults (`PART2_INTEROP_DEFAULT`, `PART2_GOVERNANCE_DEFAULT`,
-`PART2_WORKFLOW_DEFAULT`, `PART2_ENGAGEMENT_DEFAULT`) alongside the price,
-coverage and section resets, so a retry no longer inherits the previous case's
-answers. The Recommendation section restates the Engagement description from the
-learner's selected value via `part2_engagement_level()`, so 30% reads "Follow-up
-engagement is low.", 60% reads "moderate." and 90% reads "high."; the Amber and
-Green statuses, the thresholds and the colours are unchanged, and the shared
-`calculate_readiness()` text stays untouched for the DHT Readiness tab. Case
-facts, case selection, economic formulas, price logic, budget logic, Part 1, the
-full analysis, exports and layout were not changed.
+Completed: a focused cleanup of the full-analysis "DHT Readiness &
+Implementation" tab. The tab's own Year-1 and Follow-up engagement sliders were
+removed, so Global Settings is now the only place in the app where engagement is
+adjusted; the assessment reads `input$engagement_year1` and
+`input$engagement_followup`, so a change there is picked up by the next "Assess
+readiness" click, and the readiness inputs table in the read-only Assumptions
+overlay reads the same two values. The duplicated "Readiness overview" section
+and its large per-domain cards were removed, leaving the compact seven-row
+Domain assessment table, the quantitative outputs table, the traffic-light rules
+control and all other readiness controls. Because that four-column table was the
+only element in the app that overflowed at 390px, it is now rendered inside a
+`.cc-readiness-domain` wrapper with the same fixed-layout treatment the Part 2
+case-fact table already uses, so the tab no longer forces a horizontal scroll.
+`calculate_readiness()` and its thresholds, the traffic-light rules, Part 1,
+Part 2, the VOI and HTA-summary tabs, the economic outputs and exports were not
+changed.
 
 ## Next planned task
 
-Decide whether the shared readiness thresholds should separate 60% and 90%
-engagement, since both currently resolve to Green, and review the Part 2 teaching
-sequence end to end with the corrected engagement wording in place.
+Review the DHT Readiness tab end to end now that it has a single engagement
+control and a single readiness display, and confirm the Assumptions overlay and
+the HTA decision summary still describe the tab accurately.
 
 ### Superseded note
 
@@ -646,3 +694,7 @@ the live inputs and the CEAC curve is correctly aligned.
 | 2026-10-09 | Part 2 follow-up-engagement linkage fix (app.R only): `part2_readiness()` was still passing the case fact (`case$followup_engagement`) as `readiness_followup_engagement`, so the learner`s Follow-up engagement answer was inert and the readiness Engagement domain never responded to it. It now passes `choices$followup_engagement`, the existing learner-selected value from `part2_readiness_choices()` (Low 30 / Moderate 60 / High 90 via `PART2_ENGAGEMENT_PCT`), so the selected answer drives the Engagement domain, the "Active users at follow-up" row and the live reach line while the case follow-up engagement stays a displayed case fact only. No thresholds, mappings, option values, IDs, case facts, price, ICER, budget-impact or coverage logic changed, and `calculate_readiness()` is untouched, so Part 1 and the full analysis are unaffected | Yes - tested in the running app on Case C (140,000 people, case follow-up 40%, eligible 89,250): the live line now tracks the answer - Low 30% gives 26,775 active users at follow-up (89,250 x 0.30), Moderate 60% gives 53,550 (x 0.60) and High 90% gives 80,325 (x 0.90), where previously all three showed the case value of 35,700; the Recommendation Engagement domain now responds - Low 30% gives "Engagement - Amber" with the existing Amber wording, Moderate 60% gives "Engagement - Green" and High 90% gives "Engagement - Green", all under the unchanged thresholds (>=60 Green, >=30 Amber, else Red); the other four domains were identical at every engagement level (Equity and access Green, Workflow burden Amber, Interoperability Green, Algorithm governance Amber), so nothing else moved; price, ICER, coverage and budget were byte-identical at Low and High (EUR 150 price, value card EUR 736.40 / 0.00921 QALYs / ICER EUR 79,999.04, coverage note "Maximum affordable coverage achieved." at 30%); Part 1 unchanged (Step 1 of 4, base EUR 2,439.28 / 0.00816 / EUR 298,965.51); full analysis unchanged (base case EUR 2,439.28 / 0.00816 / EUR 298,965.51, budget impact EUR 15,480,000.00); 292 element ids with 0 duplicates; at 390px no horizontal overflow (scrollWidth equals clientWidth at 375); the app server log shows no errors; app.R parses. Note: because the shared thresholds are >=60 Green and >=30 Amber, the spec`s Low 30 / Moderate 60 / High 90 values collapse to Amber / Green / Green, so the exercise shows only two distinct engagement messages and the Amber wording says "moderate"; distinguishing all three levels would need either different learner percentages or Part 2-specific thresholds, neither of which was in scope |
 | 2026-10-09 | Part 2 value-for-money exercise changed to ask for the highest price that still passes, not any passing price (app.R only): added `PART2_PRICE_TASK` as a visible task line, `PART2_PRICE_BELOW_MAX` / `PART2_PRICE_AT_MAX` / `PART2_PRICE_OVER` as the three result states, and `part2_max_acceptable_price()`, which reads the highest passing slider value from the already-cached `part2_icer_curve()` so no model run was added and the answer never depends on the learner's slider; rewrote `output$part2_value_result` to report above-threshold, passing-below-maximum or maximum-reached, and removed the now-unused `PART2_MILESTONE_VALUE` constant whose message fired on any passing price; replaced the Case brief sentence and price lever note that described the passing band as the answer, and refreshed the stale price-lever comment. ICER formula, WTP threshold, case selection, budget impact, coverage, DHT readiness, Part 1 and full analysis unchanged. Targeted validation in the running app: Case A highest passing price EUR 155 (150 passes, 155 passes, 160/200/355/360 fail; ICER EUR 99,971.07 at 155) and multiple passing prices above EUR 150; Case B highest EUR 295 (290 passes, 295 passes, 300/360 fail); Case C highest EUR 170 (165 passes, 170 passes, 175/360 fail); each case shows the top-of-band message only at its own highest value; ICER still the existing formula (incremental cost / incremental QALYs); recommendation checklist, budget one-line status and readiness traffic lights unchanged; 292 element ids with 0 duplicates; no horizontal overflow at 390px (scrollWidth 375 = clientWidth 375); dark mode toggles and the section stays readable; full analysis still EUR 2,439.28 incremental cost, 0.00816 incremental QALYs, EUR 298,965.51 ICER and EUR 15,480,000.00 five-year budget impact; app server log shows no errors; app.R parses. | Yes - tested in the running app |
 | 2026-10-09 | Fix of the two confirmed Part 2 audit findings (app.R only): `reset_part2()` now also calls `updateRadioButtons()` for `part2_interop`, `part2_governance`, `part2_workflow` and `part2_engagement`, returning them to `PART2_INTEROP_DEFAULT` / `PART2_GOVERNANCE_DEFAULT` / `PART2_WORKFLOW_DEFAULT` / `PART2_ENGAGEMENT_DEFAULT`, so "Retry Part 2 with different assumptions" no longer carries the previous case's DHT answers; and `part2_readiness()` now restates the Engagement explanation from the learner's own answer via a new `part2_engagement_level()` helper, so the Recommendation card reads "Follow-up engagement is low." at 30%, "moderate." at 60% and "high." at 90% instead of always using the traffic light's band wording. The statuses, thresholds and colours are unchanged, `calculate_readiness()` and its shared text are untouched (the DHT Readiness tab still shows its original sentence), and case facts, case selection, economic formulas, price logic, budget logic, Part 1, the full analysis, exports and layout were not changed. Targeted validation in the running app: with non-default answers (no / weak / high / high) plus price EUR 200 and coverage 30%, clicking Retry moved Case B to Case C and returned all four answers to strong / partial / moderate / low with price 360, coverage 100% and section 1 of 5, and the banner changed with it; engagement wording verified exactly at all three levels (30% -> Amber "Follow-up engagement is low.", 60% -> Green "moderate.", 90% -> Green "high."); Case C still shows its highest passing price of EUR 170 and maximum affordable coverage of 30% (25% within budget, 35% above); full analysis still EUR 2,439.28 incremental cost, 0.00816 incremental QALYs, EUR 298,965.51 ICER and EUR 15,480,000.00 five-year budget impact; 293 element ids with 0 duplicates; no horizontal overflow at 390px (scrollWidth 375 = clientWidth 375); dark mode toggles with no overflow; app server log shows no errors; app.R parses. | Yes - tested in the running app |
+| 2026-10-09 | Focused cleanup of the full-analysis "DHT Readiness & Implementation" tab (app.R only): removed the tab's own Year-1 and Follow-up engagement sliders so Global Settings is the only place engagement is adjusted, and pointed `calculate_readiness()` at `input$engagement_year1` / `input$engagement_followup` with a comment explaining why, so the next "Assess readiness" click uses the latest global values; removed the two now-dead `updateSliderInput()` lines from the Reset values handler so it no longer targets missing inputs; removed the duplicated "Readiness overview" section and its `output$readiness_cards` renderer plus the unused `uiOutput("readiness_cards")` call, leaving the compact seven-row Domain assessment table, the quantitative outputs table, the traffic-light rules control and every other readiness control; updated the `readiness_inputs` table in the read-only Assumptions overlay to read the global engagement inputs so it cannot show a blank value; and wrapped the four-column Domain assessment table in a `.cc-readiness-domain` wrapper with a new scoped fixed-layout CSS rule matching the existing `.cc-part2-facts` approach, because that table was the only element in the app that overflowed at 390px. `calculate_readiness()` and its thresholds, the traffic-light rules, Part 1, Part 2, value for money, the budget impact, the VOI and HTA-summary tabs, the economic outputs and exports are unchanged | Yes - tested in the running app: the sidebar has no engagement control and no duplicate id (0 matches for `readiness_year1_engagement` / `readiness_followup_engagement` in the DOM) and the "Readiness overview" text is gone; changing Global Settings to 70/20 and assessing gives Engagement Red with "Follow-up 20.0% (year-1 70.0%)" and 12,750 active users at follow-up, while 70/90 gives Engagement Green with 57,375, and the Assumptions overlay shows the live values (55% / 80% when set so); the Domain assessment table renders all seven rows with the expected statuses (Equity Green, Engagement Amber, Workflow Amber, Language Red, Accessibility Green, Interoperability Amber, Governance Amber) and "2 Green, 4 Amber and 1 Red across 7 illustrative domains"; the base case and budget impact are unchanged (EUR 2,439.28 / 0.00816 / ICER EUR 298,965.51 and EUR 15,480,000.00) and the HTA decision summary still reads 2 Green, 4 Amber, 1 Red from the DHT assessment; Part 1 step 3 and Part 2 (Case B, four readiness questions, Recommendation cards) both still work; 290 element ids with 0 duplicates in the full analysis and 288 in Part 2; at 390px every tab now has scrollWidth equal to clientWidth (the DHT tab went from 453 to 375 with 0 overflowing elements and the table at 327px), and dark mode is readable (`rgb(180,186,193)` table text); the app server log shows no errors; app.R parses |
+| 2026-10-09 | DHT readiness engagement linkage: verified, no code change needed (project_state.md only). A read-only trace of the full-analysis path shows `observeEvent(input$assess_readiness, ...)` passes `readiness_year1_engagement = input$engagement_year1` and `readiness_followup_engagement = input$engagement_followup` (app.R:6135-6136), so every argument to `calculate_readiness()` from the full-analysis observer comes from the live Global Settings sliders; there is no literal 70 or 42 anywhere in the full-analysis readiness path (the only remaining ones are the Global Settings slider defaults themselves, the separate `tutorial_engagement_*` sliders, the Case A case facts, and tutorial info text). The quantitative outputs table, the Engagement row of the Domain assessment table, the HTA decision summary implementation-readiness domain and the `dht_readiness_results.csv` export all read the single cached `readiness_state()` result, so they cannot diverge from each other. Verified in the running app: 55%/80% -> 35,062 active users at year 1, 51,000 at follow-up, retention 145.5%, Engagement Green "Follow-up 80.0% (year-1 55.0%)"; 70%/20% -> 44,625 / 12,750, retention 28.6%, Engagement Red "Follow-up 20.0%"; restoring 70%/42% returns 44,625 / 26,775, retention 60.0%, Engagement Amber; the HTA summary followed from Amber "2 Green, 4 Amber, 1 Red" to Red "2 Green, 3 Amber, 2 Red" after the same change. Part 1 still has its own engagement sliders (70/42) and Part 2 still uses its case facts (Case C 65%/40%). No app.R change was made, so the reported symptom in an already-open session is explained by the running instance predating the change (Shiny does not hot-reload app.R) or by reading the tab without re-clicking Assess readiness, which is button-gated by design | Yes - verified in the running app |
+| 2026-10-09 | Value of information tab UI only (app.R only): replaced the permanently visible "What this means" well panel under the EVPI traffic-light result with a green on-demand "Decision context and interpretation" popover button. Added one reusable helper `cc_context_popover(trigger, title, intro, items, aria_label)` (same bslib popover pattern as `cc_rules_popover()`), the constant `VOI_CONTEXT_TRIGGER_LABEL`, trigger class `.cc-context-trigger` (light: #155724 text and border on rgba(21,87,36,0.06); dark: #8fdca8 on rgba(143,220,168,0.10), hover/focus variants and a 2px #2f7d4f focus-visible outline) and the popover class `.cc-context-popover` added to the three existing scoped popover selector groups so it inherits the same header, body-radius and close-button treatment. The popover body keeps the existing dynamic `assessment$what_this_means` text and appends only the four requested lines, built from `input$psa_reference_wtp` and `result$n_successful` with the simulations line omitted when the count is unavailable. EVPI, EVPPI, PSA, thresholds, all calculations, exports, layout outside that box and the other tabs are unchanged | Yes - tested in the running app: the "What this means" text is absent from the VOI tab while the new button renders with `class="btn btn-default cc-context-trigger"` and a descriptive aria-label; the popover opens by mouse and by keyboard (focus then Enter, with a solid 2px rgb(47,125,79) focus-visible outline) and closes with Escape; the panel shows the full dynamic interpretation plus "Decision: eQalb plus usual care versus usual care.", "Reference threshold: €100,000.00 per QALY.", "PSA simulations: 1,000 successful." and the EVPI-is-per-patient upper-bound line, and the threshold line tracked a change to €75,000.00 before being restored; dark mode renders the trigger at rgb(143,220,168) and the popover on rgb(22,36,44) with rgb(230,237,241) text; at 390px the popover stays inside the viewport (276px wide) with scrollWidth equal to clientWidth and no overflowing element, and closing it keeps the same; the base case (EUR 2,439.28 / 0.00816 / ICER EUR 298,965.51), budget impact (EUR 15,480,000.00), the traffic-light rules button, the EVPPI section and the Download results view are unchanged; 287 element ids with 0 duplicates and 0 overflowing elements in all six tabs; the app server log shows no errors; app.R parses |
+| 2026-10-09 | Value of information tab presentation only (app.R only): removed the decision-uncertainty red/amber/green result card and the "Traffic-light rules" button from the tab, so decision uncertainty is now shown only in the HTA decision summary (which keeps its own traffic light, its own rules button and the shared `voi_uncertainty_status()` helper in eqalb_markov.R, all untouched); reshaped `cc_context_popover()` to take an arbitrary `body` instead of an intro plus bullet list and dropped the now-unused `VOI_RULES_TRIGGER_LABEL` constant; the green "Decision context and interpretation" button now opens a panel with one dynamic headline (`assessment$label`, e.g. "Low-to-moderate decision uncertainty"), one plain-language paragraph built from `assessment$preferred`, the current EVPI and a magnitude word mapped from `assessment$magnitude` (negligible/modest -> low, moderate -> moderate, material -> substantial), and the one requested example sentence, with no bullets for the decision name, WTP threshold, PSA count or the upper-bound/research-budget statement; and the permanently visible "Method and limitations" heading and list were replaced by a collapsed-by-default bslib accordion (`voi_method_accordion`) holding the same six items with their wording preserved. EVPI, EVPPI, PSA, thresholds, traffic-light rules, exports, calculations and other tabs are unchanged | Yes - tested in the running app: the VOI tab shows no traffic-light card, no "AMBER —"/"GREEN —"/"RED —" heading and no "Traffic-light rules" button, while the HTA decision summary still shows "Decision uncertainty - Amber" with its own rules button; the popover opens by mouse click and by keyboard (focus then Enter) and closes with Escape, and its body has 0 list items with the headline "Low-to-moderate decision uncertainty", the paragraph "usual care is preferred on average, but some uncertainty remains. Perfect information would be worth about €4.71 per patient. This means further research could be useful, but the potential benefit of removing all uncertainty appears low in this illustrative analysis." and the example sentence; the Method and limitations accordion is collapsed by default (`aria-expanded=false`, 0px) and opens to 6 items then closes again; EVPI per patient €4.71, the EVPPI section, the PSA summary (mean incremental cost €2,420.87) and the base case (€2,439.28 / 0.00816 / €298,965.51) plus budget impact (€15,480,000.00) are unchanged; at 390px the popover stays inside the viewport (276px, left 11, right 287) with scrollWidth equal to clientWidth and 0 overflowing elements, both with the popover open and with the accordion open; dark mode renders the trigger at rgb(143,220,168) and the popover on rgb(22,36,44) with rgb(230,237,241) text and the accordion text at rgb(180,186,193); 289 element ids with 0 duplicates and 0 overflowing elements in all six tabs; the app server log shows no errors; app.R parses |

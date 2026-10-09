@@ -964,9 +964,9 @@ KM_RULES_TRIGGER_LABEL <- paste(
   "classified"
 )
 
-VOI_RULES_TRIGGER_LABEL <- paste(
-  "Traffic-light rules: show the educational bands used for decision",
-  "uncertainty"
+VOI_CONTEXT_TRIGGER_LABEL <- paste(
+  "Decision context and interpretation: show the current value-of-information",
+  "result and what further evidence could resolve"
 )
 
 dht_format_count <- function(value) {
@@ -1765,6 +1765,23 @@ cc_rules_popover <- function(title, items, aria_label) {
   )
 }
 
+# Same on-demand popover pattern, with a green trigger and an arbitrary body.
+# Used where an explanation would otherwise occupy permanent space in a result
+# panel.
+cc_context_popover <- function(trigger, title, body, aria_label) {
+  bslib::popover(
+    tags$button(
+      type = "button",
+      class = "btn btn-default cc-context-trigger",
+      `aria-label` = aria_label,
+      trigger
+    ),
+    title = title,
+    options = list(customClass = "cc-context-popover"),
+    body
+  )
+}
+
 # ---------------------------------------------------------------------------
 # Read-only "Model assumptions and inputs" overlay.
 #
@@ -1958,8 +1975,8 @@ cc_assumptions_modal <- function(values, open_section = NULL) {
     `Current value` = c(
       number(get_value("target_population")),
       percent_input("digital_access"), percent_input("digital_suitability"),
-      percent_input("readiness_year1_engagement"),
-      percent_input("readiness_followup_engagement"),
+      percent_input("engagement_year1"),
+      percent_input("engagement_followup"),
       number(get_value("review_minutes")),
       number(get_value("supported_languages")),
       yes_no(get_value("accessibility_features")),
@@ -2491,6 +2508,28 @@ EQALB_THEME <- bslib::bs_add_rules(
     outline: 2px solid #2fa3ad;
     outline-offset: 2px;
   }
+  /* Green on-demand context trigger: same shape and behaviour as the
+     traffic-light rules trigger, with a subtle green tint so it reads as an
+     explanatory control rather than a verdict. */
+  .btn.cc-context-trigger {
+    font-size: 0.875rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 6px;
+    border-color: #155724;
+    color: #155724;
+    background-color: rgba(21, 87, 36, 0.06);
+  }
+  .btn.cc-context-trigger:hover,
+  .btn.cc-context-trigger:focus,
+  .btn.cc-context-trigger:focus-visible {
+    border-color: #0d3d1a;
+    color: #0d3d1a;
+    background-color: rgba(21, 87, 36, 0.12);
+  }
+  .btn.cc-context-trigger:focus-visible {
+    outline: 2px solid #2f7d4f;
+    outline-offset: 2px;
+  }
   /* Small information controls next to the main full-analysis inputs.
      Deliberately subtle: a borderless circular glyph that inherits the label
      line and uses the existing teal brand colour. */
@@ -2552,21 +2591,24 @@ EQALB_THEME <- bslib::bs_add_rules(
      The heading margin came from the app's own heading styling, which left a
      light strip above the grey header with the close button sitting in it. */
   .popover.cc-info-popover .popover-header,
-  .popover.cc-rules-popover .popover-header {
+  .popover.cc-rules-popover .popover-header,
+  .popover.cc-context-popover .popover-header {
     margin: 0;
     border-top-left-radius: calc(0.5rem - 1px);
     border-top-right-radius: calc(0.5rem - 1px);
     padding-right: 2.1rem;
   }
   .popover.cc-info-popover .popover-body,
-  .popover.cc-rules-popover .popover-body {
+  .popover.cc-rules-popover .popover-body,
+  .popover.cc-context-popover .popover-body {
     border-bottom-left-radius: calc(0.5rem - 1px);
     border-bottom-right-radius: calc(0.5rem - 1px);
   }
   /* The close button is a sibling of the body content, positioned against the
      popover, so it is placed inside the header band. */
   .popover.cc-info-popover .btn-close,
-  .popover.cc-rules-popover .btn-close {
+  .popover.cc-rules-popover .btn-close,
+  .popover.cc-context-popover .btn-close {
     top: 0.7rem;
     right: 0.6rem;
     background-color: transparent;
@@ -2577,6 +2619,22 @@ EQALB_THEME <- bslib::bs_add_rules(
   body[data-bs-theme='dark'] .btn.cc-rules-trigger:focus {
     border-color: #7fd1d8;
     color: #7fd1d8;
+  }
+  /* Green context trigger in dark mode: a lighter tint keeps the label legible
+     on the dark panel without competing with the traffic-light colours. */
+  [data-bs-theme='dark'] .btn.cc-context-trigger,
+  body[data-bs-theme='dark'] .btn.cc-context-trigger {
+    border-color: #2f7d4f;
+    color: #8fdca8;
+    background-color: rgba(143, 220, 168, 0.10);
+  }
+  [data-bs-theme='dark'] .btn.cc-context-trigger:hover,
+  [data-bs-theme='dark'] .btn.cc-context-trigger:focus,
+  body[data-bs-theme='dark'] .btn.cc-context-trigger:hover,
+  body[data-bs-theme='dark'] .btn.cc-context-trigger:focus {
+    border-color: #8fdca8;
+    color: #b6f0c8;
+    background-color: rgba(143, 220, 168, 0.18);
   }
   /* Keep the popover readable in dark mode; bslib themes it from Bootstrap
      variables, but the list needs a matching text colour. */
@@ -2849,6 +2907,19 @@ EQALB_THEME <- bslib::bs_add_rules(
   .cc-part2-facts th:nth-child(1), .cc-part2-facts td:nth-child(1) { width: 27%; }
   .cc-part2-facts th:nth-child(2), .cc-part2-facts td:nth-child(2) { width: 33%; }
   .cc-part2-facts th, .cc-part2-facts td { padding: 0.25rem 0.4rem; }
+  /* DHT Readiness tab: the four-column Domain assessment table is the widest
+     element in the app, so it uses the same fixed-layout approach as the case
+     fact table to stay inside the panel at mobile widths. */
+  .cc-readiness-domain { max-width: 100%; }
+  .cc-readiness-domain table {
+    width: 100%;
+    table-layout: fixed;
+    word-break: break-word;
+  }
+  .cc-readiness-domain th:nth-child(1), .cc-readiness-domain td:nth-child(1) { width: 20%; }
+  .cc-readiness-domain th:nth-child(2), .cc-readiness-domain td:nth-child(2) { width: 12%; }
+  .cc-readiness-domain th:nth-child(3), .cc-readiness-domain td:nth-child(3) { width: 26%; }
+  .cc-readiness-domain th, .cc-readiness-domain td { padding: 0.25rem 0.4rem; }
   .cc-part2-lever {
     border-left: 3px solid #176b73;
     background-color: rgba(23, 107, 115, 0.06);
@@ -4375,13 +4446,6 @@ ui <- fluidPage(
           sliderInput("digital_suitability",
                       "Digitally suitable population (%)",
                       min = 0, max = 100, value = 75, step = 1),
-          tags$h5("Engagement"),
-          sliderInput("readiness_year1_engagement",
-                      "Year-1 engagement (%)",
-                      min = 0, max = 100, value = 70, step = 1),
-          sliderInput("readiness_followup_engagement",
-                      "Follow-up engagement (%)",
-                      min = 0, max = 100, value = 42, step = 1),
           tags$h5("Workflow burden"),
           numericInput(
             "review_minutes",
@@ -4421,12 +4485,10 @@ ui <- fluidPage(
             )
           ),
           uiOutput("readiness_notice"),
-          tags$h4("Readiness overview"),
-          uiOutput("readiness_cards"),
           tags$h4("Quantitative outputs"),
           tableOutput("readiness_numbers"),
           tags$h4("Domain assessment"),
-          uiOutput("readiness_table"),
+          tags$div(class = "cc-readiness-domain", uiOutput("readiness_table")),
           tags$h4("Interpretation"),
           textOutput("readiness_interpretation")
         )
@@ -4461,37 +4523,48 @@ ui <- fluidPage(
       uiOutput("voi_evppi_status"),
       tableOutput("voi_evppi_table"),
       plotOutput("voi_evppi_plot", height = "420px"),
-      tags$h4("Method and limitations"),
-      tags$ul(
-        tags$li(paste(
-          "EVPI per patient is derived from the PSA simulations already stored in",
-          "the Cost-effectiveness tab; the PSA is not rerun for this tab."
-        )),
-        tags$li(paste(
-          "VOI uses the PSA distributions and parameter means defined by the PSA",
-          "model. These may differ from the live base-case sliders used elsewhere",
-          "in the app."
-        )),
-        tags$li(paste(
-          "EVPPI is a single-loop regression-based approximation (a natural cubic",
-          "spline of NMB on the sampled parameter), not a nested Monte Carlo",
-          "estimate, and it can be imprecise when the number of simulations is",
-          "small."
-        )),
-        tags$li(paste(
-          "EVPI and EVPPI are per patient. Population EVPI is not calculated",
-          "because the app has no defined research population, decision timeline,",
-          "or population-incidence structure."
-        )),
-        tags$li(paste(
-          "EVPI and EVPPI are not research budgets: they do not account for the",
-          "cost, feasibility, or timeliness of collecting further evidence."
-        )),
-        tags$li(paste(
-          "Only parameters that are actually present in the returned PSA draws are",
-          "included, and EVPPI is shown only when at least 100 successful",
-          "simulations are available."
-        ))
+      tags$div(
+        style = "margin-top:1.5rem;",
+        bslib::accordion(
+          id = "voi_method_accordion",
+          open = FALSE,
+          bslib::accordion_panel(
+            "Method and limitations",
+            tags$ul(
+              tags$li(paste(
+                "EVPI per patient is derived from the PSA simulations already",
+                "stored in the Cost-effectiveness tab; the PSA is not rerun for",
+                "this tab."
+              )),
+              tags$li(paste(
+                "VOI uses the PSA distributions and parameter means defined by",
+                "the PSA model. These may differ from the live base-case sliders",
+                "used elsewhere in the app."
+              )),
+              tags$li(paste(
+                "EVPPI is a single-loop regression-based approximation (a natural",
+                "cubic spline of NMB on the sampled parameter), not a nested Monte",
+                "Carlo estimate, and it can be imprecise when the number of",
+                "simulations is small."
+              )),
+              tags$li(paste(
+                "EVPI and EVPPI are per patient. Population EVPI is not calculated",
+                "because the app has no defined research population, decision",
+                "timeline, or population-incidence structure."
+              )),
+              tags$li(paste(
+                "EVPI and EVPPI are not research budgets: they do not account for",
+                "the cost, feasibility, or timeliness of collecting further",
+                "evidence."
+              )),
+              tags$li(paste(
+                "Only parameters that are actually present in the returned PSA",
+                "draws are included, and EVPPI is shown only when at least 100",
+                "successful simulations are available."
+              ))
+            )
+          )
+        )
       )
     ),
     tabPanel(
@@ -5298,9 +5371,10 @@ server <- function(input, output, session) {
     )
   }, striped = TRUE, bordered = TRUE, hover = TRUE)
 
-  # Compact traffic-light interpretation of decision uncertainty. Presentation
-  # only: the status is derived from the EVPI and the probability of
-  # cost-effectiveness already computed above.
+  # Decision-context explanation for the current EVPI result. Presentation only:
+  # the headline and the magnitude wording come from the same
+  # voi_uncertainty_status() helper the HTA decision summary uses, so the two
+  # tabs cannot disagree, and the panel carries no traffic light of its own.
   output$voi_uncertainty <- renderUI({
     result <- psa_result()
     req(result)
@@ -5314,27 +5388,70 @@ server <- function(input, output, session) {
       mean_nmb = evpi$mean_nmb,
       tolerance = VOI_TOLERANCE
     )
-    style <- KM_STATUS_STYLES[[assessment$status]]
+
+    # Adapts only the stated benefit to the current EVPI magnitude, matching the
+    # wording the helper already uses for each band.
+    benefit_lead <- switch(assessment$magnitude,
+      negligible = paste(
+        "This means further research is unlikely to change the decision, and the",
+        "potential benefit of removing all uncertainty appears low in this",
+        "illustrative analysis."
+      ),
+      modest = paste(
+        "This means further research could be useful, but the potential benefit",
+        "of removing all uncertainty appears low in this illustrative analysis."
+      ),
+      moderate = paste(
+        "This means further research could be useful, and the potential benefit",
+        "of removing all uncertainty appears moderate in this illustrative",
+        "analysis."
+      ),
+      material = paste(
+        "This means further research could be valuable, and the potential",
+        "benefit of removing all uncertainty appears substantial in this",
+        "illustrative analysis."
+      ),
+      paste(
+        "The potential benefit of removing all uncertainty could not be",
+        "estimated in this illustrative analysis."
+      )
+    )
+    preferred <- if (is.na(assessment$preferred)) {
+      "Neither option is clearly preferred on average"
+    } else if (identical(assessment$preferred, "eQalb")) {
+      "eQalb is preferred on average"
+    } else {
+      "usual care is preferred on average"
+    }
+    headline <- assessment$label
+    paragraph <- paste(
+      paste0(preferred, ", but some uncertainty remains."),
+      sprintf(
+        paste(
+          "Perfect information would be worth about %s per patient."
+        ),
+        format_euros_signed(evpi$evpi)
+      ),
+      benefit_lead
+    )
 
     tags$div(
       tags$div(
-        style = paste0(
-          "background-color:", style[["background"]], ";",
-          "border:1px solid ", style[["border"]], ";",
-          "color:", style[["text"]], ";",
-          "border-radius:4px;padding:12px;margin-bottom:10px;"
-        ),
-        tags$h4(
-          style = "margin-top:0;",
-          paste0(
-            toupper(assessment$status), " \u2014 ", assessment$label
-          )
-        ),
-        assessment$interpretation
-      ),
-      wellPanel(
-        tags$strong("What this means"), tags$br(),
-        assessment$what_this_means
+        style = "margin-bottom:0.6rem;",
+        cc_context_popover(
+          "Decision context and interpretation",
+          "Decision context and interpretation",
+          tagList(
+            tags$p(tags$strong(headline)),
+            tags$p(paragraph),
+            tags$p(paste(
+              "For example, a future study could reduce uncertainty about",
+              "clinical benefit, long-term engagement, or implementation costs",
+              "before a wider decision is made."
+            ))
+          ),
+          VOI_CONTEXT_TRIGGER_LABEL
+        )
       ),
       tags$p(
         class = "text-muted",
@@ -5343,16 +5460,6 @@ server <- function(input, output, session) {
           "VOI uses the PSA distributions and parameter means defined by the",
           "PSA model. These may differ from the live base-case sliders",
           "elsewhere in the app."
-        )
-      ),
-      tags$div(
-        style = "margin-top:0.25rem;",
-        cc_rules_popover(
-          "Educational traffic-light rules",
-          # The existing single-string rules text, split into readable bullets
-          # with the wording unchanged.
-          strsplit(assessment$thresholds, "; ", fixed = TRUE)[[1]],
-          VOI_RULES_TRIGGER_LABEL
         )
       )
     )
@@ -6126,8 +6233,10 @@ server <- function(input, output, session) {
         target_population = input$target_population,
         digital_access = input$digital_access,
         digital_suitability = input$digital_suitability,
-        readiness_year1_engagement = input$readiness_year1_engagement,
-        readiness_followup_engagement = input$readiness_followup_engagement,
+        # Engagement is adjusted only in Global Settings, so the assessment reads
+        # the current global values instead of a second copy of the controls.
+        readiness_year1_engagement = input$engagement_year1,
+        readiness_followup_engagement = input$engagement_followup,
         review_minutes = input$review_minutes,
         supported_languages = input$supported_languages,
         accessibility_features = isTRUE(input$accessibility_features),
@@ -6147,8 +6256,6 @@ server <- function(input, output, session) {
     updateNumericInput(session, "target_population", value = 100000)
     updateSliderInput(session, "digital_access", value = 85)
     updateSliderInput(session, "digital_suitability", value = 75)
-    updateSliderInput(session, "readiness_year1_engagement", value = 70)
-    updateSliderInput(session, "readiness_followup_engagement", value = 42)
     updateNumericInput(session, "review_minutes", value = 10)
     updateNumericInput(session, "supported_languages", value = 1)
     updateCheckboxInput(session, "accessibility_features", value = TRUE)
@@ -6167,29 +6274,6 @@ server <- function(input, output, session) {
       class = "alert alert-info",
       "Enter or review the assumptions and click Assess readiness."
     )
-  })
-
-  output$readiness_cards <- renderUI({
-    result <- readiness_state()
-    req(result)
-    cards <- result$cards
-    lapply(seq_len(nrow(cards)), function(i) {
-      style <- DHT_STATUS_STYLES[[cards$Status[i]]]
-      tags$div(
-        style = paste0(
-          "background-color:", style[["background"]], ";",
-          "border:1px solid ", style[["border"]], ";",
-          "color:", style[["text"]], ";",
-          "border-radius:4px;padding:10px;margin-bottom:10px;"
-        ),
-        tags$h4(
-          style = "margin-top:0;",
-          paste0(cards$Domain[i], " - ", cards$Status[i])
-        ),
-        tags$strong("Status: "), cards$Status[i], tags$br(),
-        cards$Explanation[i]
-      )
-    })
   })
 
   output$readiness_numbers <- renderTable({
