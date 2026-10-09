@@ -295,6 +295,410 @@ TUTORIAL_EVIDENCE_ITEMS <- c(
   "Validate costs and resource use in the target health system."
 )
 
+# ------------------------------------------------------------------
+# Guided Tutorial Part 2: optional "Commissioning case challenge".
+#
+# A tutorial-only, case-based continuation of Part 1. It reuses the existing
+# model, budget-impact and readiness functions with one tutorial-only price
+# lever. The case facts are fixed, and nothing here reads or writes a Part 1
+# slider, a full-analysis result, an exported value or a model default.
+# ------------------------------------------------------------------
+PART2_WTP <- 100000
+PART2_BUDGET_CEILING <- 3e6
+PART2_POPULATION <- 100000
+# Coverage cap: a percentage of the potentially eligible population. Only the
+# budget-impact calculation scales with it, so the potentially eligible
+# population and the covered population stay distinguishable.
+PART2_COVERAGE_DEFAULT <- 100
+PART2_COVERAGE_MIN <- 10
+PART2_COVERAGE_MAX <- 100
+PART2_COVERAGE_STEP <- 5
+part2_coverage_pct <- function(coverage) {
+  cap <- suppressWarnings(as.numeric(coverage))
+  if (length(cap) == 0L || is.na(cap)) {
+    cap <- PART2_COVERAGE_DEFAULT
+  }
+  min(max(cap, PART2_COVERAGE_MIN), PART2_COVERAGE_MAX)
+}
+part2_covered_population <- function(coverage, population = PART2_POPULATION) {
+  population * part2_coverage_pct(coverage) / 100
+}
+PART2_REVIEW_MINUTES <- 10
+PART2_INTEROPERABILITY <- "FHIR-based exchange"
+PART2_DEFAULT_PRICE <- 360
+
+# The case facts that used to be single constants (year-1 engagement, follow-up
+# engagement and the supported-language count) now live in PART2_CASES below, so
+# there is one source of truth per fact.
+
+# Guided Tutorial Part 2 readiness exercise. The four short learner choices are
+# mapped onto the inputs that calculate_readiness() already accepts, so the
+# exercise reuses the existing thresholds instead of introducing new rules. The
+# defaults reproduce the case's fixed readiness position, and no choice here
+# reaches the economic model, the price lever or the coverage cap.
+PART2_INTEROP_LEVELS <- c(
+  no = "No data exchange",
+  basic = "PDF/manual export",
+  strong = PART2_INTEROPERABILITY
+)
+PART2_GOVERNANCE_LEVELS <- c(
+  weak = "Continuously learning algorithm",
+  partial = "Periodic controlled updates",
+  strong = "Locked algorithm"
+)
+PART2_WORKFLOW_MINUTES <- c(
+  low = 4, moderate = PART2_REVIEW_MINUTES, high = 20
+)
+PART2_ENGAGEMENT_PCT <- c(low = 30, moderate = 60, high = 90)
+PART2_INTEROP_DEFAULT <- "strong"
+PART2_GOVERNANCE_DEFAULT <- "partial"
+PART2_WORKFLOW_DEFAULT <- "moderate"
+PART2_ENGAGEMENT_DEFAULT <- "low"
+
+# Maps one short learner choice onto the readiness input it represents. An
+# absent or unrecognised value falls back to the case default, so a reactive
+# that reads the choice before the exercise has rendered still receives a valid
+# readiness input.
+part2_readiness_level <- function(value, levels, default) {
+  if (length(value) == 1L && !is.na(value) && value %in% names(levels)) {
+    levels[[value]]
+  } else {
+    levels[[default]]
+  }
+}
+
+# Section order for the case. The keys drive the hidden step input, so the
+# Order column and the keys must stay in step.
+PART2_STEP_KEYS <- c("brief", "value", "budget", "readiness", "recommend")
+PART2_SECTIONS <- c(
+  "Case brief", "Value for money", "Budget impact", "DHT readiness",
+  "Recommendation"
+)
+
+# Range of the negotiated-price lever. The lower bound is the manufacturer's
+# stated minimum acceptable price; any price at or above it that meets the
+# payer's value-for-money threshold is an acceptable negotiated price, so the
+# pass rule is never tied to one particular price. The step is five euros so
+# that the highest passing slider value can be located precisely: the
+# value-for-money window is narrow for some cases, and a coarser step would skip
+# over the highest acceptable price.
+PART2_PRICE_MIN <- 150
+PART2_PRICE_MAX <- 360
+PART2_PRICE_STEP <- 5
+
+# The Part 2 value-for-money exercise: find the highest negotiated price that
+# still passes the payer's threshold. The three states describe the learner's
+# slider position relative to the highest passing price for the active case.
+PART2_PRICE_TASK <- paste(
+  "Find the highest annual price that remains cost-effective at the payer's",
+  "\u20ac100,000/QALY threshold."
+)
+PART2_PRICE_BELOW_MAX <- paste(
+  "Increase the price to find the highest acceptable negotiated price."
+)
+PART2_PRICE_AT_MAX <- "Maximum acceptable negotiated price reached."
+PART2_PRICE_OVER <- "This price is above the value-for-money threshold."
+PART2_COVERAGE_TASK <- paste(
+  "Your task: after agreeing a value-for-money price, find the highest",
+  "programme coverage that stays within the \u20ac3 million five-year budget."
+)
+# The three coverage states, in traffic-light order. A cap above the budget
+# ceiling, a cap that fits the budget but is below the highest affordable cap,
+# and the highest affordable cap itself.
+PART2_COVERAGE_OVER <- "Above the available five-year budget."
+PART2_COVERAGE_BELOW_MAX <- "Within budget."
+PART2_COVERAGE_MAX_MESSAGE <- "Maximum affordable coverage achieved."
+
+# Three complete, predefined Part 2 commissioning cases. Each case is one
+# internally consistent set of facts: the values are chosen together so the
+# value-for-money test can still be met somewhere in the price range and the
+# five-year budget is still reachable with a coverage cap. Values are never
+# mixed between cases. The WTP threshold and the five-year ceiling are identical
+# in every case, so no rule, label or checklist wording depends on the draw.
+# ONE source of truth: the case values below feed the model, the budget-impact
+# calculation, the readiness calculation and the displayed case-fact table, so
+# the displayed facts can never drift from the numbers the case produces.
+PART2_CASES <- list(
+  list(
+    id = "Case A",
+    title = "Regional roll-out",
+    summary = paste(
+      "A regional roll-out of 100,000 potentially eligible people with",
+      "moderate evidence and FHIR-based interoperability."
+    ),
+    rrr = 0.10,
+    year1_engagement = 70,
+    followup_engagement = 42,
+    utility_no_event = 0.86,
+    utility_post_mi = 0.80,
+    utility_post_stroke = 0.60,
+    population = 100000,
+    review_minutes = 10,
+    languages = 3
+  ),
+  list(
+    id = "Case B",
+    title = "Integrated pilot",
+    summary = paste(
+      "A smaller integrated pilot of 80,000 people with stronger evidence and",
+      "better follow-up engagement, so a wider range of prices still meets the",
+      "value-for-money test."
+    ),
+    rrr = 0.15,
+    year1_engagement = 80,
+    followup_engagement = 60,
+    utility_no_event = 0.88,
+    utility_post_mi = 0.82,
+    utility_post_stroke = 0.62,
+    population = 80000,
+    review_minutes = 8,
+    languages = 4
+  ),
+  list(
+    id = "Case C",
+    title = "Fragmented deployment",
+    summary = paste(
+      "A wider deployment of 140,000 people with weaker evidence and fewer",
+      "supported languages, so fewer prices meet the value-for-money test and",
+      "less coverage fits the budget."
+    ),
+    rrr = 0.12,
+    year1_engagement = 65,
+    followup_engagement = 40,
+    utility_no_event = 0.85,
+    utility_post_mi = 0.79,
+    utility_post_stroke = 0.59,
+    population = 140000,
+    review_minutes = 14,
+    languages = 2
+  )
+)
+
+# Short one-line identifier shown above the case, so the learner always knows
+# which commissioning case is active.
+part2_case_heading <- function(case) {
+  paste0(case$id, " - ", case$title)
+}
+
+# Read-only case facts for the active case. Every value comes from the case that
+# also supplies the model inputs, so the table can never drift from the numbers
+# the case produces.
+part2_case_facts <- function(case) {
+  data.frame(
+    Group = c(
+      rep("Clinical evidence", 6L),
+      rep("Implementation setting", 4L),
+      rep("Decision criteria", 4L)
+    ),
+    Fact = c(
+      "Relative risk reduction", "Year-1 engagement",
+      "Follow-up engagement", "No-event utility", "Post-MI utility",
+      "Post-stroke utility", "Potentially eligible population",
+      "Clinician review time", "Interoperability",
+      "Required-language availability",
+      "Manufacturer's minimum acceptable price", "WTP threshold",
+      "Five-year budget ceiling", "Red readiness domains allowed"
+    ),
+    Value = c(
+      paste0(format(case$rrr * 100, trim = TRUE), "%"),
+      paste0(format(case$year1_engagement, trim = TRUE), "%"),
+      paste0(format(case$followup_engagement, trim = TRUE), "%"),
+      format(round(case$utility_no_event, 2), nsmall = 2),
+      format(round(case$utility_post_mi, 2), nsmall = 2),
+      format(round(case$utility_post_stroke, 2), nsmall = 2),
+      format(case$population, big.mark = ",", scientific = FALSE),
+      paste0(case$review_minutes, " minutes per patient per month"),
+      "Yes",
+      if (case$languages >= 3) "Yes" else "No",
+      paste0(
+        format_euros_signed(PART2_PRICE_MIN),
+        " per active user per year"
+      ),
+      paste0(format_euros_signed(PART2_WTP), " per QALY"),
+      format_euros_signed(PART2_BUDGET_CEILING),
+      "None"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+# The three case criteria. Each returns TRUE only when the stated rule is met,
+# so every status card, checklist entry and recommendation is derived from the
+# live calculation rather than from a hard-coded price. In particular, the
+# value-for-money test is the ICER against the threshold with positive
+# incremental QALYs: it is never a test of the price against the manufacturer's
+# minimum, so any negotiated price that meets the threshold passes.
+part2_value_for_money_pass <- function(incremental_cost, incremental_qalys) {
+  if (length(incremental_cost) == 0L || is.na(incremental_cost) ||
+        length(incremental_qalys) == 0L || is.na(incremental_qalys)) {
+    return(FALSE)
+  }
+  incremental_qalys > 0 && (incremental_cost / incremental_qalys) <= PART2_WTP
+}
+
+part2_affordability_pass <- function(cumulative_budget_impact) {
+  if (length(cumulative_budget_impact) == 0L ||
+        is.na(cumulative_budget_impact)) {
+    return(FALSE)
+  }
+  cumulative_budget_impact <= PART2_BUDGET_CEILING
+}
+
+part2_deliverability_pass <- function(readiness_domains) {
+  if (is.null(readiness_domains) || !is.data.frame(readiness_domains) ||
+        nrow(readiness_domains) == 0L ||
+        !("Status" %in% names(readiness_domains))) {
+    return(FALSE)
+  }
+  !any(readiness_domains$Status == "Red")
+}
+
+# "Pass" / "Not yet achieved" is always written out and always paired with the
+# colour, so no case status is communicated by colour alone.
+part2_check_label <- function(passed) {
+  if (isTRUE(passed)) "Pass" else "Not yet achieved"
+}
+
+part2_check_style <- function(passed) {
+  if (isTRUE(passed)) {
+    DHT_STATUS_STYLES[["Green"]]
+  } else {
+    DHT_STATUS_STYLES[["Amber"]]
+  }
+}
+
+part2_status_card <- function(title, passed, detail, extra = NULL) {
+  style <- part2_check_style(passed)
+  tags$div(
+    class = "cc-part2-card",
+    style = paste0(
+      "background-color:", style[["background"]], ";",
+      "border:1px solid ", style[["border"]], ";",
+      "color:", style[["text"]], ";",
+      "border-radius:4px;padding:10px;margin-bottom:10px;"
+    ),
+    tags$strong(paste0(title, " - ", part2_check_label(passed))),
+    tags$br(),
+    tags$span(detail),
+    extra
+  )
+}
+
+# The commissioning outcomes, chosen from the live criteria. When the three
+# economic and readiness criteria are met but the coverage cap is below the
+# highest affordable cap, the wording must not claim that the rollout is
+# maximised, so that case gets its own message and no completion card.
+part2_recommendation <- function(
+  value_for_money, affordability, deliverability,
+  coverage_maximised = TRUE, max_coverage = NA_real_
+) {
+  if (!isTRUE(value_for_money)) {
+    list(
+      status = "do_not_recommend",
+      headline = "Do not recommend adoption at the current price",
+      message = paste(
+        "Do not recommend adoption at the current price. The expected health",
+        "gain does not yet justify the additional cost at the payer's",
+        "threshold."
+      )
+    )
+  } else if (!isTRUE(affordability)) {
+    list(
+      status = "negotiate_price",
+      headline = "Value for money is acceptable, but affordability is not",
+      message = paste(
+        "Value for money is acceptable, but full or current rollout exceeds the",
+        "available five-year budget. Consider a lower negotiated price or a",
+        "phased rollout."
+      )
+    )
+  } else if (!isTRUE(deliverability)) {
+    list(
+      status = "resolve_barriers",
+      headline = "Economic criteria are met, but implementation barriers remain",
+      message = paste(
+        "Economic criteria are met, but implementation barriers must be",
+        "resolved before adoption."
+      )
+    )
+  } else if (!isTRUE(coverage_maximised)) {
+    list(
+      status = "increase_coverage",
+      headline = "Recommended outcome: Conditional adoption, coverage not maximised",
+      message = paste0(
+        "The negotiated price provides acceptable value for money and the ",
+        "programme stays within the available five-year budget. Coverage can ",
+        "be increased",
+        if (is.na(max_coverage)) {
+          "."
+        } else {
+          paste0(" to ", format(max_coverage, trim = TRUE), "%")
+        },
+        " to maximise patient access without exceeding the budget."
+      )
+    )
+  } else {
+    list(
+      status = "conditional_adoption",
+      headline = "Recommended outcome: Conditional adoption",
+      message = paste(
+        "The negotiated price provides acceptable value for money. The phased",
+        "rollout maximises patient access while keeping expected five-year",
+        "spending within the available budget, and there are no Red readiness",
+        "barriers."
+      )
+    )
+  }
+}
+
+# Compact completion card shown only when all three criteria pass. The retry
+# button currently reuses the restart action; choosing different assumptions is
+# not implemented yet. The case's own Back control stays in the section nav.
+part2_completion_card <- function() {
+  tags$div(
+    class = "cc-tutorial-complete cc-part2-complete",
+    tags$h4("Case complete: You reached a conditional-adoption scenario."),
+    tags$div(
+      class = "cc-tutorial-finish",
+      actionButton(
+        "part2_done_restart", "Retry Part 2 with different assumptions"
+      ),
+      actionButton("part2_open_full", "Open full analysis", class = "btn-primary")
+    )
+  )
+}
+
+# Read-only overlay for the fixed case facts. It reuses the shared overlay
+# styling and the shared compact table helper, and it renders
+# `part2_case_facts()` directly, so no case fact is duplicated here.
+# Read-only overlay for the fixed case facts of the active case. It reuses the
+# shared overlay styling and the shared compact table helper, and it renders the
+# same `part2_case_facts()` table the Case brief shows, so the overlay and the
+# brief can never disagree about which case is active.
+cc_part2_facts_modal <- function(case) {
+  dialog <- modalDialog(
+    title = paste0("Case facts - ", part2_case_heading(case)),
+    cc_assumptions_table(part2_case_facts(case)),
+    tags$p(
+      class = "cc-tutorial-hint",
+      paste(
+        "These case facts are fixed. The negotiated annual price and the",
+        "programme coverage cap are the case's adjustable levers. The",
+        "manufacturer's minimum acceptable price is a floor for the",
+        "negotiation, not the payer's target answer."
+      )
+    ),
+    easyClose = TRUE,
+    footer = modalButton("Close")
+  )
+  # Same scoping pattern as the assumptions overlay, so the fact table scrolls
+  # inside the body and the Close button stays reachable on narrow screens.
+  dialog$attribs$class <- paste(
+    c(dialog$attribs$class, "cc-part2-facts-modal"), collapse = " "
+  )
+  dialog
+}
+
 # Neutral card style used when a tutorial domain has no status, so status is
 # never communicated by colour alone.
 TUTORIAL_NEUTRAL_STATUS_STYLE <- c(
@@ -1298,6 +1702,19 @@ CC_INFO_TEXT <- list(
   tutorial_language_definition = paste(
     "Language availability means that users can understand and use the",
     "intervention in the language needed for the target population."
+  ),
+  part2_price = paste(
+    "The negotiated annual price is the case's value-for-money lever. Lowering",
+    "it reduces the incremental cost and improves the ICER, and it also reduces",
+    "the five-year budget impact, because the same price is charged for every",
+    "active user. The manufacturer's minimum acceptable price is a floor for",
+    "the negotiation; any price at or above it that keeps the ICER at or below",
+    "the payer's threshold passes the value-for-money test."
+  ),
+  part2_coverage = paste(
+    "A phased rollout funds eQalb for a capped share of the eligible",
+    "population. This lowers the number of users and the total five-year",
+    "budget impact, even when the price per user stays the same."
   )
 )
 
@@ -2186,6 +2603,18 @@ EQALB_THEME <- bslib::bs_add_rules(
     max-height: 68vh;
     overflow-y: auto;
   }
+  /* Guided Tutorial Part 2 case-facts overlay: same pattern, so the 13-row fact
+     table scrolls inside the body instead of pushing the Close button off a
+     narrow screen. */
+  #shiny-modal.cc-part2-facts-modal .modal-body {
+    max-height: 68vh;
+    overflow-y: auto;
+  }
+  #shiny-modal.cc-part2-facts-modal .cc-assumptions-table th,
+  #shiny-modal.cc-part2-facts-modal .cc-assumptions-table td {
+    white-space: normal;
+    word-break: break-word;
+  }
   #shiny-modal.cc-assumptions-modal .accordion-body { padding: 0.75rem; }
   #shiny-modal.cc-assumptions-modal .cc-assumptions-note {
     font-size: 13px;
@@ -2345,6 +2774,20 @@ EQALB_THEME <- bslib::bs_add_rules(
     margin-top: 1.25rem;
   }
   .cc-tutorial-nav .btn { border-radius: 8px; }
+  /* Short identifier for the randomly drawn Part 2 case. */
+  .cc-part2-case {
+    margin: 0.1rem 0 0.6rem 0;
+    padding: 0.4rem 0.6rem;
+    border-left: 3px solid #287D78;
+    border-radius: 0 6px 6px 0;
+    background-color: rgba(40, 125, 120, 0.1);
+    font-size: 13px;
+  }
+  [data-bs-theme='dark'] .cc-part2-case,
+  body[data-bs-theme='dark'] .cc-part2-case {
+    background-color: rgba(127, 209, 216, 0.12);
+    border-left-color: #7fd1d8;
+  }
   .cc-tutorial-hint {
     font-size: 13px;
     opacity: 0.8;
@@ -2390,6 +2833,103 @@ EQALB_THEME <- bslib::bs_add_rules(
      Scoped to `.cc-tutorial-complete` so no other tutorial step is affected. */
   .cc-tutorial-complete { text-align: center; }
   .cc-tutorial-complete .cc-tutorial-finish { justify-content: center; }
+  /* Guided Tutorial Part 2: the fixed case facts are visually distinct from
+     the single adjustable lever, and the case cards keep the light/dark
+     contrast of the rest of the tutorial. */
+  .cc-part2-facts { margin-bottom: 0.9rem; }
+  .cc-part2-facts table {
+    margin-bottom: 0;
+    font-size: 13px;
+    /* Fixed layout keeps the three-column fact table inside the panel at
+       mobile widths instead of forcing a horizontal scroll. */
+    width: 100%;
+    table-layout: fixed;
+    word-break: break-word;
+  }
+  .cc-part2-facts th:nth-child(1), .cc-part2-facts td:nth-child(1) { width: 27%; }
+  .cc-part2-facts th:nth-child(2), .cc-part2-facts td:nth-child(2) { width: 33%; }
+  .cc-part2-facts th, .cc-part2-facts td { padding: 0.25rem 0.4rem; }
+  .cc-part2-lever {
+    border-left: 3px solid #176b73;
+    background-color: rgba(23, 107, 115, 0.06);
+    border-radius: 0 6px 6px 0;
+    padding: 0.5rem 0.75rem;
+    margin: 0.5rem 0 0.9rem 0;
+    font-size: 13px;
+  }
+  .cc-part2-lever p:last-child { margin-bottom: 0; }
+  /* Part 2 task statement: a visible instruction above the coverage lever. */
+  .cc-part2-task {
+    background-color: rgba(217, 72, 15, 0.10);
+    border-left: 3px solid #d9480f;
+    border-radius: 0 6px 6px 0;
+    padding: 0.5rem 0.75rem;
+    margin: 0.5rem 0 0.9rem 0;
+    font-weight: 600;
+  }
+  /* Compact live coverage feedback under the coverage slider. */
+  .cc-part2-coverage-note {
+    border-radius: 4px;
+    padding: 0.4rem 0.6rem;
+    margin: 0.25rem 0 0.5rem 0;
+    font-size: 13px;
+  }
+  /* Three coverage states, coloured as traffic lights: over budget, affordable
+     but below the maximum affordable cap, and the maximum affordable cap. */
+  .cc-part2-coverage-note.cc-over {
+    background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
+  }
+  .cc-part2-coverage-note.cc-below-max {
+    background-color: #fff3cd; border: 1px solid #ffeeba; color: #856404;
+  }
+  .cc-part2-coverage-note.cc-max {
+    background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724;
+  }
+  [data-bs-theme='dark'] .cc-part2-task,
+  body[data-bs-theme='dark'] .cc-part2-task {
+    background-color: rgba(217, 72, 15, 0.22);
+    border-left-color: #f08a5d;
+  }
+  [data-bs-theme='dark'] .cc-part2-coverage-note.cc-over {
+    background-color: rgba(220, 53, 69, 0.18);
+    border-color: rgba(220, 53, 69, 0.55);
+    color: #f5c2c7;
+  }
+  [data-bs-theme='dark'] .cc-part2-coverage-note.cc-below-max {
+    background-color: rgba(255, 193, 7, 0.16);
+    border-color: rgba(255, 193, 7, 0.5);
+    color: #ffda6a;
+  }
+  [data-bs-theme='dark'] .cc-part2-coverage-note.cc-max {
+    background-color: rgba(25, 135, 84, 0.2);
+    border-color: rgba(25, 135, 84, 0.55);
+    color: #a3cfbb;
+  }
+  .cc-part2-card a { color: inherit; }
+  /* Orange action buttons used only inside Guided Tutorial Part 2: the
+     Case facts trigger and the Change negotiated price shortcut. */
+  .btn.cc-btn-orange {
+    background-color: #d9480f;
+    border-color: #bf4009;
+    color: #ffffff;
+  }
+  .btn.cc-btn-orange:hover,
+  .btn.cc-btn-orange:focus {
+    background-color: #bf4009;
+    border-color: #a63608;
+    color: #ffffff;
+  }
+  .btn.cc-btn-orange:focus-visible {
+    outline: 2px solid #2fa3ad;
+    outline-offset: 2px;
+  }
+  [data-bs-theme='dark'] .cc-part2-lever,
+  body[data-bs-theme='dark'] .cc-part2-lever {
+    background-color: rgba(127, 209, 216, 0.12);
+    border-left-color: #7fd1d8;
+  }
+  [data-bs-theme='dark'] .cc-part2-card,
+  body[data-bs-theme='dark'] .cc-part2-card { border-color: rgba(230, 237, 241, 0.35); }
   /* Welcome modal: keep it readable in dark mode. */
   [data-bs-theme='dark'] .modal-content,
   body[data-bs-theme='dark'] .modal-content {
@@ -2451,9 +2991,26 @@ ui <- fluidPage(
       "display:flex; justify-content:flex-end; align-items:center; ",
       "gap:0.5rem; margin-bottom:0.5rem;"
     ),
-    actionButton(
-      "show_assumptions", "Assumptions",
-      title = "Show the model assumptions and inputs"
+    # The model-assumptions overlay belongs to the full analysis only, so the
+    # button is hidden on the landing page and in both tutorial parts.
+    conditionalPanel(
+      condition = "input.nav_page === 'dashboard'",
+      actionButton(
+        "show_assumptions", "Assumptions",
+        title = "Show the model assumptions and inputs"
+      )
+    ),
+    # Guided Tutorial Part 2 only: a shortcut to the fixed case facts.
+    conditionalPanel(
+      condition = paste(
+        "input.nav_page === 'tutorial' &&",
+        "input.tutorial_step === 'part2'"
+      ),
+      actionButton(
+        "show_part2_facts", "Case facts",
+        class = "cc-btn-orange",
+        title = "Show the fixed case facts for this case"
+      )
     ),
     bslib::input_dark_mode(id = "color_mode", mode = "light")
   ),
@@ -2536,20 +3093,25 @@ ui <- fluidPage(
           tags$h3(style = "margin:0;", "Guided tutorial"),
           tags$span(class = "cc-tutorial-step", "Simplified learning tutorial")
         ),
-        tags$div(
-          class = "alert alert-info",
-          paste(
-            "This tutorial uses the same illustrative base model as the full",
-            "analysis but presents a simplified sequence for learning. It is not",
-            "a complete HTA and does not represent clinical or reimbursement",
-            "evidence."
+        # The commissioning case carries its own framing, so the Part 1
+        # disclaimer is hidden while Part 2 is open and is not replaced.
+        conditionalPanel(
+          condition = "input.tutorial_step !== 'part2'",
+          tags$div(
+            class = "alert alert-info",
+            paste(
+              "This tutorial uses the same illustrative base model as the full",
+              "analysis but presents a simplified sequence for learning. It is",
+              "not a complete HTA and does not represent clinical or",
+              "reimbursement evidence."
+            )
           )
         ),
         tags$div(
           style = "display:none;",
           selectInput(
             "tutorial_step", NULL,
-            choices = c("1", "2", "3", "4", "done"),
+            choices = c("1", "2", "3", "4", "done", "part2"),
             selected = "1", selectize = FALSE
           )
         ),
@@ -2869,29 +3431,352 @@ ui <- fluidPage(
                 class = "btn-primary"
               ),
               actionButton("tutorial_restart", "Restart tutorial")
+            ),
+            tags$hr(),
+            tags$p(paste(
+              "Optional next step: a short commissioning case that shows why",
+              "value for money, affordability and readiness are separate tests."
+            )),
+            tags$div(
+              class = "cc-tutorial-finish",
+              actionButton(
+                "tutorial_part2_start", "Start Part 2: Commissioning case"
+              )
             )
           )
         ),
 
-        tags$div(
-          class = "cc-tutorial-nav",
-          conditionalPanel(
-            condition = paste(
-              "input.tutorial_step === '2' ||",
-              "input.tutorial_step === '3' ||",
-              "input.tutorial_step === '4'"
+        # Guided Tutorial Part 2: the optional commissioning case challenge.
+        # It lives in its own `tutorial_step` value, so every Part 1 panel above
+        # simply evaluates false while the case is open. It has its own
+        # five-section sub-navigation in `tutorial_part2_step`.
+        conditionalPanel(
+          condition = "input.tutorial_step === 'part2'",
+          wellPanel(
+            class = "cc-part2",
+            tags$div(
+              class = "cc-tutorial-head",
+              tags$h3(style = "margin:0;", "Commissioning case challenge"),
+              tags$span(class = "cc-tutorial-step", "Guided tutorial Part 2")
             ),
-            actionButton("tutorial_back", "Back")
-          ),
-          conditionalPanel(
-            condition = paste(
-              "input.tutorial_step === '1' ||",
-              "input.tutorial_step === '2' ||",
-              "input.tutorial_step === '3'"
+            tags$div(
+              style = "display:none;",
+              selectInput(
+                "tutorial_part2_step", NULL,
+                choices = PART2_STEP_KEYS,
+                selected = "brief", selectize = FALSE
+              )
             ),
-            actionButton("tutorial_next", "Next", class = "btn-primary")
-          ),
-          actionButton("tutorial_exit", "Exit tutorial")
+            uiOutput("part2_case_banner"),
+            uiOutput("part2_progress"),
+
+            # 1. Case brief.
+            conditionalPanel(
+              condition = "input.tutorial_part2_step === 'brief'",
+              tags$h4("Case brief"),
+              uiOutput("part2_case_intro"),
+              tags$p(paste(
+                "The manufacturer proposes \u20ac360 per active user per year,",
+                "with \u20ac150 per active user per year as its minimum acceptable",
+                "price. The payer will consider adoption only if eQalb provides",
+                "acceptable value for money at \u20ac100,000 per QALY, stays",
+                "within a five-year \u20ac3 million budget, and has no Red",
+                "readiness barriers."
+              )),
+              tags$p(paste(
+                "\u20ac150 is the manufacturer's floor for the negotiation, not",
+                "the payer's target answer. The task is to find the highest",
+                "negotiated price that still meets the value-for-money",
+                "criterion for this case."
+              )),
+              tags$p(paste(
+                "You may negotiate the annual price, and you may phase the",
+                "rollout so that only a capped share of the eligible population",
+                "is funded. You may not alter the clinical evidence or local",
+                "implementation facts merely to make the result favourable."
+              )),
+              tags$h5("Fixed case facts (not editable)"),
+              tags$div(class = "cc-part2-facts", tableOutput("part2_facts")),
+              tags$p(
+                class = "cc-tutorial-hint",
+                paste(
+                  "These facts are fixed so the case reflects a realistic",
+                  "commissioning position rather than one chosen to give a",
+                  "favourable result. The negotiated price and the rollout",
+                  "coverage cap are the only levers."
+                )
+              )
+            ),
+
+            # 2. Value for money.
+            conditionalPanel(
+              condition = "input.tutorial_part2_step === 'value'",
+              tags$h4("Value for money"),
+              tags$p(class = "cc-part2-task", PART2_PRICE_TASK),
+              tags$p(class = "text-muted", paste(
+                "This test asks whether the additional health gained is worth",
+                "the additional cost at the payer's stated threshold. It is a",
+                "per-person test, so it does not change with the rollout",
+                "coverage cap."
+              )),
+              sliderInput(
+                "part2_price",
+                cc_label(
+                  "Negotiated annual price (\u20ac per active user per year)",
+                  "the negotiated annual price", "part2_price",
+                  "part2_price_info"
+                ),
+                min = PART2_PRICE_MIN, max = PART2_PRICE_MAX,
+                value = PART2_DEFAULT_PRICE, step = PART2_PRICE_STEP
+              ),
+              tags$div(
+                class = "cc-part2-lever",
+                tags$p(paste(
+                  "This is the case's price lever. It applies to this case only:",
+                  "Part 1 and the full analysis keep their own price values. The",
+                  "Budget impact section has a separate rollout coverage cap.",
+                  "The test is the ICER against \u20ac100,000 per QALY, so the",
+                  "answer is the highest price on the slider that still passes",
+                  "for this case."
+                ))
+              ),
+              uiOutput("part2_value_result"),
+              tags$h5("ICER across the negotiated price range"),
+              plotOutput("part2_icer_plot", height = "300px")
+            ),
+
+            # 3. Budget impact.
+            conditionalPanel(
+              condition = "input.tutorial_part2_step === 'budget'",
+              tags$h4("Budget impact"),
+              tags$p(class = "text-muted", paste(
+                "A technology can be cost-effective per person but still exceed",
+                "the payer's near-term budget when adopted across a large",
+                "population."
+              )),
+              tags$p(class = "cc-part2-task", PART2_COVERAGE_TASK),
+              uiOutput("part2_population_line"),
+              sliderInput(
+                "part2_coverage",
+                cc_label(
+                  "Programme coverage cap (% of eligible population)",
+                  "the programme coverage cap", "part2_coverage",
+                  "part2_coverage_info"
+                ),
+                min = PART2_COVERAGE_MIN, max = PART2_COVERAGE_MAX,
+                value = PART2_COVERAGE_DEFAULT, step = PART2_COVERAGE_STEP
+              ),
+              uiOutput("part2_coverage_message"),
+              uiOutput("part2_full_rollout_hint"),
+              tags$div(
+                class = "cc-part2-lever",
+                textOutput("part2_budget_price_line")
+              ),
+              uiOutput("part2_budget_price_action"),
+              tags$details(
+                class = "cc-tutorial-details",
+                tags$summary("View annual breakdown"),
+                tableOutput("part2_bia_table"),
+                plotOutput("part2_bia_plot", height = "340px")
+              )
+            ),
+
+            # 4. DHT readiness. A learning exercise only: the four choices feed
+            # the existing readiness calculation, and the traffic-light result
+            # is shown in the Recommendation section rather than here. Each
+            # question offers concrete implementation choices, so the learner
+            # reads what each option means rather than a single quality word.
+            conditionalPanel(
+              condition = "input.tutorial_part2_step === 'readiness'",
+              tags$h4("DHT readiness"),
+              tags$p(class = "text-muted", paste(
+                "Answer the four questions for this setting. These choices",
+                "change the readiness assessment only."
+              )),
+              # The strongest answer is deliberately placed in a different
+              # position in each question (B, A, C), so the exercise cannot be
+              # completed by always picking the last option. The underlying
+              # values are unchanged.
+              tags$div(
+                style = "margin-bottom:0.9rem;",
+                radioButtons(
+                  "part2_interop",
+                  paste(
+                    "1. How would this programme exchange information with",
+                    "existing clinical systems?"
+                  ),
+                  choices = stats::setNames(
+                    c("basic", "strong", "no"),
+                    c(
+                      paste(
+                        "A. Limited connection: data can be exchanged in some",
+                        "situations, but staff still use manual workarounds."
+                      ),
+                      paste(
+                        "B. Standards-based connection: structured data",
+                        "exchange with the relevant systems and minimal manual",
+                        "re-entry."
+                      ),
+                      paste(
+                        "C. No connection: staff manually re-enter programme",
+                        "information."
+                      )
+                    )
+                  ),
+                  selected = PART2_INTEROP_DEFAULT
+                )
+              ),
+              tags$div(
+                style = "margin-bottom:0.9rem;",
+                radioButtons(
+                  "part2_governance",
+                  "2. How is the algorithm governed after implementation?",
+                  choices = stats::setNames(
+                    c("strong", "weak", "partial"),
+                    c(
+                      paste(
+                        "A. Ongoing governance: documented validation, named",
+                        "accountability, monitoring for drift and bias, human",
+                        "oversight, and a process for responding to problems."
+                      ),
+                      paste(
+                        "B. No formal oversight: no documented validation,",
+                        "monitoring, or named owner."
+                      ),
+                      paste(
+                        "C. Initial review only: the algorithm is documented",
+                        "and reviewed at launch, but there is no regular",
+                        "monitoring plan."
+                      )
+                    )
+                  ),
+                  selected = PART2_GOVERNANCE_DEFAULT
+                )
+              ),
+              tags$div(
+                style = "margin-bottom:0.9rem;",
+                radioButtons(
+                  "part2_workflow",
+                  "3. How would the programme fit into routine clinical work?",
+                  choices = stats::setNames(
+                    c("high", "moderate", "low"),
+                    c(
+                      paste(
+                        "A. High burden: substantial extra review, duplicate",
+                        "documentation, or major workflow disruption."
+                      ),
+                      paste(
+                        "B. Moderate burden: some additional review, training,",
+                        "or workflow adjustment."
+                      ),
+                      paste(
+                        "C. Low burden: limited additional work and a good fit",
+                        "with existing workflows."
+                      )
+                    )
+                  ),
+                  selected = PART2_WORKFLOW_DEFAULT
+                )
+              ),
+              tags$div(
+                style = "margin-bottom:0.9rem;",
+                radioButtons(
+                  "part2_engagement",
+                  paste(
+                    "4. What level of follow-up engagement should this case",
+                    "assume?"
+                  ),
+                  choices = stats::setNames(
+                    c("low", "moderate", "high"),
+                    c(
+                      "A. Low engagement: 30% remain engaged at follow-up.",
+                      paste(
+                        "B. Moderate engagement: 60% remain engaged at",
+                        "follow-up."
+                      ),
+                      "C. High engagement: 90% remain engaged at follow-up."
+                    )
+                  ),
+                  selected = PART2_ENGAGEMENT_DEFAULT
+                ),
+                tags$p(class = "cc-tutorial-hint", paste(
+                  "Engagement is included for learning and is not fully",
+                  "controllable by the commissioning team."
+                ))
+              ),
+              tags$p(
+                class = "cc-tutorial-hint",
+                textOutput("part2_readiness_note", inline = TRUE)
+              ),
+              tags$details(
+                class = "cc-tutorial-details",
+                tags$summary("View readiness calculations"),
+                tableOutput("part2_readiness_numbers")
+              )
+            ),
+
+            # 5. Recommendation.
+            conditionalPanel(
+              condition = "input.tutorial_part2_step === 'recommend'",
+              tags$h4("Recommendation"),
+              tags$p(class = "text-muted", paste(
+                "The case is decided by three separate tests. A technology can",
+                "pass one and fail another."
+              )),
+              tags$h5("Readiness with the selected DHT settings"),
+              uiOutput("part2_readiness_cards"),
+              uiOutput("part2_readiness_result"),
+              uiOutput("part2_checklist"),
+              uiOutput("part2_decision")
+            ),
+
+            tags$div(
+              class = "cc-tutorial-nav",
+              conditionalPanel(
+                condition = "input.tutorial_part2_step !== 'brief'",
+                actionButton("part2_back", "Back")
+              ),
+              conditionalPanel(
+                condition = "input.tutorial_part2_step !== 'recommend'",
+                actionButton("part2_next", "Next", class = "btn-primary")
+              ),
+              # Hidden on the completion screen, which offers only Retry,
+              # Open full analysis and Back. Still available in the other four
+              # sections.
+              conditionalPanel(
+                condition = "input.tutorial_part2_step !== 'recommend'",
+                actionButton("part2_exit", "Exit tutorial")
+              )
+            )
+          )
+        ),
+
+        # The Part 1 navigation is hidden while Part 2 is open, because Part 2
+        # has its own navigation inside the case panel. For steps 1 to 4 and the
+        # completion state this condition is always true, so Part 1 navigation
+        # is unchanged.
+        conditionalPanel(
+          condition = "input.tutorial_step !== 'part2'",
+          tags$div(
+            class = "cc-tutorial-nav",
+            conditionalPanel(
+              condition = paste(
+                "input.tutorial_step === '2' ||",
+                "input.tutorial_step === '3' ||",
+                "input.tutorial_step === '4'"
+              ),
+              actionButton("tutorial_back", "Back")
+            ),
+            conditionalPanel(
+              condition = paste(
+                "input.tutorial_step === '1' ||",
+                "input.tutorial_step === '2' ||",
+                "input.tutorial_step === '3'"
+              ),
+              actionButton("tutorial_next", "Next", class = "btn-primary")
+            ),
+            actionButton("tutorial_exit", "Exit tutorial")
+          )
         )
       )
     )
@@ -6132,6 +7017,11 @@ server <- function(input, output, session) {
       "Base cost-effectiveness", "Budget impact", "DHT readiness",
       "HTA decision summary"
     )
+    # Part 2 has its own header and progress line, so the Part 1 progress line
+    # is suppressed rather than showing the wrong step.
+    if (identical(input$tutorial_step, "part2")) {
+      return(NULL)
+    }
     if (identical(input$tutorial_step, "done")) {
       return(tags$p(
         class = "text-muted",
@@ -6146,6 +7036,591 @@ server <- function(input, output, session) {
       sprintf(
         "Step %d of %d. %s", index, length(steps), steps[[index]]
       )
+    )
+  })
+
+  # ------------------------------------------------------------------
+  # Guided Tutorial Part 2: commissioning case challenge.
+  #
+  # The case keeps the existing model, budget-impact and readiness functions and
+  # passes the fixed case facts plus the one negotiated price into them. It
+  # reads no Part 1 slider and writes no full-analysis input.
+  # ------------------------------------------------------------------
+  part2_open <- reactive({
+    identical(input$nav_page, "tutorial") &&
+      identical(input$tutorial_step, "part2")
+  })
+
+  # One complete case is drawn at random when the session starts and is then
+  # held in session state for as long as the learner works through Part 2, so
+  # changing a slider or moving between sections never changes the case. Only
+  # the retry button draws again.
+  part2_case_index <- reactiveVal(
+    sample.int(length(PART2_CASES), 1L)
+  )
+
+  part2_case <- reactive({
+    PART2_CASES[[part2_case_index()]]
+  })
+
+  part2_step_index <- reactive({
+    position <- match(input$tutorial_part2_step, PART2_STEP_KEYS)
+    if (length(position) == 0L || is.na(position)) 1L else as.integer(position)
+  })
+
+  # The slider only exists once the value-for-money section has rendered, so the
+  # proposed price is the fallback before that.
+  part2_price <- reactive({
+    value <- suppressWarnings(as.numeric(input$part2_price))
+    if (length(value) == 0L || is.na(value)) PART2_DEFAULT_PRICE else value
+  })
+
+  # `price` defaults to the current lever value. The ICER curve passes an
+  # explicit price for each point of the slider range, so computing the curve
+  # does not make the curve depend on the slider.
+  part2_model_args <- function(price = part2_price()) {
+    case <- part2_case()
+    list(
+      scenario_intervention_price = price,
+      scenario_implementation_cost = input$implementation,
+      scenario_healthcare_savings = input$savings,
+      scenario_rrr = case$rrr,
+      scenario_engagement_year1 = case$year1_engagement / 100,
+      scenario_engagement_followup = case$followup_engagement / 100,
+      scenario_utility_no_event = case$utility_no_event,
+      scenario_utility_post_mi = case$utility_post_mi,
+      scenario_utility_post_stroke = case$utility_post_stroke,
+      scenario_cost_post_mi_year1 = cost_post_mi_year1,
+      scenario_cost_post_mi_followup = cost_post_mi_followup,
+      scenario_cost_post_stroke_year1 = cost_post_stroke_year1,
+      scenario_cost_post_stroke_followup = cost_post_stroke_followup
+    )
+  }
+
+  part2_ce <- reactive({
+    req(part2_open())
+    do.call(run_eqalb_model, part2_model_args())
+  })
+
+  # The coverage slider only exists while the Budget impact section has
+  # rendered, so the full-rollout default is the fallback before that.
+  part2_coverage <- reactive({
+    part2_coverage_pct(input$part2_coverage)
+  })
+
+  # Five-year budget total at an arbitrary coverage cap and price. Every budget
+  # figure in the case comes from here, so the cap is applied consistently.
+  part2_budget_at <- function(coverage, price) {
+    sum(part2_bia_for(coverage, price)$net_budget_impact)
+  }
+
+  part2_bia_for <- function(coverage, price) {
+    case <- part2_case()
+    calculate_budget_impact(
+      population = part2_covered_population(coverage, part2_case()$population),
+      year1_uptake_pct = input$bia_year1_uptake,
+      annual_uptake_increase_pp = input$bia_annual_uptake_increase,
+      horizon_years = input$bia_horizon,
+      intervention_price = price,
+      implementation_cost_per_new_user = input$implementation,
+      healthcare_savings_per_active_user = input$savings,
+      avoided_event_savings_per_active_user = input$bia_avoided_event_savings,
+      followup_engagement_pct = case$followup_engagement
+    )
+  }
+
+  # Highest coverage step that still fits the case ceiling at the current price.
+  # NA when even the lowest step does not fit.
+  part2_max_affordable_coverage <- function(price) {
+    for (coverage in seq(
+      PART2_COVERAGE_MAX, PART2_COVERAGE_MIN, by = -PART2_COVERAGE_STEP
+    )) {
+      if (part2_affordability_pass(part2_budget_at(coverage, price))) {
+        return(coverage)
+      }
+    }
+    NA_real_
+  }
+
+  part2_bia <- reactive({
+    req(part2_open())
+    # The coverage cap scales the case population for the budget impact only.
+    # The general budget-impact function and the full-analysis module are
+    # unchanged; the per-person model result is unaffected.
+    part2_bia_for(part2_coverage(), part2_price())
+  })
+
+  # The four readiness-exercise choices, mapped onto the inputs that
+  # calculate_readiness() already accepts. They reach the readiness assessment
+  # only: the price lever, the coverage cap, the per-person model result and the
+  # budget-impact calculation keep the fixed case values above, so a readiness
+  # choice can never move the ICER, the coverage or the five-year budget.
+  part2_readiness_choices <- reactive({
+    list(
+      interoperability = part2_readiness_level(
+        input$part2_interop, PART2_INTEROP_LEVELS, PART2_INTEROP_DEFAULT
+      ),
+      algorithm_governance = part2_readiness_level(
+        input$part2_governance, PART2_GOVERNANCE_LEVELS,
+        PART2_GOVERNANCE_DEFAULT
+      ),
+      review_minutes = part2_readiness_level(
+        input$part2_workflow, PART2_WORKFLOW_MINUTES, PART2_WORKFLOW_DEFAULT
+      ),
+      followup_engagement = part2_readiness_level(
+        input$part2_engagement, PART2_ENGAGEMENT_PCT,
+        PART2_ENGAGEMENT_DEFAULT
+      )
+    )
+  })
+
+  # Names the learner's selected follow-up engagement level. The exercise offers
+  # exactly 30% / 60% / 90%, and the label is read from the same percentage that
+  # drives the Engagement domain, so the wording can never disagree with the
+  # traffic light beside it.
+  part2_engagement_level <- function(pct) {
+    if (length(pct) != 1L || is.na(pct)) {
+      return("not specified")
+    }
+    if (pct < PART2_ENGAGEMENT_PCT[["moderate"]]) {
+      "low"
+    } else if (pct < PART2_ENGAGEMENT_PCT[["high"]]) {
+      "moderate"
+    } else {
+      "high"
+    }
+  }
+
+  part2_readiness <- reactive({
+    req(part2_open())
+    case <- part2_case()
+    choices <- part2_readiness_choices()
+    readiness <- calculate_readiness(
+      target_population = case$population,
+      digital_access = input$digital_access,
+      digital_suitability = input$digital_suitability,
+      readiness_year1_engagement = case$year1_engagement,
+      # The learner's own Follow-up engagement answer drives the Engagement
+      # domain, the follow-up reach figure and the live clinician-hours line.
+      # The case's follow-up engagement stays a displayed case fact only, so it
+      # can no longer override the selected tutorial value.
+      readiness_followup_engagement = choices$followup_engagement,
+      review_minutes = choices$review_minutes,
+      supported_languages = case$languages,
+      accessibility_features = isTRUE(input$accessibility_features),
+      interoperability = choices$interoperability,
+      algorithm_governance = choices$algorithm_governance
+    )
+    # The Engagement description is restated from the learner's own answer so it
+    # names the selected level rather than the traffic light's band. The status,
+    # thresholds and colours still come from calculate_readiness(), and its text
+    # is left untouched for the DHT Readiness tab.
+    cards <- readiness$cards
+    engagement <- cards$Domain == "Engagement"
+    if (any(engagement)) {
+      cards$Explanation[engagement] <- paste0(
+        "Follow-up engagement is ",
+        part2_engagement_level(choices$followup_engagement), "."
+      )
+    }
+    readiness$cards <- cards
+    readiness
+  })
+
+  part2_criteria <- reactive({
+    ce <- part2_ce()
+    value_ok <- part2_value_for_money_pass(
+      ce$incremental_cost, ce$incremental_qalys
+    )
+    affordable <- part2_affordability_pass(
+      part2_budget_at(part2_coverage(), part2_price())
+    )
+    deliverable <- part2_deliverability_pass(part2_readiness()$domains)
+    best <- part2_max_affordable_coverage(part2_price())
+    list(
+      value_for_money = value_ok,
+      affordability = affordable,
+      deliverability = deliverable,
+      max_affordable_coverage = best,
+      # The coverage test passes only when the other three criteria hold and the
+      # selected cap is the highest cap that still fits the budget.
+      coverage_maximised = value_ok && affordable && deliverable &&
+        !is.na(best) && identical(as.numeric(part2_coverage()), as.numeric(best))
+    )
+  })
+
+  # Deterministic ICER across the whole slider range. Every point comes from
+  # the existing model function with the fixed case facts, so no equation is
+  # duplicated. This reactive deliberately does not read the slider, so moving
+  # the slider re-renders the chart marker without recomputing the curve.
+  part2_icer_curve <- reactive({
+    req(part2_open())
+    prices <- seq(PART2_PRICE_MIN, PART2_PRICE_MAX, by = PART2_PRICE_STEP)
+    icers <- vapply(prices, function(price) {
+      result <- do.call(run_eqalb_model, part2_model_args(price))
+      if (is.na(result$icer)) NA_real_ else result$icer
+    }, numeric(1))
+    data.frame(price = prices, icer = icers)
+  })
+
+  # Highest price on the slider that still passes the payer's threshold for the
+  # active case. It is read from the existing ICER curve, so the answer reuses
+  # the same model runs the chart already performs and the learner's slider
+  # never changes it.
+  part2_max_acceptable_price <- reactive({
+    curve <- part2_icer_curve()
+    meeting <- curve$price[is.finite(curve$icer) & curve$icer <= PART2_WTP]
+    if (length(meeting) == 0L) NA_real_ else max(meeting)
+  })
+
+  output$part2_icer_plot <- renderPlot({
+    curve <- part2_icer_curve()
+    current <- part2_price()
+    curve$meets <- is.finite(curve$icer) & curve$icer <= PART2_WTP
+    ggplot2::ggplot(curve, ggplot2::aes(x = price, y = icer)) +
+      ggplot2::geom_hline(
+        yintercept = PART2_WTP, linetype = "dashed", colour = "#b02a37"
+      ) +
+      ggplot2::geom_line(ggplot2::aes(colour = meets), linewidth = 0.9) +
+      ggplot2::geom_point(ggplot2::aes(colour = meets), size = 1.6) +
+      ggplot2::geom_vline(
+        xintercept = current, colour = "#d9480f", linewidth = 0.7
+      ) +
+      ggplot2::annotate(
+        "text",
+        x = PART2_PRICE_MAX, y = PART2_WTP,
+        label = "\u20ac100,000/QALY", hjust = 1.05, vjust = -0.6,
+        size = 3.1, colour = "#b02a37"
+      ) +
+      ggplot2::scale_colour_manual(
+        values = c(`TRUE` = "#1e7d45", `FALSE` = "#7a8b93"),
+        labels = c(
+          `TRUE` = "Meets the threshold",
+          `FALSE` = "Above the threshold"
+        ),
+        name = NULL
+      ) +
+      ggplot2::scale_x_continuous(
+        breaks = seq(PART2_PRICE_MIN, PART2_PRICE_MAX, by = 50),
+        limits = c(PART2_PRICE_MIN, PART2_PRICE_MAX)
+      ) +
+      ggplot2::scale_y_continuous(
+        breaks = c(0, 1e5, 2e5, 3e5),
+        labels = scales::label_number(prefix = "\u20ac", big.mark = ",")
+      ) +
+      ggplot2::labs(
+        title = "Deterministic ICER across the negotiated price range",
+        x = "Negotiated annual price (EUR per active user per year)",
+        y = "ICER (EUR per QALY)"
+      ) +
+      ggplot2::theme_minimal(base_size = 13) +
+      ggplot2::theme(legend.position = "bottom")
+  }, height = 300)
+
+  output$part2_progress <- renderUI({
+    index <- part2_step_index()
+    tags$p(
+      class = "text-muted",
+      style = "font-size:13px; margin-bottom:0.9rem;",
+      sprintf(
+        "Section %d of %d. %s", index, length(PART2_SECTIONS),
+        PART2_SECTIONS[[index]]
+      )
+    )
+  })
+
+  output$part2_facts <- renderTable({
+    part2_case_facts(part2_case())
+  }, striped = TRUE, bordered = TRUE, hover = TRUE, spacing = "s")
+
+  # Short identifier for the active case, shown above the case itself.
+  output$part2_case_banner <- renderUI({
+    tags$p(
+      class = "cc-part2-case",
+      tags$strong("Active case: ", part2_case_heading(part2_case()))
+    )
+  })
+
+  # The case brief prose is written from the active case, so the narrative can
+  # never quote a different case's facts.
+  output$part2_case_intro <- renderUI({
+    case <- part2_case()
+    tags$p(paste0(
+      "eQalb is being considered for regional adoption to reduce ",
+      "cardiovascular events among eligible adults. ",
+      case$summary, " Evidence suggests a ",
+      format(case$rrr * 100, trim = TRUE),
+      "% relative reduction in event risk among engaged users. Engagement, ",
+      "clinical evidence, local workflow, and digital access are fixed for ",
+      "this case."
+    ))
+  })
+
+  output$part2_population_line <- renderUI({
+    tags$p(paste0(
+      "Potentially eligible population: ",
+      format(part2_case()$population, big.mark = ",", scientific = FALSE),
+      " people."
+    ))
+  })
+
+  output$part2_full_rollout_hint <- renderUI({
+    tags$p(class = "cc-tutorial-hint", paste0(
+      "Full rollout means coverage of all ",
+      format(part2_case()$population, big.mark = ",", scientific = FALSE),
+      " potentially eligible people. A lower cap represents phased adoption, ",
+      "not a change in the clinical evidence or in the per-person result."
+    ))
+  })
+
+  output$part2_value_result <- renderUI({
+    ce <- part2_ce()
+    selected <- part2_price()
+    passed <- part2_value_for_money_pass(
+      ce$incremental_cost, ce$incremental_qalys
+    )
+    best <- part2_max_acceptable_price()
+    at_max <- passed && is.finite(best) && abs(selected - best) < 1e-6
+    icer_text <- if (is.na(ce$icer)) {
+      "ICER not interpretable because incremental QALYs are not positive"
+    } else {
+      paste0(format_euros_signed(ce$icer), " per QALY")
+    }
+    tags$div(
+      part2_status_card(
+        if (at_max) {
+          PART2_PRICE_AT_MAX
+        } else if (passed) {
+          "Value for money achieved, but not at the highest passing price"
+        } else {
+          PART2_PRICE_OVER
+        },
+        at_max,
+        paste0(
+          "Incremental cost ", format_euros_signed(ce$incremental_cost),
+          " per person; incremental QALYs ",
+          format(round(ce$incremental_qalys, 5), nsmall = 5),
+          "; ", icer_text, " against a threshold of ",
+          format_euros_signed(PART2_WTP), " per QALY."
+        )
+      ),
+      if (passed && !at_max) {
+        tags$p(class = "cc-tutorial-hint", PART2_PRICE_BELOW_MAX)
+      }
+    )
+  })
+
+  # Compact live feedback under the coverage slider. Three states, matching the
+  # traffic-light wording used elsewhere: over the budget ceiling, affordable
+  # but below the highest affordable cap, and the highest affordable cap itself.
+  # The "can be increased" nudge is never shown once the cap is reached.
+  output$part2_coverage_message <- renderUI({
+    price <- part2_price()
+    coverage <- part2_coverage()
+    affordable <- part2_affordability_pass(part2_budget_at(coverage, price))
+    best <- part2_max_affordable_coverage(price)
+    at_max <- affordable && !is.na(best) &&
+      identical(as.numeric(coverage), as.numeric(best))
+    state <- if (at_max) {
+      list(class = "cc-max", text = PART2_COVERAGE_MAX_MESSAGE)
+    } else if (affordable) {
+      list(class = "cc-below-max", text = PART2_COVERAGE_BELOW_MAX)
+    } else {
+      list(class = "cc-over", text = PART2_COVERAGE_OVER)
+    }
+    tags$p(
+      class = paste0("cc-part2-coverage-note ", state$class),
+      state$text
+    )
+  })
+
+  output$part2_budget_price_line <- renderText({
+    paste0(
+      "Negotiated annual price used in this case: ",
+      format_euros_signed(part2_price()), " per active user per year. Coverage ",
+      "cap: ", format(part2_coverage(), trim = TRUE),
+      "% of the potentially eligible population."
+    )
+  })
+
+  # Shown only while value for money has not been achieved, so the learner is
+  # pointed back to the one lever that can change the case.
+  output$part2_budget_price_action <- renderUI({
+    if (isTRUE(part2_criteria()$value_for_money)) {
+      return(NULL)
+    }
+    tags$div(
+      style = "margin: 0.25rem 0 0.9rem 0;",
+      actionButton(
+        "part2_go_value", "Change negotiated price",
+        class = "cc-btn-orange"
+      )
+    )
+  })
+
+  output$part2_bia_table <- renderTable({
+    result <- part2_bia()
+    data.frame(
+      Year = result$year,
+      `Active users` = format(result$active_users, big.mark = ","),
+      `Net budget impact` = format_euros_signed(result$net_budget_impact),
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+  }, striped = TRUE, bordered = TRUE, hover = TRUE)
+
+  output$part2_bia_plot <- renderPlot({
+    build_bia_plot(part2_bia())
+  })
+
+  # Per-domain readiness cards. They are rendered in the Recommendation section,
+  # not in the readiness exercise, so the exercise itself stays verdict-free.
+  output$part2_readiness_cards <- renderUI({
+    cards <- part2_readiness()$cards
+    lapply(seq_len(nrow(cards)), function(i) {
+      style <- DHT_STATUS_STYLES[[cards$Status[i]]]
+      tags$div(
+        style = paste0(
+          "background-color:", style[["background"]], ";",
+          "border:1px solid ", style[["border"]], ";",
+          "color:", style[["text"]], ";",
+          "border-radius:4px;padding:10px;margin-bottom:10px;"
+        ),
+        tags$strong(paste0(cards$Domain[i], " - ", cards$Status[i])),
+        tags$br(),
+        cards$Explanation[i]
+      )
+    })
+  })
+
+  # This readiness summary lives in the Recommendation section rather than in
+  # the readiness exercise, so the exercise itself carries no verdict. It names
+  # any Red domain, which the checklist row alone does not.
+  output$part2_readiness_result <- renderUI({
+    domains <- part2_readiness()$domains
+    passed <- part2_deliverability_pass(domains)
+    red_domains <- domains$Domain[domains$Status == "Red"]
+    tags$div(
+      part2_status_card(
+        "Deliverability",
+        passed,
+        paste0(
+          if (passed) {
+            "No readiness domain is Red. "
+          } else {
+            paste0(
+              "Red domain", if (length(red_domains) > 1L) "s" else "", ": ",
+              paste(red_domains, collapse = ", "), ". "
+            )
+          },
+          sum(domains$Status == "Green"), " of ", nrow(domains),
+          " domains are Green."
+        )
+      )
+    )
+  })
+
+  # One short line showing the reach and workload implied by the current
+  # choices, so the effect of the workflow and engagement choices is visible
+  # without opening the calculations table.
+  output$part2_readiness_note <- renderText({
+    numbers <- part2_readiness()$numbers
+    value_of <- function(measure) {
+      hit <- numbers$Value[numbers$Measure == measure]
+      if (length(hit) == 0L) "" else hit[[1]]
+    }
+    paste0(
+      "At these choices: ", value_of("Active users at year 1"),
+      " active users in year 1 and ", value_of("Active users at follow-up"),
+      " at follow-up, needing ", value_of("Annual clinician-review hours"),
+      " clinician-review hours a year."
+    )
+  })
+
+  output$part2_readiness_numbers <- renderTable({
+    part2_readiness()$numbers
+  }, striped = TRUE, bordered = TRUE, hover = TRUE)
+
+  output$part2_checklist <- renderUI({
+    criteria <- part2_criteria()
+    checks <- list(
+      list("Value for money at \u20ac100,000/QALY", criteria$value_for_money),
+      list(
+        "Five-year budget impact \u2264 \u20ac3 million", criteria$affordability
+      ),
+      list("No DHT readiness domain is Red", criteria$deliverability),
+      list("Coverage maximised within budget", criteria$coverage_maximised)
+    )
+    lapply(checks, function(check) {
+      style <- part2_check_style(check[[2]])
+      tags$div(
+        style = paste0(
+          "background-color:", style[["background"]], ";",
+          "border:1px solid ", style[["border"]], ";",
+          "color:", style[["text"]], ";",
+          "border-radius:4px;padding:8px 10px;margin-bottom:8px;"
+        ),
+        tags$strong(check[[1]]),
+        " - ",
+        part2_check_label(check[[2]])
+      )
+    })
+  })
+
+  output$part2_decision <- renderUI({
+    criteria <- part2_criteria()
+    decision <- part2_recommendation(
+      criteria$value_for_money, criteria$affordability,
+      criteria$deliverability,
+      coverage_maximised = criteria$coverage_maximised,
+      max_coverage = criteria$max_affordable_coverage
+    )
+    complete <- identical(decision$status, "conditional_adoption") &&
+      isTRUE(criteria$coverage_maximised)
+    style <- if (complete) {
+      DHT_STATUS_STYLES[["Green"]]
+    } else {
+      DHT_STATUS_STYLES[["Amber"]]
+    }
+    tags$div(
+      tags$p(
+        class = "cc-tutorial-hint",
+        paste0(
+          "Current case settings: negotiated price ",
+          format_euros_signed(part2_price()), " per active user per year; ",
+          "programme coverage cap ", format(part2_coverage(), trim = TRUE),
+          "% of the potentially eligible population."
+        )
+      ),
+      tags$p(
+        class = "cc-tutorial-hint",
+        paste0(
+          "Maximum affordable coverage at the current negotiated price: ",
+          if (is.na(criteria$max_affordable_coverage)) {
+            paste0(
+              "none - even the lowest coverage step exceeds the ",
+              format_euros_signed(PART2_BUDGET_CEILING),
+              " five-year budget at this price."
+            )
+          } else {
+            paste0(
+              format(criteria$max_affordable_coverage, trim = TRUE), "%"
+            )
+          }
+        )
+      ),
+      tags$div(
+        class = "cc-part2-card",
+        style = paste0(
+          "background-color:", style[["background"]], ";",
+          "border:1px solid ", style[["border"]], ";",
+          "color:", style[["text"]], ";",
+          "border-radius:4px;padding:12px;margin-bottom:12px;"
+        ),
+        tags$h4(style = "margin-top:0;", decision$headline),
+        decision$message
+      ),
+      if (complete) part2_completion_card()
     )
   })
 
@@ -6467,6 +7942,87 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$tutorial_exit, {
+    updateSelectInput(session, "nav_page", selected = "home")
+  })
+
+  # --- Guided Tutorial Part 2 navigation -----------------------------
+  observeEvent(input$part2_go_value, {
+    updateSelectInput(session, "tutorial_part2_step", selected = "value")
+  })
+
+  # Read-only case-facts overlay, available from the "Case facts" button that
+  # sits in the global top row while Part 2 is open.
+  observeEvent(input$show_part2_facts, {
+    showModal(cc_part2_facts_modal(part2_case()))
+  })
+
+  observeEvent(input$tutorial_part2_start, {
+    updateSelectInput(session, "tutorial_part2_step", selected = "brief")
+    updateSelectInput(session, "tutorial_step", selected = "part2")
+  })
+
+  observeEvent(input$part2_next, {
+    index <- min(part2_step_index() + 1L, length(PART2_STEP_KEYS))
+    updateSelectInput(
+      session, "tutorial_part2_step", selected = PART2_STEP_KEYS[[index]]
+    )
+  })
+
+  observeEvent(input$part2_back, {
+    index <- max(part2_step_index() - 1L, 1L)
+    updateSelectInput(
+      session, "tutorial_part2_step", selected = PART2_STEP_KEYS[[index]]
+    )
+  })
+
+  # Restarting the case returns both levers to the full-rollout position the
+  # manufacturer proposed, returns the readiness exercise to its default
+  # answers and reopens the case brief. This is the action the completion card's
+  # retry button uses, so a retry never inherits the previous case's answers.
+  reset_part2 <- function() {
+    updateSliderInput(session, "part2_price", value = PART2_DEFAULT_PRICE)
+    updateSliderInput(
+      session, "part2_coverage", value = PART2_COVERAGE_DEFAULT
+    )
+    updateRadioButtons(
+      session, "part2_interop", selected = PART2_INTEROP_DEFAULT
+    )
+    updateRadioButtons(
+      session, "part2_governance", selected = PART2_GOVERNANCE_DEFAULT
+    )
+    updateRadioButtons(
+      session, "part2_workflow", selected = PART2_WORKFLOW_DEFAULT
+    )
+    updateRadioButtons(
+      session, "part2_engagement", selected = PART2_ENGAGEMENT_DEFAULT
+    )
+    updateSelectInput(session, "tutorial_part2_step", selected = "brief")
+  }
+
+  # Draws a different complete case, so a retry always presents a new
+  # commissioning position whenever more than one case exists. The draw is the
+  # only thing that changes the case: sliders and section changes never do.
+  draw_different_part2_case <- function() {
+    total <- length(PART2_CASES)
+    if (total < 2L) {
+      return(invisible(NULL))
+    }
+    current <- part2_case_index()
+    candidates <- setdiff(seq_len(total), current)
+    part2_case_index(sample(candidates, 1L))
+    invisible(NULL)
+  }
+
+  observeEvent(input$part2_done_restart, {
+    draw_different_part2_case()
+    reset_part2()
+  })
+
+  observeEvent(input$part2_open_full, {
+    open_full_analysis()
+  })
+
+  observeEvent(input$part2_exit, {
     updateSelectInput(session, "nav_page", selected = "home")
   })
 

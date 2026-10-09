@@ -169,3 +169,14 @@ Screenshots are not committed to the repository yet. The hosted demo above is th
 | Value of information | The EVPI and EVPPI outputs. |
 | HTA decision summary | The decision dashboard and the evidence-generation panel. |
 | Exported package | The contents of the downloaded ZIP file. |
+
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE` for details.
+
+## Educational disclaimer
+
+eQalb is an educational simulation using illustrative model inputs and
+assumptions. It is not intended for clinical, reimbursement, procurement, or
+patient-care decision-making.
