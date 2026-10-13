@@ -1485,8 +1485,90 @@ explicitly documented otherwise.
   `-j2` if memory is tight), the systemd hardening (`ProtectHome=read-only` with
   `StateDirectory=eqalb` and a redirected `HOME`/`XDG_CACHE_HOME`), and the R
   source build itself are still to be confirmed on the host.
+- The frontend deployment automation is repository-only and unverified. The
+  workflow (`.github/workflows/deploy-frontend.yml`), the server script
+  (`deploy/frontend-deploy.sh`) and its runbook (`deploy/FRONTEND_DEPLOY.md`)
+  exist and were validated locally, but no GitHub environment, secret or approval
+  rule has been configured, the script has not been installed on the VPS, and no
+  workflow run has happened, so no automated release has ever been deployed or
+  rolled back. The server-side bootstrap - dedicated deploy account and key,
+  fixed directories, root-owned script and forced command, environment secrets,
+  required approval - is a documented manual step, and the action pins are full
+  commit SHAs written from the actions' published releases and still to be
+  confirmed against the action repositories.
 
 ## Current task
+
+Completed: the deliberately small Version 1 frontend-only deployment automation,
+left unstaged for review. It deploys a completed Vue/Vite static bundle and
+nothing else - no R, renv or Python/API change, no systemd, Caddy or environment
+file, no DNS, no git operation on the VPS, and no API restart.
+
+- `.github/workflows/deploy-frontend.yml` (new): builds only on pushes to `main`
+  that touch `frontend/**`, `deploy/**` or the workflow itself, on Node 22, with
+  `npm ci --ignore-scripts`, `npm run typecheck`, `npm run lint` and
+  `npm run build`; rejects a bundle containing any `.map` file; packages
+  `frontend-<run-number>-<commit-sha>.tar.gz` with a SHA-256 checksum that is
+  verified before upload; uploads both files to the fixed incoming directory with
+  `scp -O`; invokes only the fixed remote command `activate <release-id>
+  <archive> <checksum>`; validates the public `/`, `/app` and `/about` pages
+  (HTTP 200 and a content-hashed asset from the new bundle) plus read-only
+  `/api/health`; and, if any check fails, invokes the fixed `rollback` command
+  with the previous release id the server reported, then fails the run. The
+  deploy and rollback jobs sit behind the `production` GitHub Environment
+  (required approval to be configured manually), a single concurrency group
+  allows one deploy at a time and never cancels a running one, `permissions` is
+  `contents: read`, every action is pinned to a full commit SHA, and the six
+  expected environment secrets (`DEPLOY_SSH_HOST`, `DEPLOY_SSH_PORT`,
+  `DEPLOY_SSH_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`,
+  `DEPLOY_PUBLIC_BASE_URL`) are documented but not created. `workflow_dispatch`
+  exists only for a manual rollback and takes one optional input,
+  `rollback_release_id`, which only reaches the script's validated rollback mode.
+- `deploy/frontend-deploy.sh` (new): root-owned when installed, exactly two
+  operations. `activate` requires the caller's release id to match
+  `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`, requires the archive and checksum to be the
+  exact derived paths under `/opt/eqalb/frontend/incoming/`, verifies the
+  SHA-256, refuses absolute or parent-relative archive entries and archives
+  containing symbolic links, extracts into a staging directory under
+  `/opt/eqalb/frontend/releases/`, requires `index.html`, removes every
+  group/world write bit, renames the staging directory into place and replaces
+  the `/opt/eqalb/frontend/dist` symlink in one rename; the previous release is
+  retained and reported as `PREVIOUS_RELEASE_ID`. `rollback` re-validates the id
+  and the release's `index.html` and repoints the symlink in one rename. The
+  script uses `set -euo pipefail`, `umask 022`, `flock` on
+  `/opt/eqalb/frontend/.deploy.lock`, a staging directory and a cleanup trap, and
+  contains no shell evaluation, wildcard deletion, download, package install,
+  git, sudo, systemd, Caddy or API command.
+- `deploy/FRONTEND_DEPLOY.md` (new): the manual bootstrap (dedicated
+  `eqalb-deploy` account, fixed directories and modes, installation of the
+  root-owned script and of a root-owned forced-command wrapper that accepts only
+  `activate`, `rollback` and the exact `scp -t <incoming dir>` upload, a
+  dedicated key in a `restrict,command=...` `authorized_keys` entry, the six
+  environment secrets, required reviewers), the one-time migration of an
+  existing hand-built `dist` directory into the first release, the normal deploy
+  sequence, automatic rollback on a failed validation, the one-command manual
+  rollback, re-run clean-up, retention, and the unverified status.
+- `deploy/Caddyfile` (updated): `try_files {path} /index.html` is now active and
+  the stale no-router/deep-link commentary is corrected; the API proxy,
+  certificate handling, logging, compression, headers and TLS settings are
+  unchanged.
+- `deploy/DEPLOY.md` (updated): a new §7 explains the automation, states that
+  §1-§6 remain the install path for everything non-frontend, and warns that once
+  `dist` is a symlink the in-place `npm run build` of §3.4 must not be used.
+- `frontend/vite.config.ts` (updated): the production build sets
+  `sourcemap: false`, so no `.map` files are published.
+- `frontend/README.md` (updated): a short "Deployment" section points at the
+  workflow and the runbook and records the same unverified status.
+
+Validation, all repository-local: `bash -n deploy/frontend-deploy.sh` clean; the
+workflow YAML parsed and passed 44 structural checks (triggers, concurrency,
+permissions, pinned SHAs, the four build commands, the no-`.map` guard,
+checksum verification before upload, the environment gate, the fixed
+`activate`/`rollback` commands, the four URL checks, the six secret names);
+`npm ci --ignore-scripts`, `npm run typecheck`, `npm run lint` and
+`npm run build` all pass and the built `dist` contains no `.map` file;
+`git diff --check` clean. Nothing was committed, staged, pushed, deployed or run
+against GitHub, the VPS or any other remote service.
 
 Completed: the minimal production-deployment templates, under `deploy/` and
 committed-ready but not committed. Four files, all placeholders only:
@@ -3386,10 +3468,24 @@ interpretation does not yet describe one-sided structural ranges in its own word
 range that sits wholly above its base is not called out), and population EVPI
 remains unimplemented.
 
+The Version 1 frontend deployment automation is written and locally validated but
+deliberately unverified (see Current task). Its next step belongs to an operator,
+not the repository: bootstrap the host as `deploy/FRONTEND_DEPLOY.md` describes
+(dedicated deploy account and key, fixed directories, root-owned script and
+forced command), create the `production` environment with its six secrets and
+its required-approval rule, confirm the pinned action SHAs with `git ls-remote`,
+then watch one controlled deploy end to end - including a rollback - before
+treating the automation as supported. Until that has happened, the manual
+frontend path in `deploy/DEPLOY.md` §3.4 and §6 stays the authoritative one, no
+further repository work on deployment is planned, and the only frontend surface
+the automation deliberately does not cover (Caddy reload, API/R changes, DNS) is
+unchanged.
+
 ## Update log
 
 | Date | Change | Verified? |
 |---|---|---|
+| 2026-10-13 | Frontend-only deployment automation, Version 1, repository-side only and left unstaged. Added `.github/workflows/deploy-frontend.yml` (push to `main` on the `frontend/**`, `deploy/**` and workflow paths; Node 22; `npm ci --ignore-scripts`, `npm run typecheck`, `npm run lint`, `npm run build`; refuses `.map` files; packages `frontend-<run-number>-<commit-sha>.tar.gz` with a SHA-256 checksum verified before upload; `scp -O` into the fixed incoming directory; one fixed `activate`/`rollback` SSH command; `/`, `/app`, `/about` and read-only `/api/health` validation with automatic rollback to the reported previous release on any failure; `production` environment gate; single non-cancelling concurrency group; `contents: read`; all actions pinned to full commit SHAs; six placeholder environment-scoped secret names; `workflow_dispatch` limited to an optional `rollback_release_id`), `deploy/frontend-deploy.sh` (two fixed operations; validated release id; SHA-256 check; staging extraction under `releases/`; `index.html` requirement; no absolute or parent-relative archive entries and no symbolic links; group/world write bits removed; atomic `dist` symlink swap; previous release retained and reported; `flock`, `umask 022`, cleanup trap; no shell evaluation, wildcard deletion, download, package install, git, sudo, systemd, Caddy or API command) and `deploy/FRONTEND_DEPLOY.md` (manual bootstrap with a dedicated deploy account, directories, root-owned script, root-owned forced-command wrapper restricted to `activate`, `rollback` and the exact `scp -t` upload, key and `authorized_keys`, environment secrets and required approval, migration of an existing hand-built `dist`, deploy sequence, automatic and one-command manual rollback, retention, unverified status). `deploy/Caddyfile` now enables `try_files {path} /index.html` and corrects its stale no-router/deep-link commentary (API proxy, certificates, logging, compression, headers and TLS untouched); `deploy/DEPLOY.md` gains §7 and the warning not to run the in-place build once `dist` is a symlink; `frontend/vite.config.ts` sets `sourcemap: false`; `frontend/README.md` gains a Deployment section; this file records the same facts | Repository-local validation only, and it passed: `bash -n deploy/frontend-deploy.sh` clean; the workflow YAML parsed (no duplicate keys, no tabs) and passed 44 structural checks covering triggers, concurrency, permissions, pinned SHAs, the four build commands, the no-`.map` guard, checksum verification before upload, the environment gate, the fixed `activate`/`rollback` commands, the four URL checks and the six secret names; `npm ci --ignore-scripts`, `npm run typecheck`, `npm run lint` and `npm run build` all pass and the built `dist` contains no `.map` file; `git diff --check` clean; the changed-file list matches the approved scope exactly. **Not verified and not claimed:** no workflow run, no GitHub environment, secret or approval, no server installation, no deploy and no rollback has happened; the action pins are written from the actions' published releases and must be confirmed with `git ls-remote` on first use; the design assumes Caddy resolves the `dist` symlink per request. Nothing was committed, staged, pushed, deployed or run against GitHub or the VPS, and no package dependency or lockfile changed |
 | 2026-10-13 | Documentation-only deployment closeout. `deploy/DEPLOY.md` §1.1 records the four system packages the first Ubuntu 26.04 compatibility run needed (`libuv1-dev` for `fs`, `cmake` for `nloptr`, `libsodium-dev` for `sodium`, `pandoc` for knitr/rmarkdown) and that the source-built R 4.5.1 restored all 135 packages. A short "Deployment closeout" section records that the stack is deployed and smoke-tested at `https://openhealth.ngo` but not fully validated: the frontend is served over HTTPS with a Caddy-obtained certificate, the proxied `/api/health` check returned HTTP 200 with `model_ready: true` and 2 of 2 R workers ready, browser smoke testing found no console errors, no failed API requests and working core interactions, and Caddy needs read and traverse access to the static frontend build directory. `project_state.md` records the same bounded facts and that operational performance testing remains open | Yes for the smoke-test facts, which come from the operator's own evidence. Deliberately **not** claimed: formal load, performance or security testing, clinical or model validation, or exhaustive functional testing. Documentation only - no application, model, API, frontend, Caddy, systemd, lockfile or environment change, and no simulated-data notice added. `git diff --check` clean, clean before commit |
 | 2026-10-13 | Documentation-and-template pass: the source-build path for R 4.5.1 on Ubuntu 26.04, taken as a deliberate decision to preserve the runtime recorded in `renv.lock`. `deploy/DEPLOY.md` replaces the earlier "BLOCKING" section with a "DECISION: R 4.5.1 is built from official source into `/opt/R/4.5.1`" section that keeps the CRAN finding as its justification (this release's suite `resolute-cran40` serves the current R 4.6.x series; R 4.5 binaries are archived and documented only for Ubuntu 20.04; reimaging does not help). §1 is renumbered into §1.1-§1.5: one merged dependency list covering both base R and renv compilation (zlib1g-dev, libbz2-dev, liblzma-dev, libpcre2-dev, libreadline-dev, libcurl4-openssl-dev, libssl-dev, libxml2-dev, libpng-dev, libjpeg-dev, libtiff-dev, libcairo2-dev, libfontconfig1-dev, libfreetype6-dev, libharfbuzz-dev, libfribidi-dev, libicu-dev, build-essential, gfortran, pkg-config, texinfo), then §1.2 which downloads the pinned official archive `https://cran.r-project.org/src/base/R-4/R-4.5.1.tar.gz`, verifies SHA-256 `b42a7921400386645b10105b91c68728787db5c4c83c9f6c30acdce632e1bb70` with `sha256sum -c -` before extracting, checks the single top-level directory and the `VERSION`/`VERSION-NICK` markers, builds with `./configure --prefix=/opt/R/4.5.1 --enable-R-shlib --with-x=no` and `sudo make install`, verifies via `/opt/R/4.5.1/bin/Rscript --version` and `sessionInfo()`, and states the maintenance trade-off (no apt security updates; deliberate rebuilds). No apt R is installed at all - the CRAN repository, its key and the `r-base`/`r-base-dev` step are gone. §3.2, the failure-protocol evidence commands, the §5 binding audit and the §6 re-restore path now use the absolute `/opt/R/4.5.1/bin/Rscript`; checkpoint condition 2 demands exactly R 4.5.1 from that prefix; the failure protocol now explains how to read each condition instead of listing three options. `deploy/api.env.example` sets `EQALB_RSCRIPT=/opt/R/4.5.1/bin/Rscript` with the reasoning, and `deploy/eqalb-api.service` needed **no** change because it contains no R path and inherits the setting. `project_state.md` updated (Known limitations, Current task, Next planned task). No application code, model logic, frontend, Caddy configuration, request/response contract or Shiny file was touched | Yes - the archive URL and the checksum source were verified from primary sources before editing. `R-4.5.1.tar.gz` returns HTTP 200 with Content-Length 40518816 and Last-Modified Fri, 13 Jun 2025 07:12:01 GMT; CRAN publishes no per-file checksum or signature beside it (`R-4.5.1.tar.gz.md5`, `.sig`, `.asc`, `md5sum.txt`, `MD5SUMS`, `/src/checksums/` and `/bin/checksums/` all return 404), so the authoritative values were taken from the R Core Team's own release announcement at `https://stat.ethz.ch/pipermail/r-announce/2025/000713.html` ("[Rd] R 4.5.1 is released", Peter Dalgaard, 13 June 2025), which lists `R-4/R-4.5.1.tar.gz` as SHA-256 `b42a7921...ee8f444` and MD5 `e22eee30af90ec66eb179b66d122ffd9`. Those values were then confirmed against the actual artifact: the downloaded file hashes to the same SHA-256 and MD5, and its size matches the published Content-Length, so `sha256sum -c` is a genuine publisher-to-artifact check rather than a self-computed value. The archive was inspected without installing anything: it contains exactly one top-level directory `R-4.5.1/`, 5379 entries, `R-4.5.1/VERSION` reads `4.5.1`, `R-4.5.1/VERSION-NICK` reads `Great Square Root` (the codename in the announcement), and `R-4.5.1/configure` is 1788095 bytes at mode `-rwxr-xr-x`. The dependency list is grounded in the official R-admin manual (`https://cran.r-project.org/doc/manuals/r-release/R-admin.html`, "Essential and useful other programs under a Unix-alike"), which states that zlib, libbz2 and liblzma are "required", that libcurl "is required", that PCRE2 is preferred, that readline's headers are needed for command-line editing, that the jpeg/png/tiff devices "need the appropriate headers and libraries", and that the modern X11/jpeg/png/tiff devices use Cairo - which is why X11/Tcl/Tk is deliberately omitted (`--with-x=no`) and no LaTeX is installed. `git diff --check` reports no whitespace errors, and the document still has balanced code fences with its heading tree intact. The downloaded tarball and all temporary query files were deleted afterwards. Nothing was installed, no PSA was run, and no VPS, DNS, registrar, remote or credential was touched |
 | 2026-10-13 | Documentation-only verification of the R installation section against the official CRAN instructions, with one blocking finding recorded. Source of truth: `https://cloud.r-project.org/bin/linux/ubuntu/` ("Install R" / "Installation Steps") and its linked `fullREADME.html` ("Installing R" / "# Installation") and `olderreleasesREADME.html`, read 2026-10-13. Two facts came out of it. First, Ubuntu 26.04 ("resolute") **is** a supported CRAN binary release for amd64 and arm64, and the suite really is `resolute-cran40`, so the name the runbook used was right. Second, and blocking, that suite serves the **current R 4.6.x series, not R 4.5.1**: the page states "Packages for the current R 4.6. release are available for Ubuntu 'Long Term Support' releases" and that "cran40 denotes a binary compatibility break by the R 4.0.* release, it does not install R 4.0.* but the current R 4.6.* series"; the R 4.5 entry is documented only as `focal-cran40` for Ubuntu 20.04, "no longer being updated... available for archival purposes", and the same applies to `noble-cran40`, so reimaging to 24.04 does not deliver 4.5.1 either. `deploy/DEPLOY.md` now carries a "BLOCKING" section stating this and keeping R 4.5.1 as the project requirement; §1 replaces the previous hand-rolled repository block with the official commands (software-properties-common + dirmngr, the signing key written to `/etc/apt/trusted.gpg.d/cran_ubuntu_key.asc` with a `gpg --show-keys` fingerprint check against E298A3A825C0D65DFD57CBB651716619E084DAB9, `add-apt-repository "deb ... $(lsb_release -cs)-cran40/"`, `r-base` plus `r-base-dev` with `--no-install-recommends`), and marks the stop point plus a warning never to point apt at another codename; checkpoint condition 2 now says plainly that it is expected to fail on a stock 26.04 install and is the decisive gate; the failure protocol gains three safe options - build R 4.5.1 from the official CRAN source directory with its reproducibility caveats, or move the project to the R series CRAN publishes via a `renv::snapshot()` re-run and model re-validation, or reimage to 24.04 only as support for one of those - and the Notes repeat the prohibitions. The PPM speed-up note now records that PPM tracks the same current series and is no route to 4.5.1. `project_state.md` gained the blocking finding as a Known limitation, corrected the earlier bullet that described the CRAN codename suite as a path to 4.5.1 (it is not), and updated the deployment bullet's codename-resolution detail from `/etc/os-release` to the official `lsb_release -cs`. `readme.md` needed no change: it states the Ubuntu release but asserts nothing about an R installation path | Yes - every claim above is quoted or paraphrased from the two official pages fetched for this pass, with the page and section named in the runbook itself; no external assumption was added. `git diff --check` was run after the edits and reports no whitespace errors, and `git diff --name-only` confirms the only files touched are `deploy/DEPLOY.md` and `project_state.md`, both Markdown, with no application code, Caddy, systemd, API setting, frontend file, dependency or Shiny file modified. The document structure was re-checked: its code fences remain balanced, the six numbered sections and the checkpoint table with all five condition rows are intact, and the checkpoint's failure protocol plus the five conditions are preserved. No build, lint, PSA or VPS command was run, and nothing was committed |

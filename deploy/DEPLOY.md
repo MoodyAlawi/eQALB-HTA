@@ -603,6 +603,34 @@ sudo du -sh /var/log/caddy        # Caddy rotates at 10 MiB, keeping 5 files
 # the rest.
 ```
 
+## 7. Frontend-only releases from GitHub Actions
+
+[`FRONTEND_DEPLOY.md`](./FRONTEND_DEPLOY.md) documents an additive automation
+that ships **only** the static Vue build: GitHub Actions builds the bundle,
+uploads it to `/opt/eqalb/frontend/incoming/`, and one root-owned script
+activates it by repointing `/opt/eqalb/frontend/dist` - an atomic symlink to an
+immutable release under `/opt/eqalb/frontend/releases/`. It installs nothing,
+edits no unit, Caddyfile or environment file, never restarts `eqalb-api` and
+never reloads Caddy. Sections 1 to 6 above remain the way the host and the API
+are installed, and §5 remains the validation checklist.
+
+Two consequences for this runbook:
+
+* §3.4 (the manual `npm ci && npm run build`) applies to a host that does not use
+  the automation, or to a fresh install before the first automated release. Once
+  `/opt/eqalb/frontend/dist` is a symlink into `releases/`, do not run the build
+  in place: Vite empties its output directory, which would write through the
+  symlink into the active release. Use the automation, or build in a scratch
+  directory and publish by hand as §6 describes.
+* A frontend rollback is no longer a rebuild from a previous tag: it repoints the
+  symlink to a retained release with one command (the `rollback` mode of the
+  script, or a `workflow_dispatch` run with `rollback_release_id`; see
+  `FRONTEND_DEPLOY.md` §7).
+
+Status: the automation is implemented in the repository, but it is not
+configured on GitHub and has never run on this host. Until a real workflow run
+succeeds, the manual path in §3.4 and §6 is the supported one.
+
 ## Notes
 
 * **Do not** start `api/run_api.R`, the Shiny app, or a Vite dev server on the

@@ -58,17 +58,17 @@ YOUR_DOMAIN {
 	}
 
 	# --- Static frontend -------------------------------------------------------
-	# The Vue production build. The app has no router and keeps the active page
-	# in memory, so every screen is served from "/" and no deep link exists.
+	# The Vue production build. The app has addressable paths (/app, /about, ...),
+	# so a deep link or a refresh on a sub-path loads the app shell instead of
+	# returning 404. `dist` is an atomic symlink to the active release under
+	# /opt/eqalb/frontend/releases/ (deploy/FRONTEND_DEPLOY.md), which is why a
+	# release needs no Caddy reload.
 	handle {
 		root * /opt/eqalb/frontend/dist
 		file_server
 
-		# OPTIONAL SPA FALLBACK - not needed today, and deliberately inert.
-		# If a real router with addressable paths is ever added, uncomment the
-		# next line so a deep link or a refresh on a sub-path loads the app
-		# shell instead of returning 404:
-		# try_files {path} /index.html
+		# Serve the app shell for addressable paths; real files win.
+		try_files {path} /index.html
 	}
 
 	# Access log. Remove this block to log to journald instead; either way the
