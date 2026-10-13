@@ -370,6 +370,18 @@ explicitly documented otherwise.
   `null` and are shown as a dash rather than as a number. Source `./api/run_api.py`
   for the service, `./api/api_contract.md` for the contract, and
   `./frontend/README.md` for the interface.
+- OpenHealth public shell: three addresses are published on top of the same
+  dependency-free view store (`frontend/src/composables/useAppView.ts`). `/` is
+  the OpenHealth landing page
+  (`frontend/src/views/OpenHealthHomeView.vue`), `/about` is About OpenHealth
+  (`frontend/src/views/AboutView.vue`), and `/app` is the whole eQalb application,
+  so its Home screen, tutorial, project description, download view and dashboard
+  share one address and keep their existing behaviour; an unrecognised path opens
+  the landing page and is rewritten to `/`. Links between the public pages carry a
+  real `href` and are handled by the store unless the click is modified, so
+  open-in-new-tab and copy-link still work; the external LinkedIn and GitHub links
+  keep `target="_blank"` and `rel="noopener noreferrer"`. No router was introduced
+  and no dependency was added.
 - DHT readiness logic extracted into `eqalb_readiness.R`, sourced by `app.R` and
   by `api/plumber.R`, so the Shiny DHT Readiness tab, Tutorial Part 1 (Step 3),
   Tutorial Part 2 (DHT readiness) and the HTA decision summary readiness domain
@@ -1197,6 +1209,16 @@ explicitly documented otherwise.
 - Validation practice: PSA checks use `n_sim = 100` with `seed = 12345` (about
   20 s). The 1,000-draw default is only run when a full default PSA is explicitly
   requested, because it takes about three minutes.
+- The three public addresses are resolved in the browser, not by the server, so a
+  host serving `frontend/dist` must return `index.html` for an unmatched path.
+  Vite's dev server and `vite preview` both do this already, which is how `/`,
+  `/app` and `/about` were verified; on a host that does not, a direct load or a
+  reload of `/app` or `/about` would return 404. The repository's
+  `deploy/Caddyfile` still carries that `try_files` line commented out, because it
+  was written while the app had no addresses of its own, so this is the one
+  deployment-side item the public shell leaves open. It is recorded here only - no
+  deployment file was changed and the host was not touched. eQalb's internal
+  screens deliberately have no deep links, so `/app` is the only eQalb address.
 - Unresolved documentation discrepancy, found while regression-testing the PSA for
   the value-based price task: a 100-draw PSA at `seed = 12345` with the model's
   default inputs now gives mean incremental cost 2417.75112277353, mean
@@ -1487,6 +1509,44 @@ explicitly documented otherwise.
   source build itself are still to be confirmed on the host.
 
 ## Current task
+
+Completed: the OpenHealth public shell around the eQalb frontend, frontend only,
+left unstaged on `feature/openhealth-landing`.
+
+Three public addresses are served from the existing dependency-free view store
+(`frontend/src/composables/useAppView.ts`), which now resolves the pathname on
+load, writes one History API entry per public move, follows Back/Forward through
+`popstate` and keeps the document title with the page. `/` is the new OpenHealth
+landing page (`frontend/src/views/OpenHealthHomeView.vue`), `/about` is the new
+About OpenHealth page (`frontend/src/views/AboutView.vue`), and `/app` is the whole
+existing eQalb application: its own Home screen, the tutorial, the project
+description, the download view and the dashboard all keep their present behaviour
+on that one address, so no internal eQalb screen has a deep link of its own. An
+unrecognised path opens the landing page and is rewritten to `/`. `App.vue` renders
+the two new views in front of its existing branches; the dashboard, the tutorial,
+the API client, the R model, the model-startup timing, the ECharts `v-if` handling
+and the once-per-session welcome question are untouched, and no router or new
+dependency was added.
+
+The landing page and About page reuse the existing tokens, typography, button
+patterns, light/dark behaviour and standalone-view conventions (labelled regions,
+a focusable H1 focused on arrival, Escape from About back to the landing page).
+Both state plainly that eQalb is illustrative and educational and that OpenHealth
+is an early-stage, education-first initiative with one tool released, and they use
+the LinkedIn and GitHub addresses already present in the interface.
+
+Verified with `npm run typecheck` and `npm run lint` (both clean), a production
+`vite build` into a temporary output directory (the tracked, generated `dist/` was
+deliberately left untouched), and browser checks against a local dev server:
+direct loads and reloads of `/`, `/app` and `/about`, Back/Forward across them,
+an unknown path, `/app/` with a trailing slash, the landing's Explore eQalb and
+Our mission links, Escape from About, light and dark themes, a 390 px viewport with
+no horizontal overflow, and the eQalb flow (Home, dashboard with the base case
+returning R's own numbers, tutorial, project description, download view) with no
+console error of its own. No model, API, deployment, lockfile or generated output
+was touched.
+
+### Earlier task
 
 Completed: the minimal production-deployment templates, under `deploy/` and
 committed-ready but not committed. Four files, all placeholders only:
@@ -3334,6 +3394,15 @@ contract is unchanged.
 
 ## Next planned task
 
+The OpenHealth public shell is implemented in the frontend and verified locally,
+and is left unstaged on `feature/openhealth-landing`. One follow-up belongs to
+deployment rather than to this change: before `/app` or `/about` can be loaded or
+reloaded directly on the VPS, the host must be given the single-page fallback
+(serve `index.html` for an unmatched path), because the repository's
+`deploy/Caddyfile` still has that line commented out. Giving eQalb's internal
+screens their own addresses was not requested and remains deliberately unbuilt, so
+`/app` stays the only eQalb address until it is asked for.
+
 Deployment templates are complete: `deploy/Caddyfile`, `deploy/eqalb-api.service`,
 `deploy/api.env.example` and `deploy/DEPLOY.md` now describe the whole VPS
 deployment, and the repository is release-ready (the browser stack is tracked, and
@@ -3390,6 +3459,7 @@ remains unimplemented.
 
 | Date | Change | Verified? |
 |---|---|---|
+| 2026-10-13 | Frontend-only: the OpenHealth public shell. `frontend/src/composables/useAppView.ts` gained a pathname resolver for the three public addresses, a `history.pushState` entry per public move, a `popstate` listener, a rewrite of an unrecognised path to `/` and a document title kept with the page; `frontend/src/App.vue` renders two new views in front of its existing branches; `frontend/src/views/OpenHealthHomeView.vue` is the landing page at `/` and `frontend/src/views/AboutView.vue` is About OpenHealth at `/about`, while `/app` carries the whole existing eQalb application so its own Home screen, tutorial, project description, download view and dashboard keep their present behaviour and no internal screen has a deep link. `frontend/index.html` now carries the generic OpenHealth title and description, `frontend/src/styles.css` gained an additive OpenHealth block (the `.oh` rules and one 1023 px rule) and nothing existing was edited, and `frontend/README.md` records the three addresses plus the host fallback they need. The new copy states that eQalb is illustrative and educational and that OpenHealth is an early-stage education initiative, uses only the LinkedIn and GitHub addresses already in the interface, and claims no service, blog, community, partner, funder, user or achievement. No router and no new dependency; no model, API, R, Python, deployment, Caddy, systemd, environment, lockfile or generated `frontend/dist` change; every change left unstaged | Yes - `npm run typecheck` and `npm run lint` both clean; a production `vite build` into a temporary directory succeeded (removed afterwards, `dist/` untouched); browser checks against a local dev server covered direct load and reload of `/`, `/app` and `/about`, Back and Forward across them, `/nonsense/path` resolving to `/`, `/app/` with a trailing slash, the landing's Explore eQalb and Our mission links, Escape from About, light and dark themes with the choice persisting across a reload, a 390 px viewport with zero horizontal overflow, no console error from the new views, and the existing eQalb paths (the dashboard base case returned R's own €2,439 incremental cost, 0.0082 QALYs and €298,966 ICER from the local API, plus the tutorial, project description and download view). Not run: any PSA. No VPS, DNS, domain registrar, remote service or credential was accessed. The tutorial's Part 1 results request returned HTTP 404 in that session, which was traced to the local API process that was already running (started hours earlier and returning the same 404 to a direct `curl`), not to this change |
 | 2026-10-13 | Documentation-only deployment closeout. `deploy/DEPLOY.md` §1.1 records the four system packages the first Ubuntu 26.04 compatibility run needed (`libuv1-dev` for `fs`, `cmake` for `nloptr`, `libsodium-dev` for `sodium`, `pandoc` for knitr/rmarkdown) and that the source-built R 4.5.1 restored all 135 packages. A short "Deployment closeout" section records that the stack is deployed and smoke-tested at `https://openhealth.ngo` but not fully validated: the frontend is served over HTTPS with a Caddy-obtained certificate, the proxied `/api/health` check returned HTTP 200 with `model_ready: true` and 2 of 2 R workers ready, browser smoke testing found no console errors, no failed API requests and working core interactions, and Caddy needs read and traverse access to the static frontend build directory. `project_state.md` records the same bounded facts and that operational performance testing remains open | Yes for the smoke-test facts, which come from the operator's own evidence. Deliberately **not** claimed: formal load, performance or security testing, clinical or model validation, or exhaustive functional testing. Documentation only - no application, model, API, frontend, Caddy, systemd, lockfile or environment change, and no simulated-data notice added. `git diff --check` clean, clean before commit |
 | 2026-10-13 | Documentation-and-template pass: the source-build path for R 4.5.1 on Ubuntu 26.04, taken as a deliberate decision to preserve the runtime recorded in `renv.lock`. `deploy/DEPLOY.md` replaces the earlier "BLOCKING" section with a "DECISION: R 4.5.1 is built from official source into `/opt/R/4.5.1`" section that keeps the CRAN finding as its justification (this release's suite `resolute-cran40` serves the current R 4.6.x series; R 4.5 binaries are archived and documented only for Ubuntu 20.04; reimaging does not help). §1 is renumbered into §1.1-§1.5: one merged dependency list covering both base R and renv compilation (zlib1g-dev, libbz2-dev, liblzma-dev, libpcre2-dev, libreadline-dev, libcurl4-openssl-dev, libssl-dev, libxml2-dev, libpng-dev, libjpeg-dev, libtiff-dev, libcairo2-dev, libfontconfig1-dev, libfreetype6-dev, libharfbuzz-dev, libfribidi-dev, libicu-dev, build-essential, gfortran, pkg-config, texinfo), then §1.2 which downloads the pinned official archive `https://cran.r-project.org/src/base/R-4/R-4.5.1.tar.gz`, verifies SHA-256 `b42a7921400386645b10105b91c68728787db5c4c83c9f6c30acdce632e1bb70` with `sha256sum -c -` before extracting, checks the single top-level directory and the `VERSION`/`VERSION-NICK` markers, builds with `./configure --prefix=/opt/R/4.5.1 --enable-R-shlib --with-x=no` and `sudo make install`, verifies via `/opt/R/4.5.1/bin/Rscript --version` and `sessionInfo()`, and states the maintenance trade-off (no apt security updates; deliberate rebuilds). No apt R is installed at all - the CRAN repository, its key and the `r-base`/`r-base-dev` step are gone. §3.2, the failure-protocol evidence commands, the §5 binding audit and the §6 re-restore path now use the absolute `/opt/R/4.5.1/bin/Rscript`; checkpoint condition 2 demands exactly R 4.5.1 from that prefix; the failure protocol now explains how to read each condition instead of listing three options. `deploy/api.env.example` sets `EQALB_RSCRIPT=/opt/R/4.5.1/bin/Rscript` with the reasoning, and `deploy/eqalb-api.service` needed **no** change because it contains no R path and inherits the setting. `project_state.md` updated (Known limitations, Current task, Next planned task). No application code, model logic, frontend, Caddy configuration, request/response contract or Shiny file was touched | Yes - the archive URL and the checksum source were verified from primary sources before editing. `R-4.5.1.tar.gz` returns HTTP 200 with Content-Length 40518816 and Last-Modified Fri, 13 Jun 2025 07:12:01 GMT; CRAN publishes no per-file checksum or signature beside it (`R-4.5.1.tar.gz.md5`, `.sig`, `.asc`, `md5sum.txt`, `MD5SUMS`, `/src/checksums/` and `/bin/checksums/` all return 404), so the authoritative values were taken from the R Core Team's own release announcement at `https://stat.ethz.ch/pipermail/r-announce/2025/000713.html` ("[Rd] R 4.5.1 is released", Peter Dalgaard, 13 June 2025), which lists `R-4/R-4.5.1.tar.gz` as SHA-256 `b42a7921...ee8f444` and MD5 `e22eee30af90ec66eb179b66d122ffd9`. Those values were then confirmed against the actual artifact: the downloaded file hashes to the same SHA-256 and MD5, and its size matches the published Content-Length, so `sha256sum -c` is a genuine publisher-to-artifact check rather than a self-computed value. The archive was inspected without installing anything: it contains exactly one top-level directory `R-4.5.1/`, 5379 entries, `R-4.5.1/VERSION` reads `4.5.1`, `R-4.5.1/VERSION-NICK` reads `Great Square Root` (the codename in the announcement), and `R-4.5.1/configure` is 1788095 bytes at mode `-rwxr-xr-x`. The dependency list is grounded in the official R-admin manual (`https://cran.r-project.org/doc/manuals/r-release/R-admin.html`, "Essential and useful other programs under a Unix-alike"), which states that zlib, libbz2 and liblzma are "required", that libcurl "is required", that PCRE2 is preferred, that readline's headers are needed for command-line editing, that the jpeg/png/tiff devices "need the appropriate headers and libraries", and that the modern X11/jpeg/png/tiff devices use Cairo - which is why X11/Tcl/Tk is deliberately omitted (`--with-x=no`) and no LaTeX is installed. `git diff --check` reports no whitespace errors, and the document still has balanced code fences with its heading tree intact. The downloaded tarball and all temporary query files were deleted afterwards. Nothing was installed, no PSA was run, and no VPS, DNS, registrar, remote or credential was touched |
 | 2026-10-13 | Documentation-only verification of the R installation section against the official CRAN instructions, with one blocking finding recorded. Source of truth: `https://cloud.r-project.org/bin/linux/ubuntu/` ("Install R" / "Installation Steps") and its linked `fullREADME.html` ("Installing R" / "# Installation") and `olderreleasesREADME.html`, read 2026-10-13. Two facts came out of it. First, Ubuntu 26.04 ("resolute") **is** a supported CRAN binary release for amd64 and arm64, and the suite really is `resolute-cran40`, so the name the runbook used was right. Second, and blocking, that suite serves the **current R 4.6.x series, not R 4.5.1**: the page states "Packages for the current R 4.6. release are available for Ubuntu 'Long Term Support' releases" and that "cran40 denotes a binary compatibility break by the R 4.0.* release, it does not install R 4.0.* but the current R 4.6.* series"; the R 4.5 entry is documented only as `focal-cran40` for Ubuntu 20.04, "no longer being updated... available for archival purposes", and the same applies to `noble-cran40`, so reimaging to 24.04 does not deliver 4.5.1 either. `deploy/DEPLOY.md` now carries a "BLOCKING" section stating this and keeping R 4.5.1 as the project requirement; §1 replaces the previous hand-rolled repository block with the official commands (software-properties-common + dirmngr, the signing key written to `/etc/apt/trusted.gpg.d/cran_ubuntu_key.asc` with a `gpg --show-keys` fingerprint check against E298A3A825C0D65DFD57CBB651716619E084DAB9, `add-apt-repository "deb ... $(lsb_release -cs)-cran40/"`, `r-base` plus `r-base-dev` with `--no-install-recommends`), and marks the stop point plus a warning never to point apt at another codename; checkpoint condition 2 now says plainly that it is expected to fail on a stock 26.04 install and is the decisive gate; the failure protocol gains three safe options - build R 4.5.1 from the official CRAN source directory with its reproducibility caveats, or move the project to the R series CRAN publishes via a `renv::snapshot()` re-run and model re-validation, or reimage to 24.04 only as support for one of those - and the Notes repeat the prohibitions. The PPM speed-up note now records that PPM tracks the same current series and is no route to 4.5.1. `project_state.md` gained the blocking finding as a Known limitation, corrected the earlier bullet that described the CRAN codename suite as a path to 4.5.1 (it is not), and updated the deployment bullet's codename-resolution detail from `/etc/os-release` to the official `lsb_release -cs`. `readme.md` needed no change: it states the Ubuntu release but asserts nothing about an R installation path | Yes - every claim above is quoted or paraphrased from the two official pages fetched for this pass, with the page and section named in the runbook itself; no external assumption was added. `git diff --check` was run after the edits and reports no whitespace errors, and `git diff --name-only` confirms the only files touched are `deploy/DEPLOY.md` and `project_state.md`, both Markdown, with no application code, Caddy, systemd, API setting, frontend file, dependency or Shiny file modified. The document structure was re-checked: its code fences remain balanced, the six numbered sections and the checkpoint table with all five condition rows are intact, and the checkpoint's failure protocol plus the five conditions are preserved. No build, lint, PSA or VPS command was run, and nothing was committed |

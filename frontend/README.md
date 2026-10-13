@@ -21,9 +21,12 @@ npm install
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173>. The dev server proxies `/api` to the API, so the
-browser stays on a single origin and no CORS work is needed. Point it elsewhere
-with `EQALB_API_URL` (for example when the API runs on another port):
+Open <http://127.0.0.1:5173> for the OpenHealth landing page, or go straight to
+`/app` for eQalb and `/about` for About OpenHealth: the dev server resolves all
+three from the same `index.html`, so any of them can be loaded or reloaded
+directly. The dev server proxies `/api` to the API, so the browser stays on a
+single origin and no CORS work is needed. Point it elsewhere with `EQALB_API_URL`
+(for example when the API runs on another port):
 
 ```powershell
 $env:EQALB_API_URL = 'http://127.0.0.1:8799'; npm run dev
@@ -49,7 +52,7 @@ VS Code tasks are provided for both processes.
 ```
 index.html              # mounts the app; applies the stored theme before first paint
 src/
-  main.ts, App.vue      # shell: Home screen or analysis dashboard (Home button, status, theme, assumptions, tabs)
+  main.ts, App.vue      # shell: the public OpenHealth pages, then the eQalb app (Home button, status, theme, assumptions, tabs)
   api/
     types.ts            # response contracts, transcribed from live responses
     client.ts           # typed fetch client; no defaults, no model arithmetic
@@ -57,12 +60,14 @@ src/
     useModel.ts         # shared store: inputs, results, busy/error state, runs
     useTheme.ts         # light/dark state and the chart palette
     useEcharts.ts       # ECharts instance lifecycle for a Vue ref
-    useAppView.ts       # which page is shown: Home, the tutorial, its two subviews or the dashboard
+    useAppView.ts       # which page is shown, plus the /, /app and /about addresses, the history entries and the document title
     useDisclosure.ts    # Escape closes the disclosure the focus is inside, app-wide
     useAppBusy.ts       # the app-wide busy state the loading indicator shows: ref-counted start/finish, label, isActive
     useTutorialSession.ts  # Guided Tutorial: Part 1's inputs/results/step and Part 2's case, price, coverage, readiness answers and section; never touches useModel
   views/
-    HomeView.vue                # landing screen: eQalb wordmark with ECG pulse, credit, actions, links
+    OpenHealthHomeView.vue      # public landing page at / : what OpenHealth is, eQalb as its first flagship tool, what is planned, how to collaborate
+    AboutView.vue               # About OpenHealth at /about : the founder, the motivation, and how to get involved
+    HomeView.vue                # eQalb's own start screen at /app : eQalb wordmark with ECG pulse, credit, actions, links
     TutorialView.vue            # Guided Tutorial: Part 1 (four steps, completion) and the Part 2 shell
     ProjectDescriptionView.vue  # what the model is, what it covers, contact
     DownloadResultsView.vue     # what this session produced, and the ZIP download
@@ -388,3 +393,8 @@ src/
   user who opens the file by double-clicking.
 - The bundle is a single chunk of roughly 750 kB (about 250 kB gzipped), mostly
   ECharts. Code splitting is a later optimisation, not needed for a local tool.
+- The `/`, `/app` and `/about` addresses are resolved in the browser, not by the
+  server. Vite's dev server and `vite preview` both serve `index.html` for any of
+  them, so all three can be loaded or reloaded directly; a production static host
+  must be given the same fallback (serve `index.html` for an unmatched path), or a
+  direct load of `/app` or `/about` would return a 404.

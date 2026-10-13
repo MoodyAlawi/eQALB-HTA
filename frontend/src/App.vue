@@ -1,8 +1,13 @@
 <script setup lang="ts">
 /**
- * Application shell: the Home screen and its two subviews, then the analysis
- * dashboard with service status, theme switch, the assumptions panel and the
- * analysis tabs.
+ * Application shell: the public OpenHealth landing page and About page, then
+ * eQalb itself - its Home screen and subviews, and the analysis dashboard with
+ * service status, theme switch, the assumptions panel and the analysis tabs.
+ *
+ * The three public addresses (/ , /app and /about) are resolved by useAppView,
+ * which owns the pathname, the history entries and the document title. Every
+ * eQalb screen shares /app, so nothing below the dashboard branch is aware of the
+ * URL at all.
  *
  * Tabs are rendered with v-if rather than v-show so each chart is created only
  * when its tab is visible: an ECharts instance initialised inside a hidden
@@ -31,6 +36,8 @@ import HomeView from './views/HomeView.vue'
 import ProjectDescriptionView from './views/ProjectDescriptionView.vue'
 import DownloadResultsView from './views/DownloadResultsView.vue'
 import TutorialView from './views/TutorialView.vue'
+import OpenHealthHomeView from './views/OpenHealthHomeView.vue'
+import AboutView from './views/AboutView.vue'
 import AppLoadingIndicator from './components/AppLoadingIndicator.vue'
 
 type TabId =
@@ -344,6 +351,8 @@ watch(page, (next) => {
       </div>
     </template>
 
+    <OpenHealthHomeView v-if="page === 'openhealth'" />
+    <AboutView v-else-if="page === 'about'" />
     <HomeView v-else-if="page === 'home'" />
     <TutorialView v-else-if="page === 'tutorial'" />
     <ProjectDescriptionView v-else-if="page === 'description'" />
