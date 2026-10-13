@@ -201,8 +201,8 @@ Two things worth knowing:
 ## Deploying it yourself
 
 The "Live demo" above is the Shiny application hosted on Posit Connect and stays
-as it is. The browser stack can also be self-hosted on a single Ubuntu 24.04 VPS
-behind one domain: Caddy serves the static Vue build and reverse-proxies only
+as it is. The browser stack can also be self-hosted on a single Ubuntu 26.04 LTS
+VPS behind one domain: Caddy serves the static Vue build and reverse-proxies only
 `/api/*` to FastAPI on loopback, and FastAPI owns one local R worker as a child
 process over stdin/stdout, so neither FastAPI nor R is reachable from the
 internet. There is no database, no user accounts and no session persistence to

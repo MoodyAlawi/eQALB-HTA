@@ -1,4 +1,4 @@
-# Deploying eQalb on one Ubuntu 24.04 LTS VPS
+# Deploying eQalb on one Ubuntu 26.04 LTS (resolute) VPS
 
 This is the production runbook for the browser stack (Vue + FastAPI + the local R
 worker). It is a template: replace `YOUR_DOMAIN` with the single production
@@ -13,6 +13,7 @@ Internet
   -> static Vue build             /opt/eqalb/frontend/dist
   -> /api/* reverse proxy         -> FastAPI on 127.0.0.1:8000
   -> one R worker                 child process of FastAPI, stdin/stdout, no port
+                                  runs /opt/R/4.5.1/bin/Rscript (source build)
 
 private, never published:  FastAPI (8000)  and any R listener (there is none)
 ```
@@ -20,27 +21,71 @@ private, never published:  FastAPI (8000)  and any R listener (there is none)
 Placeholders used throughout: `YOUR_DOMAIN`, `/opt/eqalb`, `eqalb`,
 `<repository-url>` (this project's Git remote).
 
-Two things this deployment deliberately does **not** do:
+Three things this deployment deliberately does **not** do:
 
 * It does not deploy the legacy Shiny application (`app.R`, `run_app.R`). That
   stays a reference implementation for the existing Posit Connect deployment and
   is never started on the VPS.
 * It does not start `api/run_api.R`, the plain plumber HTTP service. Port 8788
   belongs to local development only.
+* It does not install R from any apt repository. The application's R is built
+  from the official source archive into `/opt/R/4.5.1` (see "DECISION" and §1.2),
+  and no system R is required or used.
+
+### DECISION: R 4.5.1 is built from official source into `/opt/R/4.5.1`
+
+The project runtime recorded in `renv.lock` is **R 4.5.1**, and this runbook keeps
+it. Ubuntu 26.04's official CRAN binary repository cannot supply it:
+
+* Ubuntu 26.04 ("resolute") **is** a supported CRAN binary release, and the suite
+  really is **`resolute-cran40`** - the official step is
+  `sudo add-apt-repository "deb https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/"`.
+* But that suite installs the **current R 4.6.x series**, not 4.5.1. The official
+  page states "Packages for the **current R 4.6.** release are available for
+  Ubuntu 'Long Term Support' releases", and, explicitly, "'cran40' denotes a
+  binary compatibility break by the R 4.0.\* release, it does not install
+  R 4.0.\* but the **current R 4.6.\*** series."
+* R 4.5 binaries are no longer published for any current LTS. The linked
+  `olderreleasesREADME.html` states that "As of May 2026, packages for R versions
+  below 4.6 are no longer being updated. These packages are available for
+  archival purposes on CRAN", and the only R 4.5 entry it documents is
+  `focal-cran40` for Ubuntu 20.04.
+* The same applies to `noble-cran40` (24.04) and `jammy-cran40` (22.04), so
+  reimaging to another release does not restore 4.5.1 either.
+
+**Therefore the application's R is not installed from an apt repository at all.**
+R 4.5.1 is built from the official R source archive and installed into the
+isolated prefix **`/opt/R/4.5.1`**, leaving any system R untouched. The API finds
+it through the existing `EQALB_RSCRIPT` setting (`api/r_client.py` reads it), not
+through `PATH`, so `/usr/bin/Rscript` is not a requirement for this application.
+
+`.Rprofile`/`renv` still select the runtime from the installed R, so a single
+`renv::restore()` under `/opt/R/4.5.1/bin/Rscript` produces a library that the
+service then uses unchanged. §1.2 gives the build, §3.2 restores with that exact
+path, and §5's checkpoint still gates everything before public exposure.
+
+Two things this decision does **not** change: `renv.lock` (R 4.5.1 stays the
+recorded requirement) and the rules on how R packages are obtained - the project
+library still comes from `renv::restore()` and nothing is installed ad hoc.
 
 ### The first installation is a controlled compatibility check
 
-This runbook has been written from the repository, not from a completed install
-on the target host. The stack was developed and validated on Windows with
-R 4.5.1 and Python 3.14; the target is Ubuntu 24.04 with R 4.5.1 and Python 3.12.
-Treat the first installation as a compatibility check whose result is not yet
-known, not as a procedure already proven on that server:
+The stack was developed and validated on Windows with R 4.5.1 and Python 3.14;
+the deployment target is **Ubuntu 26.04 LTS, codename `resolute`**. A source build
+of R on this distribution, and a restore of all 135 locked packages against it, is
+new work, so treat the first installation as a compatibility check whose result is
+not yet known, not as a procedure already proven on that server:
 
-* `renv.lock` records R 4.5.1 and must keep doing so. CRAN's `noble-cran40`
-  repository is an **intended** path to that version, not a guarantee that
-  `renv::restore()` will succeed on Ubuntu 24.04 for all 135 locked packages.
+* `renv.lock` records R 4.5.1 and must keep doing so. The source archive and its
+  checksum are pinned in §1.2, so the R you get is the R you asked for - but
+  whether every locked package compiles against it on this release is exactly what
+  §3.2 checks.
 * `api/requirements.lock.txt` was resolved under Python 3.14, so installing it
-  under Python 3.12 is part of the check rather than an established fact.
+  under the Python 3 that Ubuntu 26.04 provides is part of the check rather than
+  an established fact.
+
+Nothing in §1 hard-codes the Ubuntu codename: where the distribution matters, the
+commands read it from the running system, so they keep working on a later release.
 
 §3.2 therefore ends in a stop-and-verify checkpoint. Reach the end of §3 with the
 checkpoint green, or stop before anything public exists (§4 onwards), and decide
@@ -57,33 +102,114 @@ sudo apt-get install -y \
   git curl ca-certificates gnupg rsync \
   unzip ufw unattended-upgrades
 
-# --- R 4.5.1 from CRAN ------------------------------------------------------
-# renv.lock records R 4.5.1, and the target version stays 4.5.1. Ubuntu 24.04
-# ships R 4.3.3, which is not the recorded version, so CRAN's own repository is
-# the intended way to get 4.5.x. It is an intended setup path, not a proven one:
-# see "The first installation is a controlled compatibility check" above, and
-# the stop-and-verify checkpoint in §3.2, before assuming the restore succeeds.
-curl -fsSL https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
-  | sudo tee /etc/apt/keyrings/cran.asc >/dev/null
-echo "deb [signed-by=/etc/apt/keyrings/cran.asc] https://cloud.r-project.org/bin/linux/ubuntu noble-cran40/" \
-  | sudo tee /etc/apt/sources.list.d/cran.list
-sudo apt-get update
-sudo apt-get install -y r-base-core r-base-dev
-# Confirm which R actually arrived before going further:
-Rscript --version
-# renv itself is bootstrapped by renv/activate.R; nothing else is installed
-# globally, because every R package comes from the project library.
+# --- §1.1  Build and library dependencies ------------------------------------
+# One list, covering both building R from source and compiling the renv package
+# set afterwards. The R-admin manual (https://cran.r-project.org/doc/manuals/r-release/R-admin.html,
+# "Essential and useful other programs under a Unix-alike") says explicitly that
+# zlib, libbz2 and liblzma are "required", that libcurl is "required", that PCRE2
+# is preferred, and that the GNU readline library's headers are needed for
+# command-line editing. The graphics and text libraries cover R's bitmap devices
+# and the packages that compile against them.
+sudo apt-get install -y --no-install-recommends \
+  build-essential gfortran pkg-config texinfo \
+  zlib1g-dev libbz2-dev liblzma-dev libpcre2-dev libreadline-dev \
+  libcurl4-openssl-dev libssl-dev libxml2-dev \
+  libpng-dev libjpeg-dev libtiff-dev libcairo2-dev \
+  libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev \
+  libicu-dev
+# Notes on that list:
+#  * No X11/Tcl/Tk packages: R is configured with --with-x=no below, so it must
+#    not look for them. The API is headless and renders no R-side graphics.
+#  * No LaTeX: the PDF manuals are not built. `texinfo` is the one documentation
+#    tool the build may want.
+#  * libicu-dev lets stringi (in renv.lock) build against the system ICU instead
+#    of compiling its bundled copy, which is far quicker.
 
-# --- Python 3.12 -------------------------------------------------------------
+# --- §1.2  R 4.5.1 from the official source, into /opt/R/4.5.1 ---------------
+# This is the application's R. It is NOT installed from an apt repository: see
+# "DECISION" near the top of this file for why resolute-cran40 cannot be used.
+# Do not add the CRAN apt repository on this host.
+#
+# Official source archive (verified reachable, 40,518,816 bytes):
+#   https://cran.r-project.org/src/base/R-4/R-4.5.1.tar.gz
+# Official checksum: CRAN ships no per-file checksum or signature beside the
+# tarball, so the authoritative values come from the R Core Team's own release
+# announcement on the official r-announce list:
+#   https://stat.ethz.ch/pipermail/r-announce/2025/000713.html
+#   "[Rd] R 4.5.1 is released", Peter Dalgaard, 13 June 2025
+# It publishes both MD5 and SHA-256 for every entry, including
+# "R-4/R-4.5.1.tar.gz". Open that message and read the two values for that entry
+# yourself rather than trusting a copy; the expected SHA-256 is
+#   b42a7921400386645b10105b91c68728787db5c4c83c9f6c30acdce632e1bb70
+
+# Build as your normal administrative user in a directory you own, then install
+# with sudo. Keeping the download and the build tree off root-owned paths means
+# configure and make do not trip over file ownership.
+BUILD="$HOME/R-build"
+mkdir -p "$BUILD"
+cd "$BUILD"
+curl -fsSLO https://cran.r-project.org/src/base/R-4/R-4.5.1.tar.gz
+
+# Verify BEFORE extracting or compiling. Compare against the announcement.
+echo "b42a7921400386645b10105b91c68728787db5c4c83c9f6c30acdce632e1bb70  R-4.5.1.tar.gz" \
+  | sha256sum -c -
+# If that fails, stop: the download is not the official R 4.5.1 archive. Do not
+# continue with a mismatched file, and do not "fix" it by editing the checksum.
+
+# The archive holds exactly one top-level directory, R-4.5.1/, and its own
+# version markers. Confirm both before building:
+tar -tzf R-4.5.1.tar.gz | awk -F/ 'NF>1 {print $1}' | sort -u   # expect: R-4.5.1
+tar -xzOf R-4.5.1.tar.gz R-4.5.1/VERSION                        # expect: 4.5.1
+tar -xzOf R-4.5.1.tar.gz R-4.5.1/VERSION-NICK                   # expect: Great Square Root
+
+# Configure, build and install into the isolated prefix. Nothing here touches a
+# system R, and there is no apt R to conflict with.
+tar -xzf R-4.5.1.tar.gz
+cd R-4.5.1
+./configure --prefix=/opt/R/4.5.1 --enable-R-shlib --with-x=no
+# --enable-R-shlib is the usual Linux configuration and is what most packages
+# expect; --with-x=no matches the headless dependency list above.
+# BLAS/LAPACK are deliberately left at R's own bundled reference implementations,
+# which keeps the build reproducible and needs no extra packages. If you later
+# want an optimised BLAS, that is a separate, deliberate change.
+make -j"$(nproc)"
+# On a 4 GB host, if the build is killed for memory, drop to: make -j2
+sudo make install
+# /opt/R/4.5.1 ends up root-owned and world-readable, which is what the eqalb
+# user needs: it only ever reads R, never writes into the prefix.
+
+# Verify what you built - this is checkpoint condition 2:
+/opt/R/4.5.1/bin/Rscript --version
+/opt/R/4.5.1/bin/Rscript -e 'sessionInfo()'
+# Expect exactly R version 4.5.1, and sessionInfo() reporting 4.5.1 from
+# /opt/R/4.5.1/lib/R. renv itself is bootstrapped by renv/activate.R during
+# §3.2; nothing is installed into /opt/R/4.5.1 by hand, and R stays root-owned
+# and read-only, because every R package comes from the project library.
+#
+# Maintenance trade-off, to be accepted knowingly:
+#   This R is outside apt's world. It receives no security updates through
+#   `apt upgrade`, so it must be rebuilt deliberately - either when the project
+#   intentionally changes R version, or when a security-maintenance decision is
+#   taken. Rebuilding means repeating §1.2 with the new archive and checksum,
+#   then re-running §3.2 and the §5 checkpoint. Record each rebuild in the host's
+#   own change log.
+
+# --- §1.3  Python 3 ----------------------------------------------------------
+# Ubuntu 26.04's own Python 3 is what the virtual environment in §3.3 uses.
+# api/requirements.lock.txt was resolved under Python 3.14, so record the
+# interpreter that actually arrives instead of assuming a version:
 sudo apt-get install -y python3 python3-venv python3-dev
+python3 --version
 
-# --- Node.js LTS ------------------------------------------------------------
-# Vite 8 requires Node ^20.19 or >=22.12; Ubuntu 24.04 ships Node 18, which is
-# too old to build the frontend.
+# --- §1.4  Node.js LTS ------------------------------------------------------
+# Vite 8 requires Node ^20.19 or >=22.12. Rather than assume what this release
+# ships, check `node --version` first and skip this block if it already
+# satisfies that range; otherwise NodeSource's 22.x line gives a known-good LTS.
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt-get install -y nodejs
+node --version
 
-# --- Caddy ------------------------------------------------------------------
+# --- §1.5  Caddy ------------------------------------------------------------
 # Caddy is not in Ubuntu's main repository.
 curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
   | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
@@ -91,31 +217,29 @@ curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt \
   | sudo tee /etc/apt/sources.list.d/caddy-stable.list
 sudo apt-get update
 sudo apt-get install -y caddy
-
-# --- Compilers and system libraries for renv::restore() ----------------------
-# renv.lock holds 135 packages, and several of them are expected to compile from
-# source: Rcpp / RcppArmadillo / RcppEigen / heemod (C++), dplyr, stringi, curl,
-# openssl, xml2, and the ggplot2 / ggtext / survminer text stack. Installing the
-# development libraries below in advance is what gives the restore a chance to
-# build them; a missing one shows up as a package that fails to install, which
-# is exactly what the §3.2 checkpoint is there to catch.
-sudo apt-get install -y --no-install-recommends \
-  build-essential gfortran pkg-config \
-  libcurl4-openssl-dev libssl-dev libxml2-dev \
-  libpng-dev libjpeg-dev libtiff-dev \
-  libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev
-# R stays headless: no cairo, X11, Tcl/Tk, pandoc or TeX is needed.
 ```
 
-Disk: allow 20 GB or more. The R library plus build caches take about 1.5 GB,
-`node_modules` about 300 MB, the built frontend about 10 MB.
+The compiler and library packages that `renv::restore()` needs are already in the
+§1.1 list above, so there is no separate step later. A missing one shows up as a
+package that fails to build, which is exactly what the §3.2 checkpoint is there to
+catch. R itself stays headless: no X11, Tcl/Tk, pandoc or TeX is required.
 
-Optional speed-up: pointing renv at Posit Public Package Manager's `noble`
-binaries is intended to turn the restore from a long source compile into mostly
-downloads. It is a host-local choice that does not change this repository, and it
-is another part of the install that has not yet been exercised on this target -
-verify it with the same §3.2 checkpoint, and prefer it only after the standard
-path is understood.
+Disk: allow 30 GB or more. The R source tree plus the build intermediates take a
+few GB on their own and can be deleted once `make install` has succeeded; the
+installed R is a few hundred MB, the project R library plus caches about 1.5 GB,
+`node_modules` about 300 MB, and the built frontend about 10 MB.
+
+Optional speed-up, and its limits: pointing renv at Posit Public Package Manager's
+binaries for this release's codename - a URL of the form
+`https://packagemanager.posit.co/cran/__linux__/<codename>/latest`, with the
+codename resolved as `lsb_release -cs` - would turn the restore from a source
+compile into mostly downloads. Two reasons it is not the default here. PPM's
+Ubuntu binaries track the current R series, so they are not built for R 4.5.1 -
+they are compiled against a different R and a different set of system libraries,
+which puts the project library's reproducibility at risk. And it adds a
+third-party repository to a host whose whole point is to stay on official
+sources. Use it only as a deliberate, recorded decision, and re-verify with the
+§3.2 checkpoint; never mix codenames.
 
 ## 2. Server baseline
 
@@ -168,8 +292,18 @@ cd /opt/eqalb
 
 # 3.2 R packages, restored from the repository root so .Rprofile activates renv
 #     and renv/library/ lands inside the project.
-sudo -u eqalb -H Rscript -e 'renv::restore(prompt = FALSE)'
-sudo -u eqalb -H Rscript -e 'renv::status()'          # expect: consistent
+#
+#     Use the ABSOLUTE path to the source-built R. A bare `Rscript` would pick up
+#     whatever is first on PATH, which is not the runtime this project records.
+#     `/opt/R/4.5.1/bin/Rscript` is the same binary the service uses, because
+#     /etc/eqalb/api.env sets EQALB_RSCRIPT to it (§3.5).
+sudo -u eqalb -H /opt/R/4.5.1/bin/Rscript --version    # expect: exactly 4.5.1
+sudo -u eqalb -H /opt/R/4.5.1/bin/Rscript -e 'renv::restore(prompt = FALSE)'
+sudo -u eqalb -H /opt/R/4.5.1/bin/Rscript -e 'renv::status()'   # expect: consistent
+# renv stores the library under the R version it is running, so this directory is
+# the R 4.5 one. Confirm the service will read the same tree: it starts R from the
+# same /opt/R/4.5.1 prefix, with the repository root as its working directory.
+ls renv/library
 ```
 
 > ## STOP AND VERIFY - do not continue past §3 until all five are true
@@ -180,11 +314,15 @@ sudo -u eqalb -H Rscript -e 'renv::status()'          # expect: consistent
 > are checked in the steps that follow, and the whole list must be green before
 > anything becomes public.
 >
+> **Condition 2 is the one the source build exists to satisfy.** It compares the
+> R that renv actually used against the R 4.5.1 recorded in `renv.lock`; see
+> "DECISION" near the top of this file and §1.2.
+>
 > | # | Condition | Check it with |
 > |---|---|---|
 > | 1 | `renv::restore()` completed successfully | The command finished with no error and no "unable to install" package; `renv::status()` reports the project is consistent |
-> | 2 | R is the expected version | `Rscript --version` reports R 4.5.x - the major/minor recorded in `renv.lock` (4.5.1) |
-> | 3 | The pinned Python set installs under Python 3.12 | §3.3 finishes; `/opt/eqalb/.venv/bin/python --version` reports 3.12.x and `pip install -r api/requirements.lock.txt` resolved without a build error |
+> | 2 | R is the version the project requires | `/opt/R/4.5.1/bin/Rscript --version` reports **exactly R 4.5.1**, the version recorded in `renv.lock`, and `/opt/R/4.5.1/bin/Rscript -e 'sessionInfo()'` agrees. Any other version - including the 4.6.x an apt R would give - fails this condition |
+> | 3 | The pinned Python set installs under this release's Python 3 | §3.3 finishes; `/opt/eqalb/.venv/bin/python --version` reports the interpreter Ubuntu 26.04 provides and `pip install -r api/requirements.lock.txt` resolved without a build error |
 > | 4 | The API service starts | `systemctl is-active eqalb-api` is `active` (see §3.6) |
 > | 5 | The model is reachable through the API | `curl -s http://127.0.0.1:8000/api/health` reports `"status":"ok"`, `"model_ready":true`, exactly one ready R worker in `"r_model":{"configured_workers":1,"ready_workers":1,...}`, and `"r_model_error":null` (see §3.7) |
 >
@@ -196,9 +334,9 @@ sudo -u eqalb -H Rscript -e 'renv::status()'          # expect: consistent
 > # Collect the evidence first, so the failure can be diagnosed from a record.
 > systemctl status eqalb-api --no-pager > /tmp/eqalb-fail-status.txt 2>&1
 > journalctl -u eqalb-api --since -30min > /tmp/eqalb-fail-api.log 2>&1
-> Rscript --version > /tmp/eqalb-fail-r.txt 2>&1
-> sudo -u eqalb -H Rscript -e 'renv::status()' >> /tmp/eqalb-fail-r.txt 2>&1
-> sudo -u eqalb -H Rscript -e 'renv::diagnostics()' >> /tmp/eqalb-fail-r.txt 2>&1
+> /opt/R/4.5.1/bin/Rscript --version > /tmp/eqalb-fail-r.txt 2>&1
+> sudo -u eqalb -H /opt/R/4.5.1/bin/Rscript -e 'renv::status()' >> /tmp/eqalb-fail-r.txt 2>&1
+> sudo -u eqalb -H /opt/R/4.5.1/bin/Rscript -e 'renv::diagnostics()' >> /tmp/eqalb-fail-r.txt 2>&1
 > /opt/eqalb/.venv/bin/python -m pip list > /tmp/eqalb-fail-python.txt 2>&1
 > ```
 >
@@ -209,16 +347,39 @@ sudo -u eqalb -H Rscript -e 'renv::status()'          # expect: consistent
 > no later `renv::restore()` would reproduce. Any such change is a targeted
 > follow-up decision, made with the collected output in hand, not a step in this
 > runbook.
+>
+> **How to read a failure.** The R version is already pinned by the §1.2 source
+> build, so condition 2 failing almost always means the wrong `Rscript` was used
+> somewhere - check that §3.2 and `/etc/eqalb/api.env` both name
+> `/opt/R/4.5.1/bin/Rscript`, and that `sessionInfo()` reports that prefix. The
+> remaining realistic failures are a locked package that will not compile against
+> R 4.5.1 on this release, or the Python/pip step. For those:
+>
+> 1. **Fix the build input, not the project's contract.** A package that fails to
+>    compile usually names a missing system library; add exactly that library to
+>    the §1.1 list, record it in this runbook, and re-run §3.2. Do not patch the
+>    package into the library by hand.
+> 2. **Re-verify the R you built** if condition 2 is the failing one: the SHA-256
+>    check in §1.2 is the authoritative test that `/opt/R/4.5.1` came from the
+>    official archive, not from some other source.
+> 3. **If the project itself has to move to a newer R**, that is not a deployment
+>    step: it means re-snapshotting `renv.lock` under the new R, reviewing that
+>    diff, and re-validating the model's numbers. Take it as a separate, reviewed
+>    change, and only then revisit this runbook.
+>
+> Do not choose any of these by installing a repository R from another Ubuntu
+> codename, from an archived package, or from a third-party binary PPA. R on this
+> host comes from the official source archive in §1.2, or the deployment stops.
 
 ```bash
 # 3.3 Python virtual environment. The unit expects it at /opt/eqalb/.venv, and
 #     api/requirements.lock.txt is the pinned, reproducible set. That set was
-#     resolved under Python 3.14; installing it here under Python 3.12 is
-#     condition 3 of the checkpoint above.
+#     resolved under Python 3.14; installing it here under the Python 3 that
+#     Ubuntu 26.04 provides is condition 3 of the checkpoint above.
 sudo -u eqalb python3 -m venv /opt/eqalb/.venv
 sudo -u eqalb /opt/eqalb/.venv/bin/python -m pip install --upgrade pip
 sudo -u eqalb /opt/eqalb/.venv/bin/python -m pip install -r api/requirements.lock.txt
-sudo -u eqalb /opt/eqalb/.venv/bin/python --version      # expect: Python 3.12.x
+sudo -u eqalb /opt/eqalb/.venv/bin/python --version      # record what it reports
 
 # 3.4 Frontend production build. npm ci installs exactly frontend/package-lock.json.
 cd /opt/eqalb/frontend
@@ -228,21 +389,27 @@ cd /opt/eqalb
 # The build output must be readable by Caddy:
 sudo chmod -R o+rX /opt/eqalb/frontend/dist
 
-# 3.5 Server-local environment file.
+# 3.5 Server-local environment file. EQALB_RSCRIPT is the setting that points the
+#     API's R worker at the source-built R, so check that line specifically.
 sudo install -d -m 0755 /etc/eqalb
 sudo cp /opt/eqalb/deploy/api.env.example /etc/eqalb/api.env
 sudo chown root:eqalb /etc/eqalb/api.env
 sudo chmod 0640 /etc/eqalb/api.env
-sudo editor /etc/eqalb/api.env                          # review; the defaults are correct
+sudo editor /etc/eqalb/api.env                          # review; the shipped defaults are correct
+grep -n '^EQALB_RSCRIPT=' /etc/eqalb/api.env            # expect: /opt/R/4.5.1/bin/Rscript
 
-# 3.6 systemd unit.
+# 3.6 systemd unit. No R path appears in the unit: the service inherits
+#     EQALB_RSCRIPT from the environment file above, which is why only that file
+#     needed changing for the source build.
 sudo cp /opt/eqalb/deploy/eqalb-api.service /etc/systemd/system/eqalb-api.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now eqalb-api
 
 # 3.7 Private health check, before DNS or Caddy are involved at all.
-#     This is condition 5 of the checkpoint above.
+#     This is condition 5 of the checkpoint above. The R worker must be the
+#     source-built one: confirm the child process path too.
 curl -s http://127.0.0.1:8000/api/health
+pgrep -a Rscript            # expect a single worker under /opt/R/4.5.1/bin/Rscript
 ```
 
 Expect `"status":"ok"`, `"model_ready":true`, `"r_model":{"configured_workers":1,
@@ -295,6 +462,10 @@ systemctl status eqalb-api --no-pager | head -20
 
 # Bindings: 80/443 public (caddy), 8000 loopback only, and NO 8788 listener.
 sudo ss -ltnp | grep -E ':(80|443|8000|8788)\b'
+
+# The R worker is the source-built R, running as eqalb:
+pgrep -a Rscript                                       # expect /opt/R/4.5.1/bin/Rscript
+/opt/R/4.5.1/bin/Rscript --version                     # expect exactly 4.5.1
 
 # Logs are clean: no tracebacks, no RModelUnavailable.
 sudo journalctl -u eqalb-api --since -15min | tail -50
@@ -367,11 +538,19 @@ curl -s http://127.0.0.1:8000/api/health
 # R dependencies changed:
 #   The §3.2 checkpoint applies here too: if the restore does not complete
 #   cleanly, do not restart the service over it and do not patch individual
-#   packages by hand.
-cd /opt/eqalb && sudo -u eqalb -H Rscript -e 'renv::restore(prompt = FALSE)'
-sudo -u eqalb -H Rscript -e 'renv::status()'          # expect: consistent
+#   packages by hand. Always use the absolute R path, never a bare `Rscript`.
+cd /opt/eqalb && sudo -u eqalb -H /opt/R/4.5.1/bin/Rscript -e 'renv::restore(prompt = FALSE)'
+sudo -u eqalb -H /opt/R/4.5.1/bin/Rscript -e 'renv::status()'   # expect: consistent
 sudo systemctl restart eqalb-api
 curl -s http://127.0.0.1:8000/api/health              # expect: model_ready true
+
+# R itself (the source build in §1.2):
+#   `/opt/R/4.5.1` is not managed by apt, so nothing updates it automatically.
+#   Rebuild it only as a deliberate act - a new archive and checksum in §1.2, or
+#   a security-maintenance decision - then repeat §3.2 and the §5 checkpoint.
+#   Keep the previous prefix (for example mv /opt/R/4.5.1 /opt/R/4.5.1.old)
+#   until the new one has passed the checkpoint, so the rollback is a rename
+#   plus a service restart.
 ```
 
 ```bash
@@ -418,6 +597,13 @@ sudo du -sh /var/log/caddy        # Caddy rotates at 10 MiB, keeping 5 files
   `/etc/eqalb/api.env` and `/etc/caddy/Caddyfile`.
 * The R worker has no listener, so there is no R service to firewall, supervise
   or restart separately. Restarting `eqalb-api` restarts it.
+* **Do not** add the CRAN apt repository to this host, and do not point apt at
+  another Ubuntu codename to get R. The suite for this release (`resolute-cran40`)
+  serves R 4.6.x, and the R 4.5 binaries CRAN documents are archived and built for
+  Ubuntu 20.04. The application's R is the source build in §1.2 and nothing else.
+* **Do not** relax the R requirement in `renv.lock` as a deployment step. Changing
+  it means re-snapshotting under a different R and re-validating the model's
+  numbers, which is a project decision with its own review.
 * **Do not** resolve a failed §3.2 checkpoint by changing the R version or by
   installing R packages outside renv. The target version is the 4.5.1 recorded
   in `renv.lock`; anything else is a separate decision, taken with the collected
