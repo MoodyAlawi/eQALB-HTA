@@ -92,6 +92,18 @@ checkpoint green, or stop before anything public exists (§4 onwards), and decid
 deliberately what to change. Do not paper over a failure by substituting a
 different R version or by installing packages ad hoc.
 
+### Deployment closeout: https://openhealth.ngo
+
+The stack is **deployed and smoke-tested**, not fully validated.
+`https://openhealth.ngo` serves the frontend over HTTPS; Caddy obtained its
+certificate; the proxied `/api/health` check returned HTTP 200 with
+`model_ready: true` and 2 of 2 R workers ready; and browser smoke testing found no
+console errors, no failed API requests and working core interactions. Caddy needs
+read and traverse access to the static frontend build directory to serve it.
+
+**Not performed, and not claimed:** formal load, performance and security testing;
+clinical or model validation; and exhaustive functional testing.
+
 ---
 
 ## 1. Packages
@@ -116,7 +128,8 @@ sudo apt-get install -y --no-install-recommends \
   libcurl4-openssl-dev libssl-dev libxml2-dev \
   libpng-dev libjpeg-dev libtiff-dev libcairo2-dev \
   libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev \
-  libicu-dev
+  libicu-dev \
+  libuv1-dev cmake libsodium-dev pandoc
 # Notes on that list:
 #  * No X11/Tcl/Tk packages: R is configured with --with-x=no below, so it must
 #    not look for them. The API is headless and renders no R-side graphics.
@@ -124,6 +137,10 @@ sudo apt-get install -y --no-install-recommends \
 #    tool the build may want.
 #  * libicu-dev lets stringi (in renv.lock) build against the system ICU instead
 #    of compiling its bundled copy, which is far quicker.
+#  * The last four come from the first Ubuntu 26.04 compatibility run: renv named
+#    each one - `fs` needs libuv1-dev, `nloptr` needs cmake, `sodium` needs
+#    libsodium-dev, and knitr/rmarkdown need pandoc. With them installed, the
+#    source-built R 4.5.1 restored all 135 packages; the library is now synchronized.
 
 # --- §1.2  R 4.5.1 from the official source, into /opt/R/4.5.1 ---------------
 # This is the application's R. It is NOT installed from an apt repository: see
@@ -222,7 +239,8 @@ sudo apt-get install -y caddy
 The compiler and library packages that `renv::restore()` needs are already in the
 §1.1 list above, so there is no separate step later. A missing one shows up as a
 package that fails to build, which is exactly what the §3.2 checkpoint is there to
-catch. R itself stays headless: no X11, Tcl/Tk, pandoc or TeX is required.
+catch. R itself stays headless: no X11, Tcl/Tk or TeX is required; `pandoc` is in
+the §1.1 list for knitr and rmarkdown rather than for R itself.
 
 Disk: allow 30 GB or more. The R source tree plus the build intermediates take a
 few GB on their own and can be deleted once `make install` has succeeded; the
