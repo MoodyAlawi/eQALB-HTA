@@ -1,15 +1,17 @@
 # Frontend production deployment (GitHub Actions + one root-owned script)
 
-Status: **partly configured, not yet exercised.** The GitHub `production`
-environment and the six secrets it needs are configured, but the corrected
-public-pointer topology, the CI key rotation, the one-time Caddy migration
-(§4.7) and the first workflow run all remain untested, and nothing in this
-document has been executed on the server in its current form. Caddy still serves
-the previous root until the migration in §4.7 is performed by hand. Treat every
-operational statement here as the intended design until a real run has succeeded
-and been reviewed. [`DEPLOY.md`](./DEPLOY.md) remains the runbook for installing
-the host (packages, R, the API service, DNS, Caddy) and for every non-frontend
-change.
+Status: **server side migrated and verified; the first automated workflow run is
+outstanding.** The GitHub `production` environment and its six secrets are
+configured; the passphrase-free CI-only Ed25519 key has been created, installed
+behind the restricted forced-command wrapper, tested, rotated into the
+`DEPLOY_SSH_KEY` secret and the old key removed; and the one-time public-pointer
+and Caddy migration (§4.7) has been performed and verified on the VPS. No
+automated release has been deployed yet: the first workflow run has not
+happened, and the `production` environment's required-reviewer/approval rule
+must still be confirmed with the operator before that run. §10 records the
+evidence and what remains. [`DEPLOY.md`](./DEPLOY.md) remains the runbook for
+installing the host (packages, R, the API service, DNS, Caddy) and for every
+non-frontend change.
 
 This automation ships **one thing**: a completed Vue/Vite static bundle. The
 Caddyfile and the API are not part of it.
@@ -370,18 +372,22 @@ $SSH -T "$H" "rollback $ACTIVE" ; echo "exit=$?"             # expect exit 0, AC
 
 ### 4.5 GitHub: the `production` environment
 
-The environment and its six secrets already exist; this is the checklist to
-audit them, or to rebuild them if they are ever lost.
+The environment and its six secrets are configured, and `DEPLOY_SSH_KEY` holds
+the rotated passphrase-free CI-only key (the rotation is recorded in §4.4 and
+§10). This is the checklist to audit them, or to rebuild them if they are ever
+lost.
 
 1. Repository → Settings → Environments → `production` (create it only if it is
    missing; it is already configured).
 2. Protection rules → **Required reviewers**: add the people who may approve a
-   production frontend release. Until this is set, the deploy job runs without a
-   gate - confirm it before the first real run. Optionally restrict
+   production frontend release. This rule has **not yet been confirmed with the
+   operator** - until it is set, the deploy job runs without a gate, so confirm
+   it before the first real run. Optionally restrict
    "Deployment branches and tags" to `main`.
 3. Environment secrets: the six names from §3, and no others (delete the
    redundant `DEPLOY_SSH_KNOWN_HOSTS` after a successful deployment, as §3
-   notes).
+   notes). `DEPLOY_SSH_KEY` is the replacement key installed on the server in
+   §4.4.
 
 ### 4.6 If the live build is still a real directory under the frontend tree
 
@@ -417,17 +423,39 @@ publish by hand.
 
 ### 4.7 One-time Caddy migration to the public pointer
 
-Do this once, after §4.2 (the directories exist) and §4.6 (there is a live
-release), and after §4.4's key work if that is being done in the same window. It
-is the only time the deployment touches Caddy, and every step is ordered so the
-site keeps serving: the public pointer is created **before** Caddy's root
-changes, and the old path is kept until the new one is proven. Nothing here
-relaxes a directory mode: `/opt/eqalb` keeps its existing restrictive mode
-(`750`, `eqalb:eqalb`), and access is granted with narrow per-user ACLs instead.
+**Performed and verified on the VPS.** This migration is the only time the
+deployment touches Caddy, and it happened as described below: every step is
+ordered so the site kept serving (the public pointer was created **before**
+Caddy's root changed, and the old path was kept until the new one was proven),
+and nothing relaxed a directory mode - `/opt/eqalb` keeps its existing
+restrictive mode (`750`, `eqalb:eqalb`) and access is granted with narrow
+per-user ACLs instead.
+
+Recorded server state after the migration:
+
+- Caddy runs as user and group `caddy`.
+- `/opt/eqalb` is still `750 eqalb:eqalb`; it was not widened.
+- `/opt/eqalb/public` exists at mode `0755`, owned by
+  `eqalb-deploy:eqalb-deploy`.
+- ACLs: `eqalb-deploy` `--x` on `/opt/eqalb` and `/opt/eqalb/frontend`; `caddy`
+  `--x` on those same two paths; `caddy` `r-x` on `/opt/eqalb/public` and
+  `/opt/eqalb/frontend/releases`. No entry grants Caddy write access anywhere.
+- `/opt/eqalb/public/dist` is an `eqalb-deploy`-owned symlink to
+  `/opt/eqalb/frontend/releases/initial-20261013`, and that release is still the
+  active one.
+- `/etc/caddy/Caddyfile` uses `root * /opt/eqalb/public/dist`; Caddy was
+  validated and reloaded, and `systemctl is-active caddy` reports `active`.
+- Public verification returned HTTP 200 at `https://openhealth.ngo/`, and
+  `https://openhealth.ngo/api/health` returned JSON with `"status":"ok"` and
+  `"model_ready":true`.
+
+The steps below are the record of how it was performed, kept so a fresh host can
+repeat it, the result can be re-audited, and the migration can be rolled back.
 
 ```bash
 # 0. Identify the Caddy service account. Read-only: the unit may rely on the
 #    packaged default or name an explicit user, so read it instead of assuming.
+#    On the deployed server this resolved to user and group `caddy`.
 systemctl show -p User --value caddy      # prints e.g. "caddy"; empty means the unit runs as root
 systemctl cat caddy | grep -E '^(User|Group)=' || true
 getent passwd caddy                       # confirm the account actually exists
@@ -468,7 +496,8 @@ sudo -u "$CADDY_USER" test -x /opt/eqalb/public \
 
 # 3. Point the public symlink at the release that is live right now. Read the id
 #    from the current path, then create the pointer atomically, so it is never
-#    half-written:
+#    half-written. On the deployed server this produced
+#    `/opt/eqalb/public/dist -> /opt/eqalb/frontend/releases/initial-20261013`:
 live="$(basename "$(readlink -f /opt/eqalb/frontend/dist)")"   # or the releases/<id> you recorded
 sudo -u eqalb-deploy ln -sfn "/opt/eqalb/frontend/releases/$live" /opt/eqalb/public/dist.tmp
 sudo -u eqalb-deploy mv -T /opt/eqalb/public/dist.tmp /opt/eqalb/public/dist
@@ -476,9 +505,9 @@ readlink /opt/eqalb/public/dist        # expect /opt/eqalb/frontend/releases/<li
 
 # 4. Change Caddy's static root, and only that. One line in the site block:
 #      root * /opt/eqalb/frontend/dist      ->      root * /opt/eqalb/public/dist
-#    The tracked deploy/Caddyfile still shows the old root on purpose: the
-#    repository is updated once this migration is accepted (see §10). Do not
-#    change the API proxy, TLS, logging, compression, headers or certificates.
+#    Do not change the API proxy, TLS, logging, compression, headers or
+#    certificates. The tracked deploy/Caddyfile now names the same root as the
+#    live file, updated once this migration was accepted (see §10).
 sudo editor /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile
 
@@ -493,6 +522,10 @@ for p in / /app /about; do
 done
 curl -s https://<production-host>/api/health      # expect "status":"ok" (the API is untouched)
 ```
+
+On the deployed server this step returned HTTP 200 for
+`https://openhealth.ngo/` and `"status":"ok"` with `"model_ready":true` from
+`https://openhealth.ngo/api/health`.
 
 ```bash
 # 7. Prove the access split: the account can move the pointer and cannot write
@@ -519,8 +552,8 @@ sudo -u "$CADDY_USER" test -r /opt/eqalb/public \
 ```
 
 ```bash
-# 8. Rollback of this migration, if any step above fails. The old path still
-#    exists until the migration is accepted, so restoring it is one edit:
+# 8. Rollback of this migration, if it had failed. The old path exists until it
+#    is removed, so restoring it is one edit:
 sudo editor /etc/caddy/Caddyfile       # root * /opt/eqalb/public/dist -> root * /opt/eqalb/frontend/dist
 sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
@@ -530,12 +563,14 @@ curl -s -o /dev/null -w '%{http_code}\n' https://<production-host>/   # expect 2
 #    as not yet adopted. The ACLs are additive and harmless; remove them with
 #    `sudo setfacl -x u:<user> <path>` if the migration is abandoned entirely.
 #
-#    Only after the public path has served a successful automated release (or
-#    the migration has been explicitly accepted) remove the now-unused old
-#    symlink, as root, so no second, drifting copy of "the live path" exists:
+#    The migration has since been accepted, so the old, now-unused symlink is
+#    no longer needed and can be removed at any time - if it is still present -
+#    as root, so no second, drifting copy of "the live path" exists:
 sudo rm -f /opt/eqalb/frontend/dist
 #    After that removal, a Caddy rollback to the old root is no longer possible
 #    without recreating the symlink; use the script's rollback instead (§7).
+#    Removed or not, it never affects the served path: Caddy only ever reads
+#    /opt/eqalb/public/dist.
 ```
 
 ## 5. Normal deploy sequence
@@ -617,28 +652,38 @@ sudo rm -f /opt/eqalb/frontend/incoming/frontend-<release-id>.tar.gz \
 
 ## 10. Not verified yet, and known limitations
 
-- **Not run.** The GitHub `production` environment and its six secrets are
-  configured, but no workflow run has happened, the server side has not been
-  prepared in this topology (script installation, directories, per-user ACLs,
-  the passphrase-free CI-only key), the CI key rotation has not been performed,
-  and the one-time Caddy migration in §4.7 has not been performed.
-  `deploy/Caddyfile` still shows `root * /opt/eqalb/frontend/dist` on purpose:
-  the repository file is updated only once the live root has been moved to
-  `/opt/eqalb/public/dist` and verified. The first run is a controlled test:
-  bootstrap the host (§4.1-§4.4), run the §4.6 and §4.7 migrations, then watch
-  the first deploy end to end.
+- **Server side migrated and verified; no automated release yet.** The one-time
+  public-pointer and Caddy migration (§4.7) has been performed and verified on
+  the VPS: `/opt/eqalb` is still `750 eqalb:eqalb` (never widened, and no broad
+  `chmod` was used), `/opt/eqalb/public` is `0755 eqalb-deploy:eqalb-deploy`,
+  `/opt/eqalb/public/dist` is an `eqalb-deploy`-owned symlink to
+  `/opt/eqalb/frontend/releases/initial-20261013` (still the active release),
+  `/etc/caddy/Caddyfile` uses `root * /opt/eqalb/public/dist`, Caddy was
+  validated and reloaded and `systemctl is-active caddy` reports `active`, and
+  the public checks returned HTTP 200 at `https://openhealth.ngo/` and
+  `"status":"ok"` with `"model_ready":true` at
+  `https://openhealth.ngo/api/health`. The CI key rotation is complete as well:
+  a new passphrase-free CI-only Ed25519 key was created, installed behind the
+  restricted forced-command wrapper, tested, rotated into the `production`
+  secret `DEPLOY_SSH_KEY`, and the old key removed. What remains is the
+  automation run itself: the first workflow run has not happened, and the
+  `production` environment's required-reviewer/approval rule must be confirmed
+  with the operator first. The first run is a controlled test of the workflow:
+  confirm the approval rule, then watch one deploy end to end (§5) - including a
+  rollback - before treating the automation as supported.
 - The action pins are full commit SHAs written from the actions' published
   releases (`v4.2.2`, `v4.4.0`, `v4.6.2`, `v4.3.0`). Confirm each with
   `git ls-remote https://github.com/<owner>/<action> refs/tags/<tag>` before the
   first run; a wrong pin fails the workflow before it reaches the server.
 - The design relies on Caddy resolving the static root per request, so replacing
-  the `/opt/eqalb/public/dist` symlink changes what is served with no reload; the
-  approved design assumes the live configuration does this, and the §4.7
-  verification is where that assumption is confirmed. If a Caddy release pinned
-  the resolved root at load time, the new bundle would not be served, the
-  validation check would fail, the automatic rollback would restore the previous
-  target, and the limitation would need an operator decision - this automation
-  never reloads or restarts Caddy.
+  the `/opt/eqalb/public/dist` symlink changes what is served with no reload.
+  The migration verified that Caddy serves through the public pointer, but a
+  live swap under a running Caddy has not been exercised yet - the first
+  automated deploy (or a rollback after it) is where that is proven. If a future
+  Caddy release pinned the resolved root at load time, the new bundle would not
+  be served, the validation check would fail, the automatic rollback would
+  restore the previous target, and the limitation would need an operator
+  decision - this automation never reloads or restarts Caddy.
 - The deploy account owns `/opt/eqalb/public`, `releases/` and `incoming/`, so a
   compromised key could modify those paths (not the frontend source, Caddy's
   files or the API). That is the approved blast radius of the CI key, and the
@@ -654,5 +699,5 @@ sudo rm -f /opt/eqalb/frontend/incoming/frontend-<release-id>.tar.gz \
   there is no staging environment and no per-commit opt-out. That is the
   deliberate Version 1 scope.
 - This automation deploys the static frontend only. API, R, Caddy, systemd, DNS
-  and server configuration changes still follow `deploy/DEPLOY.md`, by hand,
-  except the one-time static-root change in §4.7.
+  and server configuration changes still follow `deploy/DEPLOY.md`, by hand; the
+  one static-root change in §4.7 has already been performed and verified.

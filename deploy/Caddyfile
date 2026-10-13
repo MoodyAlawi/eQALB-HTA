@@ -64,7 +64,7 @@ YOUR_DOMAIN {
 	# /opt/eqalb/frontend/releases/ (deploy/FRONTEND_DEPLOY.md), which is why a
 	# release needs no Caddy reload.
 	handle {
-		root * /opt/eqalb/frontend/dist
+		root * /opt/eqalb/public/dist
 		file_server
 
 		# Serve the app shell for addressable paths; real files win.

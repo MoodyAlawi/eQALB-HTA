@@ -1485,23 +1485,59 @@ explicitly documented otherwise.
   `-j2` if memory is tight), the systemd hardening (`ProtectHome=read-only` with
   `StateDirectory=eqalb` and a redirected `HOME`/`XDG_CACHE_HOME`), and the R
   source build itself are still to be confirmed on the host.
-- The frontend deployment automation is repository-only and unverified. The
-  workflow (`.github/workflows/deploy-frontend.yml`), the server script
+- The frontend deployment automation is deployed server-side but has never run.
+  The workflow (`.github/workflows/deploy-frontend.yml`), the server script
   (`deploy/frontend-deploy.sh`) and its runbook (`deploy/FRONTEND_DEPLOY.md`)
-  exist and were validated locally, and the GitHub `production` environment with
-  its six secrets is configured, but the script has not been installed on the
-  VPS in this topology, no workflow run has happened, the passphrase-free
-  CI-only key rotation has not been performed, and the one-time Caddy migration
-  to the served pointer `/opt/eqalb/public/dist` has not been performed, so no
-  automated release has ever been deployed or rolled back. The server-side
-  bootstrap - dedicated deploy account and passphrase-free CI-only key, fixed
-  directories, root-owned script and forced command, and narrow per-user ACL
-  traverse access that leaves `/opt/eqalb` at its existing restrictive `750`
-  mode rather than widening it - is a documented manual step, and the action
-  pins are full commit SHAs written from the actions' published releases and
-  still to be confirmed against the action repositories.
+  exist and were validated locally; the GitHub `production` environment and its
+  six secrets are configured; the passphrase-free CI-only Ed25519 key has been
+  created, installed behind the restricted forced-command wrapper, tested,
+  rotated into the `DEPLOY_SSH_KEY` secret and the old key removed; and the
+  one-time public-pointer and Caddy migration has been performed and verified on
+  the VPS (`/opt/eqalb/public/dist` ->
+  `/opt/eqalb/frontend/releases/initial-20261013`, `/etc/caddy/Caddyfile` root
+  `/opt/eqalb/public/dist`, `https://openhealth.ngo/` returning HTTP 200 and
+  `https://openhealth.ngo/api/health` reporting `status: ok` with
+  `model_ready: true`). The server-side bootstrap is in place: dedicated deploy
+  account, fixed directories, root-owned script and forced command, and narrow
+  per-user ACLs (`eqalb-deploy` and `caddy` traverse-only on `/opt/eqalb` and
+  `/opt/eqalb/frontend`; `caddy` read-and-traverse on `/opt/eqalb/public` and
+  `/opt/eqalb/frontend/releases`) that leave `/opt/eqalb` at its existing
+  restrictive `750 eqalb:eqalb` mode rather than widening it. What remains: the
+  `production` environment's required-reviewer/approval rule must be confirmed
+  with the operator, the action pins are full commit SHAs written from the
+  actions' published releases and still to be confirmed against the action
+  repositories, and the first automated workflow run - including a rollback -
+  has not happened, so no automated release has ever been deployed or rolled
+  back.
 
 ## Current task
+
+Completed: the one-time server migration and CI key rotation, operator-performed
+on the VPS; the only repository change that followed is documentation plus the
+tracked `deploy/Caddyfile` root line, now set to match the live configuration.
+Caddy runs as user and group `caddy`; `/opt/eqalb` remains `750 eqalb:eqalb` and
+was not widened; `/opt/eqalb/public` exists at mode `0755`, owned by
+`eqalb-deploy:eqalb-deploy`; the per-user ACLs are `eqalb-deploy` `--x` on
+`/opt/eqalb` and `/opt/eqalb/frontend`, `caddy` `--x` on those same two paths,
+and `caddy` `r-x` on `/opt/eqalb/public` and `/opt/eqalb/frontend/releases`,
+with no write access for Caddy anywhere; `/opt/eqalb/public/dist` is an
+`eqalb-deploy`-owned symlink to
+`/opt/eqalb/frontend/releases/initial-20261013`; `/etc/caddy/Caddyfile` uses
+`root * /opt/eqalb/public/dist`; Caddy was validated and reloaded and
+`systemctl is-active caddy` reports `active`; and public verification returned
+HTTP 200 at `https://openhealth.ngo/` and `"status":"ok"` with
+`"model_ready":true` at `https://openhealth.ngo/api/health`. The
+`initial-20261013` release is still the active one. The CI key rotation is
+complete: a new passphrase-free CI-only Ed25519 key was created locally, its
+public half installed in `/home/eqalb-deploy/.ssh/authorized_keys` behind the
+same `restrict,command="/opt/eqalb/bin/eqalb-frontend-deploy-wrapper"`
+restriction, tested for the legacy `scp -O` upload path and for refusal of
+arbitrary commands, the new private half stored as the `production` environment
+secret `DEPLOY_SSH_KEY`, and the old `eqalb GitHub Actions frontend deploy`
+authorized-keys entry removed so only the new `eqalb frontend CI deploy` key
+remains. Still outstanding: the `production` environment's
+required-reviewer/approval rule must be confirmed with the operator, and the
+first automated workflow run has not happened.
 
 Completed: the approved corrective pass on the same automation, left unstaged.
 The deployment's only mutable path moved from `/opt/eqalb/frontend/dist` to the
@@ -1523,12 +1559,13 @@ procedure, and the canonical `DEPLOY_KNOWN_HOSTS` naming with the redundant
 `DEPLOY_SSH_KNOWN_HOSTS` recorded only as a secret to delete manually after a
 successful deployment.
 `deploy/DEPLOY.md` §7 states the one-time Caddy root move as the single adoption
-step, `deploy/Caddyfile` is deliberately **not** changed (its root line is
-updated only after that migration is accepted), and the workflow's header comment
-names the new public pointer. Nothing in this corrected topology has been
-deployed or tested on the VPS, the CI key rotation and the Caddy migration remain
-outstanding, and no workflow run has happened. The GitHub `production`
-environment and its six secrets are configured; the server side is not.
+step, and the workflow's header comment names the new public pointer. At the time
+of that pass nothing in the corrected topology had been deployed on the VPS; the
+migration and key rotation recorded at the top of this section have since been
+performed and verified (2026-10-14), and the tracked `deploy/Caddyfile` root line
+was updated to `/opt/eqalb/public/dist` to match the live configuration. The
+GitHub `production` environment and its six secrets are configured; the first
+automated workflow run remains outstanding.
 
 Completed: the deliberately small Version 1 frontend-only deployment automation,
 left unstaged for review. It deploys a completed Vue/Vite static bundle and
@@ -3513,31 +3550,28 @@ interpretation does not yet describe one-sided structural ranges in its own word
 range that sits wholly above its base is not called out), and population EVPI
 remains unimplemented.
 
-The Version 1 frontend deployment automation is written and locally validated but
-deliberately unverified (see Current task). The GitHub `production` environment
-and its six secrets are already configured. What remains belongs to an operator,
-not the repository: bootstrap the host as `deploy/FRONTEND_DEPLOY.md` describes
-(dedicated deploy account, the deployment-only `/opt/eqalb/public` directory,
-fixed directories, root-owned script and forced command, and narrow per-user ACL
-traverse access instead of any mode change - `/opt/eqalb` keeps its existing
-`750` `eqalb:eqalb` mode), install the passphrase-free CI-only Ed25519 key and
-perform the §4.4 rotation so the `DEPLOY_SSH_KEY` secret holds it, run the
-one-time conversions of `FRONTEND_DEPLOY.md` §4.6 and §4.7 (release the existing
-build, create the public pointer and its ACLs, move Caddy's static root to
-`/opt/eqalb/public/dist`, reload and verify), confirm the required-approval rule
-and the pinned action SHAs with `git ls-remote`, then watch one controlled
-deploy end to end - including a rollback - before treating the automation as
-supported. Only after that migration is accepted is the tracked `deploy/Caddyfile`
-root line updated to `/opt/eqalb/public/dist`. Until then, the manual frontend
-path in `deploy/DEPLOY.md` §3.4 and §6 stays the authoritative one, no further
-repository work on deployment is planned, and the only frontend surfaces the
-automation deliberately does not cover (Caddy reload and the one-time root move,
-API/R changes, DNS) are unchanged.
+The Version 1 frontend deployment automation is deployed and locally validated
+but has never run as a workflow (see Current task): the server-side bootstrap,
+the public-pointer/Caddy migration and the CI key rotation are complete and were
+verified on 2026-10-14, and the tracked `deploy/Caddyfile` root line now matches
+the live `/opt/eqalb/public/dist`. What remains is operational and short: confirm
+the `production` environment's required-reviewer/approval rule with the operator,
+confirm the pinned action SHAs with `git ls-remote`, then watch one controlled
+deploy end to end through §5 - including a rollback, which also exercises a live
+public-pointer swap under a running Caddy - before treating the automation as
+supported. The manual frontend path in `deploy/DEPLOY.md` §3.4 and §6 remains the
+authoritative fallback while the workflow is unproven. One small repository
+follow-up is also open outside those steps: the served-path sentence in
+`frontend/README.md` still names `/opt/eqalb/frontend/dist`, which is now stale
+because Caddy serves `/opt/eqalb/public/dist`. No other repository work on
+deployment is planned, and the frontend surfaces the automation deliberately
+does not cover (Caddy configuration changes, API/R changes, DNS) are unchanged.
 
 ## Update log
 
 | Date | Change | Verified? |
 |---|---|---|
+| 2026-10-14 | Server-side migration and CI key rotation completed on the VPS, operator-performed, and recorded in the repository; the only repository change is documentation plus the tracked `deploy/Caddyfile` root line, now `root * /opt/eqalb/public/dist` to match the live file. Evidence recorded: Caddy runs as user and group `caddy`; `/opt/eqalb` remains `750 eqalb:eqalb` and was not widened; `/opt/eqalb/public` exists at mode `0755`, owned by `eqalb-deploy:eqalb-deploy`; ACLs are `eqalb-deploy` `--x` on `/opt/eqalb` and `/opt/eqalb/frontend`, `caddy` `--x` on those same two paths, and `caddy` `r-x` on `/opt/eqalb/public` and `/opt/eqalb/frontend/releases`, with no write access for Caddy anywhere; `/opt/eqalb/public/dist` is an `eqalb-deploy`-owned symlink to `/opt/eqalb/frontend/releases/initial-20261013`, and that release is still the active one; `/etc/caddy/Caddyfile` uses `root * /opt/eqalb/public/dist`; Caddy was validated and reloaded and `systemctl is-active caddy` reports `active`; public verification returned HTTP 200 at `https://openhealth.ngo/` and `/api/health` returned JSON with `"status":"ok"` and `"model_ready":true`. Key rotation: a new passphrase-free CI-only Ed25519 key was created locally, its public half installed in `/home/eqalb-deploy/.ssh/authorized_keys` behind the same `restrict,command="/opt/eqalb/bin/eqalb-frontend-deploy-wrapper"` restriction, tested for the legacy `scp -O` upload path and for refusal of arbitrary commands, the `production` environment secret `DEPLOY_SSH_KEY` updated to the new private half, and the old `eqalb GitHub Actions frontend deploy` authorized-keys entry removed so only the new `eqalb frontend CI deploy` key remains. `deploy/FRONTEND_DEPLOY.md` status block, §4.5, §4.7 and §10 and this file's Known limitations, Current task and Next planned task updated so the migration, ACL setup, public-pointer creation and key rotation are no longer described as outstanding, with the server state and verification recorded | Verified from the operator's own evidence, which is the source of every server fact recorded here. **Not claimed:** no automated workflow run has happened, the `production` environment's required-reviewer/approval rule is still to be confirmed with the operator, the pinned action SHAs are still to be confirmed with `git ls-remote`, and a live public-pointer swap under a running Caddy has not been exercised. Repository-local validation only in this pass (`git diff --check` clean; changed files exactly `deploy/Caddyfile`, `deploy/FRONTEND_DEPLOY.md` and `project_state.md`). Nothing was staged, committed, pushed or deployed by this pass |
 | 2026-10-14 | Documentation-only correction of the Caddy service account's ACL on `/opt/eqalb/public`: it is now `r-x` (read-and-traverse) instead of traverse-only (`--x`), because Caddy must resolve the `dist` symlink name inside that directory, and the change is stated wherever the split is described (the §2 overview and the §4.2 traversal rule). The remaining split is unchanged: `eqalb-deploy` keeps traverse-only (`--x`) ACLs on `/opt/eqalb` and `/opt/eqalb/frontend`; Caddy keeps traverse-only (`--x`) on those same two parents and `r-x` on `/opt/eqalb/frontend/releases`, gains `r-x` on `/opt/eqalb/public`, and receives no write permission anywhere; `/opt/eqalb` stays mode `750 eqalb:eqalb`; and no broad `chmod` or world-access recommendation is added. §4.7's ACL block now applies `setfacl -m u:"$CADDY_USER":--x /opt/eqalb /opt/eqalb/frontend` and `setfacl -m u:"$CADDY_USER":r-x /opt/eqalb/public /opt/eqalb/frontend/releases` with the reason in its comment, and both verification blocks (step 2 before Caddy is touched, step 7 after activation) now prove Caddy can traverse and read `/opt/eqalb/public` and resolve the pointer with `readlink`, and that it can read the live release's `index.html` | Documentation-only: repository-local `git diff --check` clean; the changed-file list remains exactly the two documentation files from the previous pass. **Not verified and not claimed:** no ACL command has been run on the server, the Caddy service account has not been read on the server, the migration has not been performed, and no deploy, key, secret or GitHub setting was touched. Nothing was staged, committed, pushed or run |
 | 2026-10-14 | Documentation-only correction of two facts, in `deploy/FRONTEND_DEPLOY.md` and `project_state.md` only; no workflow, script, Caddyfile or other file touched. (1) All instructions that would widen `/opt/eqalb` to `0755` are removed: the deployed server keeps `/opt/eqalb` at its existing restrictive `750` `eqalb:eqalb` mode, and the one-time Caddy migration (§4.7) now grants the deploy account `--x` traverse and the Caddy service account `--x` traverse plus `r-x` read/traverse of the release tree with **per-user ACLs** (`setfacl`, from the `acl` package, with `getfacl` evidence and `sudo -u <user> test` proofs), adds a read-only step to identify the Caddy service account first (`systemctl show -p User --value caddy`, `systemctl cat caddy`, `getent passwd caddy`) rather than guessing its name, notes that release directories are created 755/644 so no per-release ACL is needed, and records that the ACLs are additive and revertible (`setfacl -x`). (2) Every statement claiming no environment secret exists is corrected: the GitHub `production` environment and its six secrets are configured, while the corrected public-pointer topology, the CI key rotation, the Caddy migration and the first workflow run remain untested. The design is otherwise preserved exactly: `eqalb-deploy` still owns only `/opt/eqalb/public`, `frontend/releases` and `frontend/incoming`, with ACL traverse access to parents only, and Caddy gets exactly the traverse/read access it needs | Documentation-only: repository-local diff validation only (`git diff --check` clean; the changed-file list is exactly the two documentation files). **Not verified and not claimed:** the ACL commands have not been run on the server, the Caddy service account has not been read on the server, the migration has not been performed, and no deploy, key, secret or GitHub setting was touched. Nothing was staged, committed, pushed or run |
 | 2026-10-14 | Corrective pass on the frontend deployment automation, repository-side only and left unstaged, implementing the approved public-pointer topology and the CI key decision. `deploy/frontend-deploy.sh`: the mutable path constant is now the Caddy-served `/opt/eqalb/public/dist` (plus `PUBLIC_DIR=/opt/eqalb/public`), the lock moved to `/opt/eqalb/public/.deploy.lock` inside the deploy-owned directory, a new `require_public_dir()` gives a friendly refusal when the directory is missing (called before the lock is opened and from `assert_dist_usable()`, which still refuses any existing non-symlink at the pointer), and the previous-error/notes wording now says "public pointer"; release-id, incoming-path, checksum, archive-content, staging, immutability, atomic-rename, two-operation and output behaviour are unchanged. `deploy/FRONTEND_DEPLOY.md`: layout and ownership updated to `/opt/eqalb/public` (deploy-owned) with `/opt/eqalb/frontend` traverse-only, the "do not chown the frontend tree" rule, no pre-created lock file, §4.4 rewritten for a passphrase-free CI-only Ed25519 key stored only as the protected `production` secret `DEPLOY_SSH_KEY` with refusal tests and a no-lockout rotation procedure, §4.6 converts a hand-built `dist` as root without chowning the frontend tree, new §4.7 is the ordered one-time Caddy migration (create `/opt/eqalb/public`, atomic pointer to the live release, move Caddy's root, validate and reload, verify `/`, `/app`, `/about` and `/api/health`, prove the permission split, roll the Caddy root back if it fails, remove the old symlink only after acceptance), §7 and §9 use the public pointer, and §10 records the outstanding migration, the deploy-owned blast radius and the releases' ownership caveat. `deploy/DEPLOY.md` §7 names the one-time Caddy root move as the sole adoption step and states `deploy/Caddyfile` stays unchanged until then. `.github/workflows/deploy-frontend.yml`: header comment only. `deploy/Caddyfile` deliberately untouched. `project_state.md` updated (Known limitations, Current task, Next planned task, this row) | Repository-local validation only, and it passed: `bash -n deploy/frontend-deploy.sh` clean; the script's behavioural suite, updated to the public-pointer topology, passed **50 of 50** checks (including the new missing-public-directory refusal and the real-directory-at-the-pointer refusal) in a sandbox whose only substitutions are `/opt/eqalb` -> a temporary prefix, a `flock` stub and a junction-backed `ln` shim, both gaps of this Windows checkout; the workflow YAML re-parsed and passed the 44 structural checks and its 18 `run:` blocks passed `bash -n`; `npm run typecheck` (one transient Windows crash on the first run, clean on re-run), `npm run lint` and `npm run build` all pass and the built `dist` contains no `.map` file; `git diff --check` clean. **Not verified and not claimed:** the topology has never run on a Linux host with real `flock` and the real forced-command wrapper, the one-time §4.7 Caddy migration has not been performed, no Caddy command was executed, and no secret, key or Environment setting was touched. `frontend/README.md` was left untouched because it is outside the approved file scope; its "serves ... from `/opt/eqalb/frontend/dist`" sentence becomes stale when the Caddy migration is accepted, at which point it should be updated. Nothing was staged, committed, pushed, deployed or run, and no package or lockfile changed |
