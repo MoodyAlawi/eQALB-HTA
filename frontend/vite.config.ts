@@ -22,6 +22,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // The production bundle is published publicly as-is: emit no source maps.
+    sourcemap: false,
   },
 })

@@ -1,0 +1,330 @@
+# eQalb frontend-only production deployment.
+#
+# Scope is deliberately narrow. This workflow builds the Vite production bundle
+# in GitHub Actions, uploads it to a fixed incoming directory, and asks a
+# root-owned script to publish it as an immutable release behind the deploy
+# account's one mutable path, /opt/eqalb/public/dist - the symlink Caddy serves.
+# It never installs or changes R, renv, Python/API packages, systemd, Caddy
+# configuration, environment files, DNS or the Git checkout on the server, and
+# it never restarts the API.
+#
+# The server side - a dedicated deploy account and key, the fixed directories,
+# the root-owned script and its forced command, the environment secrets and the
+# required approval - is prepared by hand; see deploy/FRONTEND_DEPLOY.md. Until
+# that is done and a real run has succeeded, this workflow is unverified.
+name: Deploy frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-frontend.yml'
+      - 'deploy/**'
+      - 'frontend/**'
+  # Manual runs exist only to roll production back to a retained release. They
+  # build nothing and never deploy a new bundle.
+  workflow_dispatch:
+    inputs:
+      rollback_release_id:
+        description: 'Rollback target: a retained release directory name under /opt/eqalb/frontend/releases (for example 42-<40 hex chars>). Manual runs must set it.'
+        required: false
+        type: string
+
+# Only one frontend production deployment at a time, and an in-flight one is
+# never cancelled: it may be midway through replacing the dist symlink.
+concurrency:
+  group: frontend-production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_ID: ${{ github.run_number }}-${{ github.sha }}
+  REMOTE_INCOMING: /opt/eqalb/frontend/incoming
+
+jobs:
+  build:
+    name: Build the production bundle
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --ignore-scripts
+
+      - name: Type check
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Package the bundle and its checksum
+        env:
+          BUNDLE_DIR: ${{ github.workspace }}/bundle
+        run: |
+          set -euo pipefail
+          test -f frontend/dist/index.html
+          if find frontend/dist -name '*.map' -print -quit | grep -q .; then
+            echo 'error: the production build contains source maps (*.map)'
+            exit 1
+          fi
+          mkdir -p "$BUNDLE_DIR"
+          archive="frontend-${RELEASE_ID}.tar.gz"
+          tar -czf "$BUNDLE_DIR/$archive" -C frontend/dist .
+          cd "$BUNDLE_DIR"
+          sha256sum "$archive" > "$archive.sha256"
+          # The checksum must verify against the file that is about to be
+          # uploaded, not merely have been written.
+          sha256sum -c "$archive.sha256"
+
+      - name: Upload the bundle and checksum
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-bundle
+          path: |
+            bundle/*.tar.gz
+            bundle/*.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy to production
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    # The environment carries the six deploy secrets and the manual approval
+    # that gates this job; nothing reaches the server before it passes.
+    environment: production
+    steps:
+      - name: Prepare the deploy key and the pinned host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts"
+
+      - name: Download the bundle and checksum
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: frontend-bundle
+          path: bundle
+
+      - name: Verify the bundle checksum
+        working-directory: bundle
+        run: sha256sum -c "frontend-${RELEASE_ID}.tar.gz.sha256"
+
+      - name: Upload the bundle to the incoming directory
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+        run: |
+          set -euo pipefail
+          umask 077
+          archive="frontend-${RELEASE_ID}.tar.gz"
+          scp -O -P "${DEPLOY_SSH_PORT:-22}" \
+            -i "$HOME/.ssh/deploy_key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "bundle/$archive" "bundle/$archive.sha256" \
+            "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}:${REMOTE_INCOMING}"
+
+      - name: Activate the release
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+        run: |
+          set -euo pipefail
+          archive="${REMOTE_INCOMING}/frontend-${RELEASE_ID}.tar.gz"
+          output="$(ssh -p "${DEPLOY_SSH_PORT:-22}" \
+            -i "$HOME/.ssh/deploy_key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}" \
+            "activate ${RELEASE_ID} ${archive} ${archive}.sha256")"
+          printf '%s\n' "$output"
+
+          active="$(printf '%s\n' "$output" | sed -n 's/^ACTIVE_RELEASE_ID=//p' | tail -n 1)"
+          previous="$(printf '%s\n' "$output" | sed -n 's/^PREVIOUS_RELEASE_ID=//p' | tail -n 1)"
+          if [ "$active" != "$RELEASE_ID" ]; then
+            echo 'error: the server did not confirm the activated release'
+            exit 1
+          fi
+          if [ -n "$previous" ] && ! [[ "$previous" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+            echo 'error: the server reported an unusable previous release id'
+            exit 1
+          fi
+          {
+            echo "PREVIOUS_RELEASE_ID=$previous"
+            echo 'ACTIVATED=1'
+          } >> "$GITHUB_ENV"
+
+      - name: Validate the public site
+        env:
+          DEPLOY_PUBLIC_BASE_URL: ${{ secrets.DEPLOY_PUBLIC_BASE_URL }}
+        run: |
+          set -euo pipefail
+          base="${DEPLOY_PUBLIC_BASE_URL%/}"
+          if [ -z "$base" ]; then
+            echo 'error: DEPLOY_PUBLIC_BASE_URL is not configured'
+            exit 1
+          fi
+
+          # The built index.html names content-hashed assets; finding one of
+          # them on the public pages proves the new release is being served,
+          # not merely that something answers.
+          asset="$(tar -xzOf "bundle/frontend-${RELEASE_ID}.tar.gz" ./index.html \
+            | grep -oE '/assets/[A-Za-z0-9._-]+' | head -n 1 || true)"
+          if [ -z "$asset" ]; then
+            echo 'error: the built index.html names no /assets/ file'
+            exit 1
+          fi
+
+          check_page() {
+            local path="$1" page code
+            page="$(mktemp)"
+            code="$(curl -s -o "$page" -w '%{http_code}' --max-time 20 "${base}${path}")"
+            printf 'GET %s -> HTTP %s\n' "$path" "$code"
+            if [ "$code" != "200" ]; then
+              rm -f "$page"
+              printf 'error: GET %s returned HTTP %s\n' "$path" "$code"
+              return 1
+            fi
+            if ! grep -qF -- "$asset" "$page"; then
+              rm -f "$page"
+              printf 'error: %s is not serving the new bundle (no %s)\n' "$path" "$asset"
+              return 1
+            fi
+            rm -f "$page"
+          }
+          check_page /
+          check_page /app
+          check_page /about
+
+          health="$(curl -s --max-time 20 "${base}/api/health")"
+          printf 'GET /api/health -> %s\n' "$health"
+          printf '%s' "$health" | grep -qE '"status"[[:space:]]*:[[:space:]]*"ok"' \
+            || { echo 'error: GET /api/health did not report status ok'; exit 1; }
+
+      - name: Roll back after a failed validation
+        if: failure() && env.ACTIVATED == '1' && env.PREVIOUS_RELEASE_ID != ''
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+        run: |
+          set -euo pipefail
+          echo "Validation failed; restoring the previous release ${PREVIOUS_RELEASE_ID}."
+          ssh -p "${DEPLOY_SSH_PORT:-22}" \
+            -i "$HOME/.ssh/deploy_key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}" \
+            "rollback ${PREVIOUS_RELEASE_ID}"
+
+      - name: Report that there is no previous release
+        if: failure() && env.ACTIVATED == '1' && env.PREVIOUS_RELEASE_ID == ''
+        run: |
+          echo 'The activated release failed validation and no previous release existed.'
+          echo 'The dist symlink still points at the new release; inspect it before changing anything by hand.'
+
+      - name: Remove the deploy key material
+        if: always()
+        run: rm -f "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts"
+
+  rollback:
+    name: Manual rollback
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    # A manual rollback changes production too, so it passes the same gate and
+    # uses the same environment secrets as an automated deploy.
+    environment: production
+    steps:
+      - name: Validate the requested release id
+        env:
+          ROLLBACK_RELEASE_ID: ${{ inputs.rollback_release_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ROLLBACK_RELEASE_ID:-}" ]; then
+            echo 'error: set the "rollback_release_id" input to a retained release directory name.'
+            exit 1
+          fi
+          if ! [[ "$ROLLBACK_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+            echo 'error: the rollback release id is not a valid release directory name.'
+            exit 1
+          fi
+
+      - name: Prepare the deploy key and the pinned host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts"
+
+      - name: Roll back to the requested release
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          ROLLBACK_RELEASE_ID: ${{ inputs.rollback_release_id }}
+        run: |
+          set -euo pipefail
+          output="$(ssh -p "${DEPLOY_SSH_PORT:-22}" \
+            -i "$HOME/.ssh/deploy_key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}" \
+            "rollback ${ROLLBACK_RELEASE_ID}")"
+          printf '%s\n' "$output"
+          printf '%s\n' "$output" | grep -q "^ACTIVE_RELEASE_ID=${ROLLBACK_RELEASE_ID}$" \
+            || { echo 'error: the server did not confirm the rollback'; exit 1; }
+
+      - name: Confirm the site answers
+        env:
+          DEPLOY_PUBLIC_BASE_URL: ${{ secrets.DEPLOY_PUBLIC_BASE_URL }}
+        run: |
+          set -euo pipefail
+          base="${DEPLOY_PUBLIC_BASE_URL%/}"
+          if [ -z "$base" ]; then
+            echo 'error: DEPLOY_PUBLIC_BASE_URL is not configured'
+            exit 1
+          fi
+          for path in / /app /about; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "${base}${path}")"
+            printf 'GET %s -> HTTP %s\n' "$path" "$code"
+            if [ "$code" != "200" ]; then
+              printf 'error: GET %s returned HTTP %s\n' "$path" "$code"
+              exit 1
+            fi
+          done
+          health="$(curl -s --max-time 20 "${base}/api/health")"
+          printf '%s' "$health" | grep -qE '"status"[[:space:]]*:[[:space:]]*"ok"' \
+            || { echo 'error: GET /api/health did not report status ok'; exit 1; }
+
+      - name: Remove the deploy key material
+        if: always()
+        run: rm -f "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts"
