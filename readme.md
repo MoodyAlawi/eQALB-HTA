@@ -152,6 +152,7 @@ Repository layout:
 | .vscode/tasks.json | The VS Code tasks that run the Shiny app, the model API and the frontend dev server. |
 | renv.lock, .Rprofile, renv/ | The reproducible package environment. |
 | manifest.json | The deployment manifest used by the hosted demo. |
+| deploy/ | Production templates for the browser stack: `Caddyfile`, `eqalb-api.service`, `api.env.example` and the `DEPLOY.md` runbook. Placeholders only; no live host values. |
 | agents.md | The project rules and conventions followed while developing the application. |
 | project_state.md | A short log of verified status, known limitations, and next steps. |
 
@@ -196,6 +197,24 @@ Two things worth knowing:
 
 - Keep `shiny::runApp()` out of app.R, so the file stays importable.
 - Start the application from the project folder, so `.Rprofile` can activate renv.
+
+## Deploying it yourself
+
+The "Live demo" above is the Shiny application hosted on Posit Connect and stays
+as it is. The browser stack can also be self-hosted on a single Ubuntu 24.04 VPS
+behind one domain: Caddy serves the static Vue build and reverse-proxies only
+`/api/*` to FastAPI on loopback, and FastAPI owns one local R worker as a child
+process over stdin/stdout, so neither FastAPI nor R is reachable from the
+internet. There is no database, no user accounts and no session persistence to
+run alongside it.
+
+The templates in [`deploy/`](./deploy) are parameterised with placeholders
+(`YOUR_DOMAIN`, `/opt/eqalb`, `eqalb`) and contain no host values, so the only
+edits a deployment needs are the two `YOUR_DOMAIN` occurrences and the server's
+own environment file. [`deploy/DEPLOY.md`](./deploy/DEPLOY.md) is the runbook:
+packages, server baseline, install, DNS/Caddy, validation and rollback. The
+legacy Shiny application is not part of that deployment: `app.R` and `run_app.R`
+stay a reference implementation for the existing Posit Connect demo.
 
 ## Limitations
 

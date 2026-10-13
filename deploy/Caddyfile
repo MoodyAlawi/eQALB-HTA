@@ -1,0 +1,84 @@
+# eQalb production Caddyfile - TEMPLATE.
+#
+# This file is tracked as a template and contains placeholders only. Copy it to
+# /etc/caddy/Caddyfile on the server and replace YOUR_DOMAIN there, never here.
+#
+# Topology it implements:
+#
+#   Internet -> Caddy (:80, :443) -> static Vue build at /opt/eqalb/frontend/dist
+#                                 -> /api/* reverse-proxied to 127.0.0.1:8000
+#   FastAPI owns the single R worker as a child process on stdin/stdout: the R
+#   worker has no socket and no port, so there is nothing else to publish.
+
+{
+	# ACME account email, used for certificate-expiry notices. The subaddress
+	# form keeps this template free of any real address.
+	email admin@YOUR_DOMAIN
+
+	# HTTP/1.1 and HTTP/2 only. This leaves HTTP/3 off, so no UDP port has to
+	# be opened in the firewall.
+	servers {
+		protocols h1 h2
+	}
+}
+
+# Replace YOUR_DOMAIN with the single production hostname.
+YOUR_DOMAIN {
+	# Caddy obtains and renews the Let's Encrypt certificate automatically.
+	# Nothing here weakens TLS or disables certificate verification.
+	encode zstd gzip
+
+	# index.html must be revalidated on every visit: the asset file names are
+	# content-hashed and change on each build.
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Cache-Control "no-cache"
+	}
+	# Hashed assets never change, so they are cached for a year.
+	header /assets/* Cache-Control "public, max-age=31536000, immutable"
+
+	# --- Model API -------------------------------------------------------------
+	# Only /api/* leaves Caddy. FastAPI listens on 127.0.0.1:8000 and the R
+	# worker has no listener at all, so neither is reachable from the internet.
+	# The path is forwarded unchanged, so no route in api/main.py changes.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000 {
+			# A probabilistic sensitivity analysis runs for minutes without
+			# sending anything, and the R model's own timeout is 900 s
+			# (EQALB_R_TIMEOUT), so the proxy waits comfortably longer than
+			# that and lets FastAPI report its own error instead of this proxy.
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 1200s
+				read_timeout 1200s
+				write_timeout 1200s
+			}
+		}
+	}
+
+	# --- Static frontend -------------------------------------------------------
+	# The Vue production build. The app has no router and keeps the active page
+	# in memory, so every screen is served from "/" and no deep link exists.
+	handle {
+		root * /opt/eqalb/frontend/dist
+		file_server
+
+		# OPTIONAL SPA FALLBACK - not needed today, and deliberately inert.
+		# If a real router with addressable paths is ever added, uncomment the
+		# next line so a deep link or a refresh on a sub-path loads the app
+		# shell instead of returning 404:
+		# try_files {path} /index.html
+	}
+
+	# Access log. Remove this block to log to journald instead; either way the
+	# runbook keeps retention low. The directory must exist and be writable by
+	# the caddy user:  install -d -o caddy -g caddy /var/log/caddy
+	log {
+		output file /var/log/caddy/eqalb-access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+		format console
+	}
+}

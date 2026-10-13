@@ -1,0 +1,68 @@
+# eQalb model API - systemd unit TEMPLATE.
+#
+# Install as /etc/systemd/system/eqalb-api.service. It contains placeholders
+# only and no host-specific or secret value: the server-local settings live in
+# /etc/eqalb/api.env (see deploy/api.env.example).
+#
+# This one unit covers the whole model layer. api/main.py starts api/r_worker.R
+# through api/r_client.py, so the R worker is a child process of this service
+# rather than a service of its own: there is no R port to publish or to stop
+# separately, and KillMode=control-group below stops both together.
+#
+# Single process on purpose: one Uvicorn process and one R worker. The unit
+# starts api/run_api.py, which calls uvicorn.run() with no --reload, no debug
+# mode, no workers= and no 0.0.0.0 binding.
+
+[Unit]
+Description=eQalb model API (FastAPI + R model worker)
+Documentation=file:/opt/eqalb/deploy/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+# If it crashes repeatedly, stop retrying instead of looping forever.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=eqalb
+Group=eqalb
+
+# The repository root. api/r_client.py starts the R worker with this same
+# directory as its working directory, which is what lets .Rprofile activate
+# renv and find renv/library/ where renv::restore() installed it.
+WorkingDirectory=/opt/eqalb
+
+# Server-local settings. Never committed; must be root:eqalb, mode 0640.
+EnvironmentFile=/etc/eqalb/api.env
+
+# The virtual environment for the Python layer.
+ExecStart=/opt/eqalb/.venv/bin/python /opt/eqalb/api/run_api.py
+
+Restart=on-failure
+RestartSec=5
+# Give the API time to close the R worker's pipes on shutdown.
+TimeoutStopSec=30
+# Stop the R worker child together with the API process.
+KillMode=control-group
+
+# --- Hardening ---------------------------------------------------------------
+# Kept conservative on purpose: the service must still be able to load the
+# project R library, let renv use a writable cache, use /tmp for its worker
+# pipes, and spawn the Rscript child process.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=full
+ProtectHome=read-only
+# Writable location for the R and renv caches. systemd creates it owned by
+# eqalb:eqalb, and HOME/XDG_CACHE_HOME below point the R session at it. Without
+# this, renv would try to use a cache under the (now read-only) home directory.
+StateDirectory=eqalb
+Environment=HOME=/var/lib/eqalb
+Environment=XDG_CACHE_HOME=/var/lib/eqalb/.cache
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
