@@ -36,41 +36,12 @@ rrr_base <- 0.10
 rrr_low <- 0.05
 rrr_high <- 0.15
 
-# Exploratory one-way ranges. These are scenario bounds, not confidence limits;
-# replace them with local pricing, implementation, utilization, and clinical evidence.
-sensitivity_ranges <- data.frame(
-  parameter = c(
-    "Annual intervention price",
-    "Implementation cost",
-    "Annual healthcare-use savings",
-    "Relative risk reduction",
-    "Year-1 engagement",
-    "Follow-up engagement",
-    "No-event utility",
-    "Post-MI utility",
-    "Post-stroke utility",
-    "Cost discount rate",
-    "Effect discount rate"
-  ),
-  argument = c(
-    "scenario_intervention_price", "scenario_implementation_cost",
-    "scenario_healthcare_savings", "scenario_rrr",
-    "scenario_engagement_year1", "scenario_engagement_followup",
-    "scenario_utility_no_event", "scenario_utility_post_mi",
-    "scenario_utility_post_stroke", "scenario_discount_rate_cost",
-    "scenario_discount_rate_effect"
-  ),
-  # Price +/-20% reflects plausible contracting and subscription variation.
-  low = c(288, 20, 10, rrr_low, 0.60, 0.32, 0.81, 0.75, 0.55, 0.00, 0.00),
-  high = c(432, 60, 30, rrr_high, 0.80, 0.52, 0.91, 0.85, 0.65, 0.06, 0.06),
-  stringsAsFactors = FALSE
-)
-# Implementation +/-50% reflects uncertainty in start-up staffing and setup.
-# Savings +/-50% reflects uncertainty in whether modeled utilization reductions occur.
-# RRR 5%-15% brackets the supplied 10% base assumption.
-# Engagement bounds vary each supplied rate by 10 absolute percentage points.
-# Utility bounds vary each EQ-5D state utility by 0.05, a modest absolute change.
-# Discounting ranges from 0% to 6%, spanning no discount to twice the 3% base rate.
+# The exploratory one-way ranges are not defined here. eqalb_owsa.R owns the one
+# canonical policy that derives them from the value a parameter has in the current
+# scenario (`eqalb_owsa_range_defaults()`), and this file's analysis block below
+# reads that policy through `eqalb_owsa_parameters()` so the script and the
+# application cannot drift apart. Every range is an illustrative model scenario,
+# not a confidence limit.
 
 if (any(c(p_mi_usual_care, p_stroke_usual_care, p_other_death,
           p_death_post_mi, p_death_post_stroke,
@@ -160,11 +131,24 @@ run_markov <- function(
     0, 0, 0, 1
   )
 
+  # The extra value variables below split the same cost and effect expressions into
+  # their components. Discounting is linear, so each part is discounted the same
+  # way and the parts sum to the existing total exactly. The `cost` and `effect`
+  # expressions are left byte-identical, so every existing output is unaffected.
   usual_care <- define_strategy(
     transition = transition_usual_care,
     NoEvent = define_state(
       cost = discount(cost_no_event, discount_rate_cost, time = model_time),
-      effect = discount(utility_no_event, discount_rate_effect, time = model_time)
+      effect = discount(utility_no_event, discount_rate_effect, time = model_time),
+      cost_no_event = discount(cost_no_event, discount_rate_cost, time = model_time),
+      cost_post_mi = 0,
+      cost_post_stroke = 0,
+      cost_intervention = 0,
+      cost_implementation = 0,
+      cost_savings = 0,
+      qaly_no_event = discount(utility_no_event, discount_rate_effect, time = model_time),
+      qaly_post_mi = 0,
+      qaly_post_stroke = 0
     ),
     PostMI = define_state(
       cost = discount(
@@ -172,7 +156,20 @@ run_markov <- function(
         discount_rate_cost,
         time = model_time
       ),
-      effect = discount(utility_post_mi, discount_rate_effect, time = model_time)
+      effect = discount(utility_post_mi, discount_rate_effect, time = model_time),
+      cost_no_event = 0,
+      cost_post_mi = discount(
+        ifelse(state_time == 1, cost_post_mi_year1, cost_post_mi_followup),
+        discount_rate_cost,
+        time = model_time
+      ),
+      cost_post_stroke = 0,
+      cost_intervention = 0,
+      cost_implementation = 0,
+      cost_savings = 0,
+      qaly_no_event = 0,
+      qaly_post_mi = discount(utility_post_mi, discount_rate_effect, time = model_time),
+      qaly_post_stroke = 0
     ),
     PostStroke = define_state(
       cost = discount(
@@ -180,9 +177,29 @@ run_markov <- function(
         discount_rate_cost,
         time = model_time
       ),
-      effect = discount(utility_post_stroke, discount_rate_effect, time = model_time)
+      effect = discount(utility_post_stroke, discount_rate_effect, time = model_time),
+      cost_no_event = 0,
+      cost_post_mi = 0,
+      cost_post_stroke = discount(
+        ifelse(state_time == 1, cost_post_stroke_year1, cost_post_stroke_followup),
+        discount_rate_cost,
+        time = model_time
+      ),
+      cost_intervention = 0,
+      cost_implementation = 0,
+      cost_savings = 0,
+      qaly_no_event = 0,
+      qaly_post_mi = 0,
+      qaly_post_stroke = discount(
+        utility_post_stroke, discount_rate_effect, time = model_time
+      )
     ),
-    Death = define_state(cost = 0, effect = 0)
+    Death = define_state(
+      cost = 0, effect = 0,
+      cost_no_event = 0, cost_post_mi = 0, cost_post_stroke = 0,
+      cost_intervention = 0, cost_implementation = 0, cost_savings = 0,
+      qaly_no_event = 0, qaly_post_mi = 0, qaly_post_stroke = 0
+    )
   )
 
   eqalb <- define_strategy(
@@ -194,7 +211,24 @@ run_markov <- function(
         discount_rate_cost,
         time = model_time
       ),
-      effect = discount(utility_no_event, discount_rate_effect, time = model_time)
+      effect = discount(utility_no_event, discount_rate_effect, time = model_time),
+      cost_no_event = discount(cost_no_event, discount_rate_cost, time = model_time),
+      cost_post_mi = 0,
+      cost_post_stroke = 0,
+      cost_intervention = discount(
+        intervention_price, discount_rate_cost, time = model_time
+      ),
+      cost_implementation = discount(
+        ifelse(model_time == 1, implementation, 0),
+        discount_rate_cost,
+        time = model_time
+      ),
+      cost_savings = discount(
+        healthcare_savings, discount_rate_cost, time = model_time
+      ),
+      qaly_no_event = discount(utility_no_event, discount_rate_effect, time = model_time),
+      qaly_post_mi = 0,
+      qaly_post_stroke = 0
     ),
     PostMI = define_state(
       cost = discount(
@@ -204,7 +238,28 @@ run_markov <- function(
         discount_rate_cost,
         time = model_time
       ),
-      effect = discount(utility_post_mi, discount_rate_effect, time = model_time)
+      effect = discount(utility_post_mi, discount_rate_effect, time = model_time),
+      cost_no_event = 0,
+      cost_post_mi = discount(
+        ifelse(state_time == 1, cost_post_mi_year1, cost_post_mi_followup),
+        discount_rate_cost,
+        time = model_time
+      ),
+      cost_post_stroke = 0,
+      cost_intervention = discount(
+        intervention_price, discount_rate_cost, time = model_time
+      ),
+      cost_implementation = discount(
+        ifelse(model_time == 1, implementation, 0),
+        discount_rate_cost,
+        time = model_time
+      ),
+      cost_savings = discount(
+        healthcare_savings, discount_rate_cost, time = model_time
+      ),
+      qaly_no_event = 0,
+      qaly_post_mi = discount(utility_post_mi, discount_rate_effect, time = model_time),
+      qaly_post_stroke = 0
     ),
     PostStroke = define_state(
       cost = discount(
@@ -214,9 +269,37 @@ run_markov <- function(
         discount_rate_cost,
         time = model_time
       ),
-      effect = discount(utility_post_stroke, discount_rate_effect, time = model_time)
+      effect = discount(utility_post_stroke, discount_rate_effect, time = model_time),
+      cost_no_event = 0,
+      cost_post_mi = 0,
+      cost_post_stroke = discount(
+        ifelse(state_time == 1, cost_post_stroke_year1, cost_post_stroke_followup),
+        discount_rate_cost,
+        time = model_time
+      ),
+      cost_intervention = discount(
+        intervention_price, discount_rate_cost, time = model_time
+      ),
+      cost_implementation = discount(
+        ifelse(model_time == 1, implementation, 0),
+        discount_rate_cost,
+        time = model_time
+      ),
+      cost_savings = discount(
+        healthcare_savings, discount_rate_cost, time = model_time
+      ),
+      qaly_no_event = 0,
+      qaly_post_mi = 0,
+      qaly_post_stroke = discount(
+        utility_post_stroke, discount_rate_effect, time = model_time
+      )
     ),
-    Death = define_state(cost = 0, effect = 0)
+    Death = define_state(
+      cost = 0, effect = 0,
+      cost_no_event = 0, cost_post_mi = 0, cost_post_stroke = 0,
+      cost_intervention = 0, cost_implementation = 0, cost_savings = 0,
+      qaly_no_event = 0, qaly_post_mi = 0, qaly_post_stroke = 0
+    )
   )
 
   # Normalize the starting cohort to one person; outputs are per person.
@@ -233,6 +316,15 @@ run_markov <- function(
 }
 # nolint end: object_usage_linter
 
+# Ordered component value-variable names used by the PSA mean decomposition.
+# One shared constant keeps run_psa_eqalb(), the reconciliation checks and the
+# popover tables in step.
+PSA_COMPONENT_NAMES <- c(
+  "cost_intervention", "cost_implementation", "cost_savings",
+  "cost_no_event", "cost_post_mi", "cost_post_stroke",
+  "qaly_no_event", "qaly_post_mi", "qaly_post_stroke"
+)
+
 summarize_model <- function(model) {
   strategy_values <- model$run_model
   usual_care <- strategy_values[strategy_values$.strategy_names == "UsualCare", ]
@@ -240,10 +332,26 @@ summarize_model <- function(model) {
   incremental_cost <- eqalb$.cost - usual_care$.cost
   incremental_qalys <- eqalb$.effect - usual_care$.effect
 
+  # Component differences for the PSA mean-decomposition popovers. They are
+  # derived from the same strategy output rows as the headline values, so the
+  # parts sum to the totals by construction (the three therapy cost terms are
+  # zero in usual care).
+  component_names <- c(
+    "cost_intervention", "cost_implementation", "cost_savings",
+    "cost_no_event", "cost_post_mi", "cost_post_stroke",
+    "qaly_no_event", "qaly_post_mi", "qaly_post_stroke"
+  )
+  components <- vapply(
+    PSA_COMPONENT_NAMES,
+    function(name) eqalb[[name]] - usual_care[[name]],
+    numeric(1)
+  )
+
   c(
     incremental_cost = incremental_cost,
     incremental_qalys = incremental_qalys,
-    icer = if (incremental_qalys == 0) NA_real_ else incremental_cost / incremental_qalys
+    icer = if (incremental_qalys == 0) NA_real_ else incremental_cost / incremental_qalys,
+    components
   )
 }
 
@@ -289,6 +397,7 @@ run_eqalb_model <- function(
     incremental_cost = unname(summary["incremental_cost"]),
     incremental_qalys = unname(summary["incremental_qalys"]),
     icer = unname(summary["icer"]),
+    components = summary[PSA_COMPONENT_NAMES],
     model = model
   )
 }
@@ -432,6 +541,9 @@ run_psa_eqalb <- function(
         !is.finite(model$incremental_qalys)) {
         stop("non-finite incremental result", call. = FALSE)
       }
+      if (!all(is.finite(model$components))) {
+        stop("non-finite component result", call. = FALSE)
+      }
       data.frame(
         simulation = i,
         incremental_cost = model$incremental_cost,
@@ -441,6 +553,9 @@ run_psa_eqalb <- function(
         } else {
           NA_real_
         },
+        # One column per component difference, so the mean decomposition comes
+        # from exactly the same successful simulations as the headline values.
+        as.data.frame(as.list(model$components), stringsAsFactors = FALSE),
         # Preserve the sampled parameter draws (one column per sampled
         # parameter) so value-of-information analysis can condition on them.
         as.data.frame(sample_args, stringsAsFactors = FALSE)
@@ -487,14 +602,49 @@ run_psa_eqalb <- function(
   inmb_matrix <- outer(wtp_grid, successful$incremental_qalys) -
     rep(successful$incremental_cost, each = length(wtp_grid))
 
+  mean_incremental_cost <- mean(successful$incremental_cost)
+  mean_incremental_qalys <- mean(successful$incremental_qalys)
+  # Reconciled on the unrounded values and asserted here, so a component that
+  # stops summing to the headline total fails loudly instead of displaying a
+  # decomposition that does not add up.
+  component_means <- vapply(
+    PSA_COMPONENT_NAMES,
+    function(name) mean(successful[[name]]),
+    numeric(1)
+  )
+  cost_component_names <- c(
+    "cost_intervention", "cost_implementation", "cost_savings",
+    "cost_post_mi", "cost_post_stroke"
+  )
+  if (!isTRUE(all.equal(
+    sum(component_means[c("cost_intervention", "cost_implementation",
+                          "cost_no_event", "cost_post_mi", "cost_post_stroke")]) -
+      component_means[["cost_savings"]],
+    mean_incremental_cost,
+    tolerance = 1e-8
+  ))) {
+    stop("PSA mean cost components do not reconcile with the mean incremental cost.",
+         call. = FALSE)
+  }
+  if (!isTRUE(all.equal(
+    sum(component_means[c("qaly_no_event", "qaly_post_mi", "qaly_post_stroke")]),
+    mean_incremental_qalys,
+    tolerance = 1e-8
+  ))) {
+    stop("PSA mean QALY components do not reconcile with the mean incremental QALYs.",
+         call. = FALSE)
+  }
+
   list(
     results = successful,
     n_requested = n_sim,
     n_successful = nrow(successful),
     n_failed = n_sim - nrow(successful),
     failures = failures,
-    mean_incremental_cost = mean(successful$incremental_cost),
-    mean_incremental_qalys = mean(successful$incremental_qalys),
+    mean_incremental_cost = mean_incremental_cost,
+    mean_incremental_qalys = mean_incremental_qalys,
+    mean_components = component_means,
+    component_cost_names = cost_component_names,
     median_icer = median_icer,
     wtp_thresholds = wtp_thresholds,
     probability_cost_effective = probability_cost_effective,
@@ -1534,14 +1684,45 @@ calculate_budget_impact <- function(
 }
 
 if (sys.nframe() == 0L) {
+# Where this script lives, so everything it writes lands beside it whether it was
+# run by file name or sourced.
+script_argument <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+source_frames <- Filter(function(frame) !is.null(frame$ofile), sys.frames())
+script_path <- if (length(script_argument) > 0L) {
+  sub("^--file=", "", script_argument[[1]])
+} else if (length(source_frames) > 0L) {
+  source_frames[[length(source_frames)]]$ofile
+} else {
+  file.path(getwd(), "eqalb_markov.R")
+}
+output_dir <- dirname(normalizePath(script_path, mustWork = FALSE))
+
 base_case <- run_markov(rrr_base)
 cat("\nBase-case results (eQalb plus usual care versus usual care)\n")
 print(base_case)
 
 base_summary <- summarize_model(base_case)
 
-# Combined engagement scenarios use both rates together: low 60%/32%, base
-# 70%/42%, and high 80%/52%. These bounds reuse the one-way ranges above.
+# The one-way ranges are the application's own canonical policy, read from
+# eqalb_owsa.R, so this analysis block and the app cannot drift apart. The module
+# is sourced here because the application's load order sources this file first,
+# which makes a direct run of this file the only case that still needs it.
+if (!exists("eqalb_owsa_parameters", mode = "function")) {
+  source(file.path(output_dir, "eqalb_owsa.R"))
+}
+sensitivity_ranges <- local({
+  parameters <- eqalb_owsa_parameters()
+  data.frame(
+    parameter = parameters$parameter,
+    argument = parameters$model_arg,
+    low = parameters$low_default,
+    high = parameters$high_default,
+    stringsAsFactors = FALSE
+  )
+})
+
+# Combined engagement scenarios use both rates together: low 50%/20%, base
+# 70%/42%, and high 85%/60%. These bounds reuse the canonical one-way ranges.
 year1_engagement_range <- sensitivity_ranges[
   sensitivity_ranges$parameter == "Year-1 engagement", c("low", "high")
 ]
@@ -1617,16 +1798,6 @@ base_result <- data.frame(
 )
 sensitivity_results <- rbind(base_result, one_way_results)
 
-script_argument <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
-source_frames <- Filter(function(frame) !is.null(frame$ofile), sys.frames())
-script_path <- if (length(script_argument) > 0L) {
-  sub("^--file=", "", script_argument[[1]])
-} else if (length(source_frames) > 0L) {
-  source_frames[[length(source_frames)]]$ofile
-} else {
-  file.path(getwd(), "eqalb_markov.R")
-}
-output_dir <- dirname(normalizePath(script_path, mustWork = FALSE))
 csv_path <- file.path(output_dir, "eqalb_owsa_results.csv")
 engagement_csv_path <- file.path(output_dir, "eqalb_engagement_scenarios.csv")
 png_path <- file.path(output_dir, "eqalb_icer_tornado.png")

@@ -117,7 +117,26 @@ The default assumptions are illustrative starting values, for example an annual 
 | Survival module | survival and survminer |
 | Interactive charts | plotly, used by the reusable one-way sensitivity helper in eqalb_owsa.R |
 | Reproducibility | renv, with a committed renv.lock recording the exact package versions |
-| Editor tooling | A VS Code task that launches the application on 127.0.0.1:7788 |
+| Editor tooling | VS Code tasks that launch the application on 127.0.0.1:7788 and, optionally, the browser stack below |
+
+### Optional browser frontend (experimental)
+
+The Shiny application is the reference implementation and stays complete on its
+own. An additive second interface reuses the same R model through an HTTP API, so
+that the model itself is never duplicated:
+
+| Layer | Used here |
+|---|---|
+| Model API | FastAPI (`api/main.py`) on 127.0.0.1:8788, driving the R model through a persistent Rscript worker |
+| Frontend | Vue 3 with TypeScript, built and served by Vite, on 127.0.0.1:5173 |
+| Charts | Apache ECharts, in the same palette as the Shiny application |
+| Model execution | Unchanged: `eqalb_markov.R`, `eqalb_owsa.R` and `eqalb_survival.R` do all the arithmetic |
+
+It covers the base case, the interactive cost-effectiveness plane, the PSA and
+CEAC, the tornado diagram, the budget impact, the simulated Kaplan-Meier analysis
+and value of information. See `api/api_contract.md` and `frontend/README.md`, and
+`FRONTEND_PLAN.md` for what is still planned. Everything it shows is simulated
+illustrative data, exactly as in the Shiny application.
 
 Repository layout:
 
@@ -128,7 +147,9 @@ Repository layout:
 | eqalb_survival.R | The simulated Kaplan-Meier survival module. |
 | eqalb_owsa.R | Reusable one-way sensitivity analysis helpers. |
 | run_app.R | A small launcher pinned to 127.0.0.1:7788. |
-| .vscode/tasks.json | The VS Code task that runs run_app.R. |
+| api/ | The optional HTTP API: `main.py` (FastAPI), `r_worker.R` (the bridge into R), `run_api.py` (launcher), `plumber.R` (the route handlers) and `api_contract.md`. |
+| frontend/ | The optional Vue 3 + Vite interface for the API. |
+| .vscode/tasks.json | The VS Code tasks that run the Shiny app, the model API and the frontend dev server. |
 | renv.lock, .Rprofile, renv/ | The reproducible package environment. |
 | manifest.json | The deployment manifest used by the hosted demo. |
 | agents.md | The project rules and conventions followed while developing the application. |
@@ -154,6 +175,23 @@ Rscript run_app.R
 
 In VS Code you can also run the task "eQalb: run app (127.0.0.1:7788)".
 
+To use the optional browser frontend instead, run the model API and the dev
+server in two more terminals (from the project folder):
+
+```powershell
+# Model API on 127.0.0.1:8788 (R via FastAPI)
+py -3.14 -m venv api\.venv
+api\.venv\Scripts\python.exe -m pip install -r api\requirements.txt
+api\.venv\Scripts\python.exe api\run_api.py
+
+# Vue frontend on 127.0.0.1:5173
+cd frontend; npm install; npm run dev
+```
+
+The VS Code tasks "eQalb: run model API (127.0.0.1:8788)" and
+"eQalb: run frontend dev server (127.0.0.1:5173)" do the same. The API and the
+frontend are additive: neither changes `app.R` or the model modules.
+
 Two things worth knowing:
 
 - Keep `shiny::runApp()` out of app.R, so the file stays importable.
@@ -166,7 +204,11 @@ Two things worth knowing:
 - Simplified model structure. Two strategies and four health states (no event, post myocardial infarction, post stroke, and death), with annual cycles over a fixed time horizon.
 - Comparator assumptions. Usual care is the comparator and the model works on incremental costs, so routine care costs assumed identical in both arms are omitted. Event-related post-event state costs appear in both arms and differ only through the health state occupancy each arm produces.
 - Placeholder cost inputs. The follow-up post-event cost constants are marked in the code as still needing a source.
-- Sensitivity analysis scope. The one-way analysis varies one parameter at a time across the ranges you set, so it does not capture interactions between parameters.
+- Sensitivity analysis scope. The one-way analysis varies one parameter at a time
+  across the ranges in force, which R derives from the value each parameter has in
+  the current assumptions, so it does not capture interactions between parameters
+  and its low and high values are illustrative scenarios rather than confidence
+  limits.
 - Value of information scope. Population EVPI is not calculated because the application has no research population, decision timeline, or incidence structure. EVPPI is a single-loop regression approximation and can be imprecise when the number of PSA simulations is small.
 - Presentation thresholds. The traffic-light bands for decision uncertainty, budget impact, readiness, and the HTA decision summary are teaching rules written for this application, not official HTA or payer criteria.
 - Direction of the base case. Under the default assumptions the base case is not cost effective at conventional willingness-to-pay thresholds, and the decision summary reports that cautiously rather than presenting a favourable conclusion.

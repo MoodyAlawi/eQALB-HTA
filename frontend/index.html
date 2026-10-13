@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta
+      name="description"
+      content="eQalb: illustrative HTA model for a fictional hypertension digital therapeutic. All values are simulated, not clinical evidence."
+    />
+    <title>eQalb — illustrative HTA model</title>
+    <script>
+      // Applied before the first paint so a stored dark theme does not flash light.
+      try {
+        var stored = localStorage.getItem('eqalb.theme')
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+        document.documentElement.dataset.theme = stored || (prefersDark ? 'dark' : 'light')
+      } catch (error) {
+        document.documentElement.dataset.theme = 'light'
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

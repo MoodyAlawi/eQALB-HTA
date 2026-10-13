@@ -1,11 +1,11 @@
 {
-  // eQalb Shiny app launcher.
-  // Run with: Terminal > Run Task > "eQalb: run app (127.0.0.1:7788)"
-  // or press Ctrl+Shift+B (default build task).
+  // eQalb launchers.
+  // Run with: Terminal > Run Task > pick a task below.
+  // "eQalb: run app (127.0.0.1:7788)" is the default build task (Ctrl+Shift+B).
   //
-  // To start it automatically whenever this folder is opened, uncomment
-  // "runOptions" below and allow automatic tasks once when VS Code prompts
-  // (or set "task.allowAutomaticTasks": "on" in your user settings).
+  // To start the Shiny app automatically whenever this folder is opened,
+  // uncomment "runOptions" below and allow automatic tasks once when VS Code
+  // prompts (or set "task.allowAutomaticTasks": "on" in your user settings).
   "version": "2.0.0",
   "tasks": [
     {
@@ -27,6 +27,38 @@
       },
       "problemMatcher": []
       // "runOptions": { "runOn": "folderOpen" }
+    },
+    {
+      // FastAPI service (api/main.py) driving the eQalb R model.
+      "label": "eQalb: run model API (127.0.0.1:8788)",
+      "type": "shell",
+      "command": "& '${workspaceFolder}\\api\\.venv\\Scripts\\python.exe' '${workspaceFolder}\\api\\run_api.py'",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      // Vue 3 + Vite frontend; proxies /api to the FastAPI service above.
+      "label": "eQalb: run frontend dev server (127.0.0.1:5173)",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}\\frontend"
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
     }
   ]
 }

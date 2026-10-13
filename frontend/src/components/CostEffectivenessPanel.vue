@@ -1,0 +1,314 @@
+<script setup lang="ts">
+/**
+ * Probabilistic sensitivity analysis: the interactive cost-effectiveness plane,
+ * the PSA summary and the cost-effectiveness acceptability curve.
+ *
+ * A PSA run takes minutes at Shiny's 1,000 draws, so it stays behind the run
+ * button, which is disabled while the request is in flight, and a run of 1,000
+ * draws or more is confirmed first. The confirmation only gates the button: the
+ * request, the draws and the iteration handling itself are unchanged. The plane
+ * and the CEAC read the same single PSA response.
+ */
+
+import { computed, nextTick, ref } from 'vue'
+import { formatEuro, formatNumber, formatPercent, formatQaly, formatThreshold, isNum } from '../format'
+import { useModel } from '../composables/useModel'
+import InfoTip from './InfoTip.vue'
+import CostEffectivenessPlane from './charts/CostEffectivenessPlane.vue'
+import CeacChart from './charts/CeacChart.vue'
+import { probabilityAtThreshold } from './charts/ceac'
+import DataTable from './DataTable.vue'
+import MetricCard from './MetricCard.vue'
+import StaleNotice from './StaleNotice.vue'
+import type { Column } from './table'
+
+const model = useModel()
+
+interface ThresholdRow {
+  threshold: number
+  probability: number | null
+  isReference: boolean
+}
+
+const result = computed(() => model.psa)
+
+/**
+ * The plane's explanation, relocated from beneath the chart into the information
+ * button beside its header.
+ */
+const planeInfo =
+  'Points above the dashed line cost more than the threshold allows. Run the base case on the base-case tab to show the deterministic point as well.'
+
+/**
+ * The acceptability curve's own readout, relocated into the header's information
+ * button. It reads the same threshold probability the curve's marker does, so
+ * the two cannot disagree.
+ */
+const ceacInfo = computed(() => {
+  const psa = result.value
+  if (!psa) return ''
+  const probability = probabilityAtThreshold(psa.ceac, model.wtp)
+  return `At ${formatEuro(model.wtp)}/QALY the model reports ${formatPercent(probability)} of iterations cost-effective.`
+})
+
+/**
+ * The iteration count at and above which the run is confirmed first. It only
+ * gates the button: the request, the draws and the iteration handling itself are
+ * untouched.
+ */
+const PSA_CONFIRM_MIN = 1000
+
+const confirmingPsa = ref(false)
+const psaContinue = ref<HTMLButtonElement | null>(null)
+
+function requestPsa(): void {
+  if (model.psaSims >= PSA_CONFIRM_MIN) {
+    confirmingPsa.value = true
+    void nextTick(() => psaContinue.value?.focus())
+    return
+  }
+  model.runPsa()
+}
+
+/** Cancel leaves the iteration field as it is, so it can be adjusted. */
+function cancelPsa(): void {
+  confirmingPsa.value = false
+}
+
+function continuePsa(): void {
+  confirmingPsa.value = false
+  model.runPsa()
+}
+
+function onPsaKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.stopPropagation()
+    cancelPsa()
+  }
+}
+
+const thresholdRows = computed<ThresholdRow[]>(() => {
+  const psa = result.value
+  if (!psa) return []
+  const values = Object.values(psa.probability_cost_effective ?? {})
+  return (psa.wtp_thresholds ?? []).map((threshold, index) => ({
+    threshold,
+    probability: values[index] ?? null,
+    isReference: Math.abs(threshold - psa.wtp) < 1e-9,
+  }))
+})
+
+const thresholdColumns: Column<ThresholdRow>[] = [
+  {
+    key: 'threshold',
+    label: 'WTP threshold',
+    value: (row) => `${formatEuro(row.threshold)}/QALY${row.isReference ? ' (reference)' : ''}`,
+  },
+  {
+    key: 'probability',
+    label: 'Cost-effective',
+    align: 'right',
+    value: (row) => formatPercent(row.probability),
+  },
+]
+
+const costComponents = computed(() => {
+  const components = result.value?.mean_components
+  if (!components) return []
+  const labels: [string, string][] = [
+    ['cost_intervention', 'eQalb intervention cost'],
+    ['cost_implementation', 'One-off implementation cost'],
+    ['cost_savings', 'Healthcare-use savings'],
+    ['cost_post_mi', 'Post-MI state cost'],
+    ['cost_post_stroke', 'Post-stroke state cost'],
+  ]
+  return labels.map(([key, label]) => ({ component: label, value: components[key] ?? null }))
+})
+
+const componentColumns: Column<{ component: string; value: number | null }>[] = [
+  { key: 'component', label: 'Mean cost component', value: (row) => row.component },
+  {
+    key: 'value',
+    label: 'EUR',
+    align: 'right',
+    value: (row) => formatEuro(row.value, 2),
+    tone: (row) => (row.value !== null && row.value < 0 ? 'good' : null),
+  },
+]
+
+/** The explanations from CC_INFO_TEXT for this panel's controls and metrics. */
+const info = computed(() => model.defaults?.info_text ?? {})
+const simulationsInfo = computed(() => info.value.psa_simulations ?? '')
+const seedInfo = computed(() => info.value.random_seed ?? '')
+const meanCostInfo = computed(() => info.value.psa_mean_cost ?? '')
+const meanQalysInfo = computed(() => info.value.psa_mean_qalys ?? '')
+</script>
+
+<template>
+  <section class="panel">
+    <header class="panel__header">
+      <div>
+        <h2>Cost-effectiveness plane and PSA</h2>
+        <p class="muted">
+          The probabilistic analysis of the current assumptions: the plane, the summary and the
+          acceptability curve.
+        </p>
+      </div>
+      <button type="button" class="btn btn--primary" :disabled="model.busy.psa" @click="requestPsa()">
+        {{ model.busy.psa ? `Running ${formatNumber(model.psaSims)} iterations…` : 'Run PSA' }}
+      </button>
+    </header>
+
+    <p v-if="model.errors.psa" class="alert alert--danger">{{ model.errors.psa }}</p>
+
+    <p v-if="model.busy.psa" class="alert alert--info">
+      A 1,000-draw PSA takes minutes; keep this tab open until it finishes.
+    </p>
+
+    <StaleNotice
+      v-if="result && model.psaStale"
+      action="Run PSA"
+      :detail="`The stored result used a threshold of ${formatThreshold(result.wtp)}.`"
+    />
+
+    <p v-if="result && result.n_failed > 0" class="alert alert--warning">
+      {{ formatNumber(result.n_failed) }} of {{ formatNumber(result.n_requested) }} iterations could
+      not be evaluated and are excluded from the summary.
+    </p>
+
+    <p v-if="!result && !model.busy.psa" class="hint">
+      Run the PSA to fill the plane, the summary and the acceptability curve.
+    </p>
+
+    <div class="controls">
+      <label class="field field--inline">
+        <span>Iterations</span>
+        <input
+          v-model.number="model.psaSims"
+          type="number"
+          :min="model.psaBounds.min"
+          :max="model.psaBounds.max"
+          :step="model.psaBounds.step"
+        />
+      </label>
+      <InfoTip :text="simulationsInfo" topic="the number of PSA simulations" />
+      <label class="field field--inline">
+        <span>Random seed</span>
+        <input
+          v-model.number="model.psaSeed"
+          type="number"
+          :min="model.psaBounds.seedMin"
+          step="1"
+        />
+      </label>
+      <InfoTip :text="seedInfo" topic="the random seed" />
+    </div>
+
+    <template v-if="result">
+      <div class="metrics">
+        <MetricCard
+          label="Mean incremental cost"
+          :value="formatEuro(result.mean_incremental_cost)"
+          sub="average across iterations"
+          :hint="meanCostInfo"
+        />
+        <MetricCard
+          label="Mean incremental QALYs"
+          :value="formatQaly(result.mean_incremental_qalys)"
+          sub="average across iterations"
+          :hint="meanQalysInfo"
+        />
+        <MetricCard
+          label="Median ICER"
+          :value="isNum(result.median_icer) ? formatEuro(result.median_icer) : 'Not interpretable'"
+          sub="median of the iteration ratios"
+        />
+        <MetricCard
+          label="Probability cost-effective"
+          :value="formatPercent(model.probabilityCostEffective)"
+          :sub="`at ${formatThreshold(result.wtp)}`"
+        />
+      </div>
+
+      <div class="grid grid--2">
+        <figure class="chart-figure">
+          <figcaption>
+            Cost-effectiveness plane
+            <InfoTip :text="planeInfo" topic="the cost-effectiveness plane" />
+          </figcaption>
+          <CostEffectivenessPlane
+            :cloud="result.cloud"
+            :wtp="model.wtp"
+            :mean="{
+              cost: result.mean_incremental_cost,
+              qalys: result.mean_incremental_qalys,
+            }"
+            :base-case="
+              model.baseCase
+                ? { cost: model.baseCase.incremental_cost, qalys: model.baseCase.incremental_qalys }
+                : null
+            "
+          />
+        </figure>
+
+        <figure class="chart-figure">
+          <figcaption>
+            Cost-effectiveness acceptability curve
+            <InfoTip :text="ceacInfo" topic="the acceptability curve" />
+          </figcaption>
+          <CeacChart :ceac="result.ceac" :wtp="model.wtp" />
+        </figure>
+      </div>
+
+      <div class="grid grid--2">
+        <DataTable
+          :columns="thresholdColumns"
+          :rows="thresholdRows"
+          caption="Probability of cost-effectiveness by threshold"
+        />
+        <DataTable
+          :columns="componentColumns"
+          :rows="costComponents"
+          caption="Mean cost components across iterations"
+        />
+      </div>
+
+      <p class="hint">
+        The iteration cloud is the raw output, not a confidence region: with
+        {{ formatNumber(result.n_successful) }} successful iterations it shows how parameter
+        uncertainty propagates, and the acceptability curve is the share of iterations that fall
+        below the threshold at each willingness to pay.
+      </p>
+    </template>
+
+    <!-- A run at 1,000 draws or more takes minutes, so it is confirmed first.
+         The prompt only gates the button; the request and the iteration handling
+         are unchanged. Cancel leaves the field as it is so the count can be
+         adjusted, and Escape and the backdrop both cancel. -->
+    <div
+      v-if="confirmingPsa"
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="psa-confirm-title"
+      @keydown="onPsaKeydown"
+    >
+      <div class="modal__backdrop" @click="cancelPsa()"></div>
+      <div class="modal__panel modal__panel--welcome">
+        <h2 id="psa-confirm-title" class="modal__title">
+          Run the PSA with {{ formatNumber(model.psaSims) }} iterations?
+        </h2>
+        <p class="page__prose">
+          Running 1,000 or more iterations may take a few minutes. If you want a quick PSA, change
+          the number of iterations to 100.
+        </p>
+        <div class="tutorial__nav">
+          <button ref="psaContinue" type="button" class="btn btn--primary" @click="continuePsa()">
+            Continue
+          </button>
+          <button type="button" class="btn btn--ghost" @click="cancelPsa()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</template>

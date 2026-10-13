@@ -1,0 +1,22 @@
+# Python dependencies of the eQalb model API (api/main.py).
+#
+# These packages serve the HTTP layer only. The economic model stays in R, so
+# no Python package here computes model output. The R side needs nothing beyond
+# the project's renv library (plumber, heemod and their dependencies).
+#
+# Versions are pinned exactly, so a fresh virtual environment resolves the same
+# packages the API was validated with instead of drifting on the next install.
+# The two entries below are the direct dependencies: FastAPI for the service and
+# Uvicorn to serve it. Everything they pull in is recorded, with its resolved
+# version, in api/requirements.lock.txt.
+#
+# Install into the bundled virtual environment:
+#   py -3.14 -m venv api\.venv
+#   api\.venv\Scripts\python.exe -m pip install -r api\requirements.txt
+#
+# For a byte-reproducible install, which is what a deployment wants, install the
+# recorded closure instead - it holds these two packages at the same versions
+# plus their whole transitive set:
+#   api\.venv\Scripts\python.exe -m pip install -r api\requirements.lock.txt
+fastapi==0.143.0
+uvicorn==0.54.0

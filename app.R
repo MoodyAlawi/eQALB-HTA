@@ -9,6 +9,41 @@ app_dir <- if (is.null(app_file)) getwd() else dirname(normalizePath(app_file))
 source(file.path(app_dir, "eqalb_markov.R"))
 source(file.path(app_dir, "eqalb_survival.R"))
 source(file.path(app_dir, "eqalb_owsa.R"))
+source(file.path(app_dir, "eqalb_readiness.R"))
+source(file.path(app_dir, "eqalb_km_interpretation.R"))
+source(file.path(app_dir, "eqalb_ui_copy.R"))
+
+# The sensitivity-analysis ranges the sidebar edits, and the canonical policy that
+# defines them. Every range is derived by eqalb_owsa_range_defaults() in
+# eqalb_owsa.R from the value the parameter has in the current scenario, so the
+# Shiny tab and the browser's OWSA tab cannot show different ranges for the same
+# assumptions. The sidebar control ids are ow_sa_<low|high>_<suffix>.
+OWSA_SIDEBAR_RANGES <- data.frame(
+  parameter_id = c(
+    "intervention_price", "rrr", "engagement_year1", "engagement_followup",
+    "healthcare_savings", "implementation_cost", "cost_post_mi",
+    "cost_post_stroke", "utility_post_mi", "utility_post_stroke"
+  ),
+  suffix = c(
+    "price", "rrr", "engagement_year1", "engagement_followup", "savings",
+    "implementation", "post_mi_cost", "post_stroke_cost", "utility_post_mi",
+    "utility_post_stroke"
+  ),
+  stringsAsFactors = FALSE
+)
+
+# The ranges the canonical policy derives at the model's own base case, which is
+# what the sidebar shows before the user changes anything or edits a bound.
+OWSA_SIDEBAR_DEFAULTS <- eqalb_owsa_parameters()
+
+# One derived range endpoint, named by its parameter id.
+owsa_range_default <- function(ranges, id, bound) {
+  row <- ranges[ranges$id == id, , drop = FALSE]
+  if (nrow(row) != 1L) {
+    stop("No sensitivity range is defined for '", id, "'.", call. = FALSE)
+  }
+  row[[paste0(bound, "_default")]][[1]]
+}
 
 format_euros <- function(value) {
   paste0("€", format(round(value, 2), big.mark = ",", nsmall = 2))
@@ -192,64 +227,6 @@ BIA_DISCLAIMER <- paste(
 # Numerical tolerance used by the value-of-information checks. Only negative
 # values inside this tolerance are treated as floating-point rounding.
 VOI_TOLERANCE <- 1e-6
-
-# Presentation constants for the HTA decision-summary tab.
-HTA_SUMMARY_RULE_NOTE <- paste(
-  "Educational traffic-light rules: economic value is Green when the",
-  "probability of cost-effectiveness is at least 50% and the base-case ICER is",
-  "at or below the reference threshold, Red when the probability is below 5%",
-  "and the ICER is above it, and Amber otherwise. Decision uncertainty reuses",
-  "the value-of-information rule (Red only when the less-preferred option wins",
-  "in at least 40% of simulations or EVPI exceeds \u20ac1,000 per patient).",
-  "Budget impact is Green at or below \u20ac1m, Amber up to \u20ac10m and Red above.",
-  "Clinical evidence maturity is always Red because the evidence is simulated.",
-  "Implementation readiness is Amber when any readiness domain is Amber, and",
-  "Red when more than a quarter of domains are Red. The overall status is the",
-  "least favourable assessed domain. These are presentation rules for this",
-  "teaching app, not official NICE or payer criteria."
-)
-
-# Note shown below the dynamic evidence-priority table.
-HTA_EVIDENCE_NOTE <- paste(
-  "Evidence priorities combine current model outputs with clinical,",
-  "implementation, equity, and evidence-maturity considerations. They are not",
-  "determined by EVPPI alone."
-)
-
-# The same traffic-light rules, split into readable paragraphs for the on-demand
-# popover on the HTA decision-summary tab. HTA_SUMMARY_RULE_NOTE stays in its
-# single-line form because it is written into the exported results package, so
-# exports are unchanged.
-HTA_RULE_ITEMS <- c(
-  paste(
-    "Economic value is Green when the probability of cost-effectiveness is at",
-    "least 50% and the base-case ICER is at or below the reference threshold,",
-    "Red when the probability is below 5% and the ICER is above it, and Amber",
-    "otherwise."
-  ),
-  paste(
-    "Decision uncertainty reuses the value-of-information rule: Red only when",
-    "the less-preferred option wins in at least 40% of simulations or EVPI",
-    "exceeds \u20ac1,000 per patient."
-  ),
-  "Budget impact is Green at or below \u20ac1m, Amber up to \u20ac10m, and Red above.",
-  "Clinical evidence maturity is always Red because the evidence is simulated.",
-  paste(
-    "Implementation readiness is Amber when any readiness domain is Amber, and",
-    "Red when more than a quarter of domains are Red."
-  ),
-  "The overall status is the least favourable assessed domain.",
-  paste(
-    "These are presentation rules for this teaching app, not official NICE or",
-    "payer criteria."
-  )
-)
-
-# Accessible label for the traffic-light-rules information control.
-HTA_RULES_TRIGGER_LABEL <- paste(
-  "Traffic-light rules: show the educational rules used to set each domain",
-  "status"
-)
 
 # Concise tutorial-only version of the traffic-light rules. The full-analysis
 # popover (HTA_RULE_ITEMS) is unchanged; these simplified rules apply only
@@ -910,24 +887,6 @@ build_tutorial_summary <- function(
   )
 }
 
-# DHT readiness and implementation dashboard.
-# These are transparent illustrative rules for the fictional eQalb
-# digital therapeutic, not a validated assessment instrument or regulatory
-# standard.
-DHT_INTEROPERABILITY_LEVELS <- c(
-  "No data exchange",
-  "PDF/manual export",
-  "Structured API",
-  "FHIR-based exchange"
-)
-
-DHT_ALGORITHM_APPROACHES <- c(
-  "No algorithmic component",
-  "Locked algorithm",
-  "Periodic controlled updates",
-  "Continuously learning algorithm"
-)
-
 # Light card colours used by the readiness status cards and table badges.
 DHT_STATUS_STYLES <- list(
   Green = c(background = "#d4edda", border = "#c3e6cb", text = "#155724"),
@@ -935,11 +894,6 @@ DHT_STATUS_STYLES <- list(
   Red = c(background = "#f8d7da", border = "#f5c6cb", text = "#721c24")
 )
 
-DHT_DISCLAIMER <- paste(
-  "Educational DHT implementation assessment using illustrative assumptions.",
-  "This is not a validated HTA, DiGA, regulatory, cybersecurity, or",
-  "reimbursement assessment."
-)
 
 DHT_THRESHOLD_NOTE <- paste(
   "The traffic-light thresholds used here are educational illustrative",
@@ -969,401 +923,6 @@ VOI_CONTEXT_TRIGGER_LABEL <- paste(
   "result and what further evidence could resolve"
 )
 
-dht_format_count <- function(value) {
-  format(round(value), big.mark = ",", scientific = FALSE, trim = TRUE)
-}
-
-dht_format_rate <- function(value) {
-  format(
-    round(value, 1),
-    big.mark = ",",
-    nsmall = 1,
-    scientific = FALSE,
-    trim = TRUE
-  )
-}
-
-# Illustrative DHT readiness dashboard.
-# Accepts the dashboard inputs and returns a named list containing the
-# calculated outputs and the Green/Amber/Red status of each assessment domain.
-calculate_readiness <- function(
-  target_population,
-  digital_access,
-  digital_suitability,
-  readiness_year1_engagement,
-  readiness_followup_engagement,
-  review_minutes,
-  supported_languages,
-  accessibility_features,
-  interoperability,
-  algorithm_governance
-) {
-  eligible_population <-
-    target_population * (digital_access / 100) * (digital_suitability / 100)
-  active_users_year1 <-
-    eligible_population * (readiness_year1_engagement / 100)
-  active_users_followup <-
-    eligible_population * (readiness_followup_engagement / 100)
-  annual_clinician_hours <-
-    active_users_year1 * review_minutes * 12 / 60
-
-  retention_pct <- if (readiness_year1_engagement == 0) {
-    NA_real_
-  } else {
-    (readiness_followup_engagement / readiness_year1_engagement) * 100
-  }
-
-  eligible_share_pct <-
-    (digital_access / 100) * (digital_suitability / 100) * 100
-
-  equity_status <- if (digital_access >= 80 && digital_suitability >= 75) {
-    "Green"
-  } else if (digital_access >= 50 && digital_suitability >= 50) {
-    "Amber"
-  } else {
-    "Red"
-  }
-
-  engagement_status <- if (readiness_followup_engagement >= 60) {
-    "Green"
-  } else if (readiness_followup_engagement >= 30) {
-    "Amber"
-  } else {
-    "Red"
-  }
-
-  workflow_status <- if (review_minutes < 5) {
-    "Green"
-  } else if (review_minutes <= 15) {
-    "Amber"
-  } else {
-    "Red"
-  }
-
-  language_status <- if (supported_languages >= 3) {
-    "Green"
-  } else if (supported_languages == 2) {
-    "Amber"
-  } else {
-    "Red"
-  }
-
-  accessibility_status <- if (isTRUE(accessibility_features)) "Green" else "Red"
-
-  interoperability_status <- if (identical(
-    interoperability, "FHIR-based exchange"
-  )) {
-    "Green"
-  } else if (identical(interoperability, "No data exchange")) {
-    "Red"
-  } else {
-    "Amber"
-  }
-
-  governance_status <- if (algorithm_governance %in%
-    c("No algorithmic component", "Locked algorithm")) {
-    "Green"
-  } else if (identical(
-    algorithm_governance, "Periodic controlled updates"
-  )) {
-    "Amber"
-  } else {
-    "Red"
-  }
-
-  equity_input <- sprintf(
-    "Access %s%%, suitability %s%%",
-    dht_format_rate(digital_access),
-    dht_format_rate(digital_suitability)
-  )
-  equity_text <- switch(
-    equity_status,
-    Green = sprintf(
-      paste(
-        "Digitally eligible share is %s%% of the target population.",
-        "No obvious access barrier under the selected assumptions."
-      ),
-      dht_format_rate(eligible_share_pct)
-    ),
-    Amber = sprintf(
-      paste(
-        "Digitally eligible share is %s%% of the target population.",
-        "Reach may need mitigation so deployment does not widen the digital",
-        "divide."
-      ),
-      dht_format_rate(eligible_share_pct)
-    ),
-    Red = sprintf(
-      paste(
-        "Digitally eligible share is %s%% of the target population.",
-        "A major access barrier should be resolved before broad deployment."
-      ),
-      dht_format_rate(eligible_share_pct)
-    )
-  )
-
-  engagement_input <- sprintf(
-    "Follow-up %s%% (year-1 %s%%)",
-    dht_format_rate(readiness_followup_engagement),
-    dht_format_rate(readiness_year1_engagement)
-  )
-  engagement_text <- switch(
-    engagement_status,
-    Green = paste(
-      "Follow-up engagement is sustained, so the modelled clinical and",
-      "economic value is less likely to be eroded by disengagement."
-    ),
-    Amber = paste(
-      "Follow-up engagement is moderate, so some erosion of the modelled",
-      "clinical and economic value is plausible."
-    ),
-    Red = paste(
-      "Follow-up engagement is low, so the modelled clinical and economic",
-      "value may not be realised in practice."
-    )
-  )
-
-  workflow_input <- sprintf(
-    "%s clinician-review minutes per patient per month",
-    dht_format_rate(review_minutes)
-  )
-  workflow_text <- switch(
-    workflow_status,
-    Green = "Low clinical workload; routine workflow is unlikely to be strained.",
-    Amber = paste(
-      "Moderate clinical workload; extra clinician capacity or workflow",
-      "mitigation may be required."
-    ),
-    Red = paste(
-      "High clinical workload; this is a major workflow barrier before broad",
-      "deployment."
-    )
-  )
-
-  language_input <- sprintf(
-    "%d supported language(s)",
-    as.integer(supported_languages)
-  )
-  language_text <- switch(
-    language_status,
-    Green = paste(
-      "Three or more languages are supported, giving broad language access",
-      "under the selected assumptions."
-    ),
-    Amber = paste(
-      "Two languages are supported; more language coverage may be required",
-      "for equitable access."
-    ),
-    Red = paste(
-      "Only one language is supported, which is a major language-access",
-      "barrier for a diverse population."
-    )
-  )
-
-  accessibility_input <- if (isTRUE(accessibility_features)) {
-    "Accessibility features available"
-  } else {
-    "Accessibility features not available"
-  }
-  accessibility_text <- if (accessibility_status == "Green") {
-    "Accessibility features are available; no obvious accessibility barrier."
-  } else {
-    paste(
-      "Accessibility features are not available; this is a major",
-      "accessibility barrier before broad deployment."
-    )
-  }
-
-  interoperability_input <- interoperability
-  interoperability_text <- switch(
-    interoperability_status,
-    Green = "FHIR-based exchange supports structured, interoperable data flows.",
-    Amber = paste(
-      "Only partial interoperability; integration effort or manual rework is",
-      "likely."
-    ),
-    Red = "No data exchange is available; a major interoperability barrier."
-  )
-
-  governance_input <- algorithm_governance
-  governance_text <- switch(
-    governance_status,
-    Green = paste(
-      "Governance risk is low because no algorithm is used or the algorithm",
-      "is locked."
-    ),
-    Amber = paste(
-      "Periodic controlled updates require documented change control and",
-      "re-validation."
-    ),
-    Red = paste(
-      "A continuously learning algorithm requires major governance and",
-      "validation work before broad deployment."
-    )
-  )
-
-  domains <- data.frame(
-    Domain = c(
-      "Equity and access",
-      "Engagement",
-      "Workflow burden",
-      "Language access",
-      "Accessibility",
-      "Interoperability",
-      "Algorithm governance"
-    ),
-    Status = c(
-      equity_status,
-      engagement_status,
-      workflow_status,
-      language_status,
-      accessibility_status,
-      interoperability_status,
-      governance_status
-    ),
-    `Current input` = c(
-      equity_input,
-      engagement_input,
-      workflow_input,
-      language_input,
-      accessibility_input,
-      interoperability_input,
-      governance_input
-    ),
-    Interpretation = c(
-      equity_text,
-      engagement_text,
-      workflow_text,
-      language_text,
-      accessibility_text,
-      interoperability_text,
-      governance_text
-    ),
-    check.names = FALSE,
-    stringsAsFactors = FALSE
-  )
-
-  cards <- data.frame(
-    Domain = c(
-      "Equity and access",
-      "Engagement",
-      "Workflow burden",
-      "Interoperability",
-      "Algorithm governance"
-    ),
-    Status = c(
-      equity_status,
-      engagement_status,
-      workflow_status,
-      interoperability_status,
-      governance_status
-    ),
-    Explanation = c(
-      equity_text,
-      engagement_text,
-      workflow_text,
-      interoperability_text,
-      governance_text
-    ),
-    stringsAsFactors = FALSE
-  )
-
-  counts <- table(factor(
-    domains$Status,
-    levels = c("Green", "Amber", "Red")
-  ))
-  n_green <- as.integer(counts[["Green"]])
-  n_amber <- as.integer(counts[["Amber"]])
-  n_red <- as.integer(counts[["Red"]])
-
-  retention_text <- if (is.na(retention_pct)) {
-    "NA (year-1 engagement is 0)"
-  } else {
-    paste0(dht_format_rate(retention_pct), "%")
-  }
-
-  numbers <- data.frame(
-    Measure = c(
-      "Digitally eligible population",
-      "Active users at year 1",
-      "Active users at follow-up",
-      "Engagement retention",
-      "Annual clinician-review hours"
-    ),
-    Value = c(
-      dht_format_count(eligible_population),
-      dht_format_count(active_users_year1),
-      dht_format_count(active_users_followup),
-      retention_text,
-      dht_format_rate(annual_clinician_hours)
-    ),
-    `Illustrative basis` = c(
-      "Target population x access % x suitability %",
-      "Digitally eligible population x year-1 engagement %",
-      "Digitally eligible population x follow-up engagement %",
-      "Follow-up engagement / year-1 engagement",
-      "Active users at year 1 x review minutes x 12 / 60"
-    ),
-    check.names = FALSE,
-    stringsAsFactors = FALSE
-  )
-
-  red_domains <- domains$Domain[domains$Status == "Red"]
-  amber_domains <- domains$Domain[domains$Status == "Amber"]
-
-  barrier_text <- if (length(red_domains) > 0L) {
-    paste0(
-      "Highest-priority barriers (Red): ",
-      paste(red_domains, collapse = ", "), "."
-    )
-  } else if (length(amber_domains) > 0L) {
-    paste0(
-      "No Red domains. Domains needing mitigation (Amber): ",
-      paste(amber_domains, collapse = ", "), "."
-    )
-  } else {
-    "No Red or Amber domains under the selected assumptions."
-  }
-
-  interpretation <- paste(
-    sprintf(
-      paste(
-        "Assessment summary: %d Green, %d Amber and %d Red across %d",
-        "illustrative domains."
-      ),
-      n_green, n_amber, n_red, nrow(domains)
-    ),
-    barrier_text,
-    paste(
-      "Lower engagement may reduce the economic and clinical value estimated",
-      "in the eQalb model."
-    ),
-    paste(
-      "Interoperability and workflow burden may affect implementation costs",
-      "and clinical feasibility."
-    ),
-    paste(
-      "This dashboard is an educational, illustrative assessment and does not",
-      "replace clinical, regulatory, cybersecurity, security, or formal HTA",
-      "assessment."
-    ),
-    DHT_DISCLAIMER
-  )
-
-  list(
-    eligible_population = eligible_population,
-    active_users_year1 = active_users_year1,
-    active_users_followup = active_users_followup,
-    engagement_retention_pct = retention_pct,
-    annual_clinician_hours = annual_clinician_hours,
-    numbers = numbers,
-    domains = domains,
-    cards = cards,
-    counts = c(Green = n_green, Amber = n_amber, Red = n_red),
-    interpretation = interpretation
-  )
-}
-
 # Compact Kaplan-Meier traffic-light interpretation.
 # Presentation-only: it summarises the already-computed simulated statistics and
 # does not change the simulation or any test.
@@ -1371,351 +930,6 @@ KM_STATUS_STYLES <- list(
   Green = c(background = "#d4edda", border = "#c3e6cb", text = "#155724"),
   Amber = c(background = "#fff3cd", border = "#ffeeba", text = "#856404"),
   Red = c(background = "#f8d7da", border = "#f5c6cb", text = "#721c24")
-)
-
-km_number <- function(value, digits = 3) {
-  if (length(value) == 0L || is.na(value)) {
-    return("not estimable")
-  }
-  format(round(value, digits), nsmall = digits, scientific = FALSE, trim = TRUE)
-}
-
-km_p_value <- function(value) {
-  if (length(value) == 0L || is.na(value)) {
-    return("not estimable")
-  }
-  format.pval(value, digits = 3, eps = 0.001)
-}
-
-# Derives the five traffic-light domains and the overall status from the
-# existing Kaplan-Meier summary and arm-contrast statistics.
-assess_km_interpretation <- function(
-  arm_summary,
-  logrank_p,
-  hazard_ratio,
-  competing_death_p = NA_real_
-) {
-  cc <- arm_summary[
-    arm_summary$treatment == "eQalb plus usual care", , drop = FALSE
-  ]
-  uc <- arm_summary[arm_summary$treatment == "Usual care", , drop = FALSE]
-
-  cc_events <- cc$events[[1]]
-  uc_events <- uc$events[[1]]
-  cc_censored <- cc$censored[[1]]
-  uc_censored <- uc$censored[[1]]
-  cc_deaths <- cc$competing_deaths[[1]]
-  uc_deaths <- uc$competing_deaths[[1]]
-  cc_admin <- cc$admin_censored[[1]]
-  uc_admin <- uc$admin_censored[[1]]
-
-  event_status <- if (cc_events < uc_events) {
-    "Green"
-  } else if (cc_events == uc_events) {
-    "Amber"
-  } else {
-    "Red"
-  }
-  event_text <- if (event_status == "Green") {
-    sprintf(
-      "eQalb had fewer simulated events in this run (%d vs %d composite events).",
-      cc_events, uc_events
-    )
-  } else if (event_status == "Amber") {
-    sprintf(
-      "Composite event counts were equal in this run (%d vs %d).",
-      cc_events, uc_events
-    )
-  } else {
-    sprintf(
-      "eQalb had more simulated events in this run (%d vs %d composite events).",
-      cc_events, uc_events
-    )
-  }
-
-  size_status <- if (is.na(hazard_ratio)) {
-    "Amber"
-  } else if (hazard_ratio < 0.80) {
-    "Green"
-  } else if (hazard_ratio <= 1.00) {
-    "Amber"
-  } else {
-    "Red"
-  }
-  size_text <- if (is.na(hazard_ratio)) {
-    "Hazard ratio is not estimable for this run."
-  } else {
-    sprintf(
-      "Hazard ratio %s for eQalb versus usual care.",
-      km_number(hazard_ratio)
-    )
-  }
-
-  evidence_status <- if (is.na(logrank_p)) {
-    "Amber"
-  } else if (logrank_p < 0.05) {
-    "Green"
-  } else if (logrank_p <= 0.10) {
-    "Amber"
-  } else {
-    "Red"
-  }
-  evidence_text <- if (is.na(logrank_p)) {
-    "Descriptive log-rank p-value is not estimable for this run."
-  } else {
-    sprintf("Descriptive log-rank p = %s.", km_p_value(logrank_p))
-  }
-
-  censoring_relative <- abs(cc_censored - uc_censored) /
-    max(cc_censored, uc_censored, 1)
-  competing_relative <- abs(cc_deaths - uc_deaths) /
-    max(cc_deaths, uc_deaths, 1)
-  competing_significant <- !is.na(competing_death_p) && competing_death_p < 0.05
-  censoring_status <- if (competing_significant ||
-    censoring_relative > 0.25 || competing_relative > 0.25) {
-    "Red"
-  } else if (censoring_relative > 0.10 || competing_relative > 0.10) {
-    "Amber"
-  } else {
-    "Green"
-  }
-  censoring_text <- sprintf(
-    paste0(
-      "Total censoring %d vs %d; competing other-cause deaths %d vs %d; ",
-      "administrative end-of-follow-up censoring %d vs %d ",
-      "(eQalb vs usual care). Competing-death Fisher p = %s."
-    ),
-    cc_censored, uc_censored, cc_deaths, uc_deaths, cc_admin, uc_admin,
-    km_p_value(competing_death_p)
-  )
-
-  credibility_status <- "Red"
-  credibility_text <- paste(
-    "Simulated illustrative data — not clinical evidence; the curves are not",
-    "based on patient-level clinical data."
-  )
-
-  clinical_status <- c(
-    event_status, size_status, evidence_status, censoring_status
-  )
-  uses_real_patient_data <- FALSE
-  overall_status <- if (credibility_status == "Red" && !uses_real_patient_data) {
-    "Red"
-  } else if (all(clinical_status == "Green")) {
-    "Green"
-  } else {
-    "Amber"
-  }
-
-  event_phrase <- if (cc_events < uc_events) {
-    "had fewer simulated composite events than usual care in this simulation"
-  } else if (cc_events == uc_events) {
-    "had the same number of simulated composite events as usual care in this simulation"
-  } else {
-    "had more simulated composite events than usual care in this simulation"
-  }
-  significance_phrase <- if (!is.na(logrank_p) && logrank_p < 0.05) {
-    "and the difference was statistically significant"
-  } else {
-    "but the difference was not statistically significant"
-  }
-
-  interpretation <- paste(
-    sprintf("eQalb %s, %s.", event_phrase, significance_phrase),
-    paste(
-      "The result is compatible with random simulation variation and is not",
-      "clinical evidence."
-    ),
-    paste(
-      "The Kaplan–Meier risk table shows people who are event-free and still",
-      "observed. It does not show how many people are still actively using",
-      "the app."
-    )
-  )
-
-  rules <- c(
-    paste(
-      "Event direction: Green if eQalb has fewer composite events;",
-      "Amber if event counts are equal; Red if eQalb has more events."
-    ),
-    paste(
-      "Size of apparent benefit: Green if hazard ratio < 0.80; Amber if 0.80",
-      "to 1.00; Red if > 1.00."
-    ),
-    paste(
-      "Statistical evidence: Green if log-rank p < 0.05; Amber if p is 0.05",
-      "to 0.10; Red if p > 0.10."
-    ),
-    paste(
-      "Censoring and competing events: Red if competing-death Fisher p < 0.05",
-      "or total censoring or competing-death counts differ by more than 25%;",
-      "Amber if they differ by more than 10%; Green otherwise."
-    ),
-    paste(
-      "Evidence credibility: always Red because the current Kaplan–Meier data",
-      "are simulated illustrative data, not clinical evidence."
-    )
-  )
-
-  list(
-    overall_status = overall_status,
-    domains = data.frame(
-      Domain = c(
-        "Event direction",
-        "Size of apparent benefit",
-        "Statistical evidence",
-        "Censoring and competing events",
-        "Evidence credibility"
-      ),
-      Status = c(
-        event_status, size_status, evidence_status, censoring_status,
-        credibility_status
-      ),
-      Explanation = c(
-        event_text, size_text, evidence_text, censoring_text, credibility_text
-      ),
-      stringsAsFactors = FALSE
-    ),
-    counts = list(
-      cc_events = cc_events, uc_events = uc_events,
-      cc_censored = cc_censored, uc_censored = uc_censored,
-      cc_deaths = cc_deaths, uc_deaths = uc_deaths,
-      cc_admin = cc_admin, uc_admin = uc_admin,
-      hazard_ratio = hazard_ratio, logrank_p = logrank_p,
-      competing_death_p = competing_death_p
-    ),
-    interpretation = paste(interpretation, collapse = " "),
-    rules = rules
-  )
-}
-
-# Explanations for the small information controls next to the main
-# full-analysis inputs. Presentation only: the text is shown in an on-demand
-# bslib popover and no calculation reads it.
-CC_INFO_TEXT <- list(
-  intervention_price = paste(
-    "The cost of the digital intervention per user over the modelled period."
-  ),
-  relative_risk_reduction = paste(
-    "The proportional reduction in event risk compared with usual care."
-  ),
-  year1_engagement = paste(
-    "The proportion of eligible users who engage with the intervention during",
-    "the first year."
-  ),
-  followup_engagement = paste(
-    "The proportion of users who remain engaged after the first year."
-  ),
-  utility = paste(
-    "A value representing health-related quality of life, used to calculate",
-    "QALYs."
-  ),
-  population_size = paste(
-    "The number of people in the eligible population used in the analysis."
-  ),
-  uptake = "The proportion of eligible people who adopt the intervention.",
-  intervention_cost = paste(
-    "The cost applied to each person receiving the intervention."
-  ),
-  review_minutes = paste(
-    "The clinician time required to review or support each active user."
-  ),
-  willingness_to_pay = paste(
-    "The maximum amount considered acceptable to pay for one additional QALY."
-  ),
-  reference_wtp = paste(
-    "The amount used to judge whether the intervention is cost-effective for",
-    "the main PSA result, expressed as euros per QALY."
-  ),
-  psa_simulations = paste(
-    "The number of simulations used to explore uncertainty in the model",
-    "inputs."
-  ),
-  random_seed = "A fixed number that makes simulation results reproducible.",
-  evpi = "The value of completely eliminating uncertainty about the decision.",
-  evppi = paste(
-    "The value of eliminating uncertainty about selected groups of inputs."
-  ),
-  healthcare_savings = paste(
-    "Estimated healthcare costs avoided because the intervention reduces",
-    "modelled clinical events. This is illustrative and does not represent",
-    "observed savings."
-  ),
-  # Guided-tutorial explanations. These are the texts that used to sit
-  # permanently under the step-1 sliders; they are now shown on demand so the
-  # tutorial reads as a compact set of controls.
-  tutorial_price = paste(
-    "This is the extra technology cost. Increasing the annual price usually",
-    "increases incremental cost and makes the ICER worse, unless other savings",
-    "or health gains offset it. Example: an extra \u20ac100 adds about \u20ac100",
-    "per active person-year before avoided event costs."
-  ),
-  tutorial_rrr = paste(
-    "This reduces MI and stroke risk for engaged users. Example: a 10%",
-    "reduction changes a 1.5% event risk to about 1.35% for the users receiving",
-    "the effect. Fewer events can reduce costs and increase QALYs."
-  ),
-  tutorial_engagement_year1 = paste(
-    "This is the share of users who receive the treatment effect in the first",
-    "year. At 70% engagement, about 70 of 100 users receive the risk-reduction",
-    "benefit. Higher engagement usually increases QALYs and avoided event",
-    "costs."
-  ),
-  tutorial_engagement_followup = paste(
-    "This determines how much of the treatment effect continues in later",
-    "years. Higher follow-up engagement usually increases long-term benefits",
-    "and avoided event costs."
-  ),
-  tutorial_utility_no_event = paste(
-    "This is the quality-of-life weight for a year without MI or stroke. A",
-    "utility of 0.86 means one year in this state contributes 0.86 QALYs.",
-    "Changing it can change the incremental QALY difference and therefore the",
-    "ICER."
-  ),
-  tutorial_bia_explain = paste(
-    "A technology can be cost effective and still be unaffordable. Costs come",
-    "from the price per active user plus a one-off implementation cost for each",
-    "new user. Savings come from assumed reductions in healthcare use for",
-    "active users. The net budget impact is costs minus savings, added up over",
-    "the horizon."
-  ),
-  tutorial_population = paste(
-    "A larger eligible population increases the number of users, so both the",
-    "cost and the net budget impact grow."
-  ),
-  tutorial_readiness_explain = paste(
-    "Reach combines the target population with access and digital suitability,",
-    "then with engagement. Workflow burden estimates the clinician time the",
-    "pathway needs; more review time means more strain on services. The traffic",
-    "lights summarise the domains: Red means a barrier to resolve before wide",
-    "deployment, Amber means mitigation may be needed, and Green means no",
-    "obvious barrier under these assumptions."
-  ),
-  tutorial_review_minutes = paste(
-    "More review minutes per patient means more total clinician hours, which",
-    "pushes the workflow domain towards amber or red."
-  ),
-  tutorial_interop_definition = paste(
-    "Interoperability means the intervention can exchange and use information",
-    "with other relevant health or digital systems."
-  ),
-  tutorial_language_definition = paste(
-    "Language availability means that users can understand and use the",
-    "intervention in the language needed for the target population."
-  ),
-  part2_price = paste(
-    "The negotiated annual price is the case's value-for-money lever. Lowering",
-    "it reduces the incremental cost and improves the ICER, and it also reduces",
-    "the five-year budget impact, because the same price is charged for every",
-    "active user. The manufacturer's minimum acceptable price is a floor for",
-    "the negotiation; any price at or above it that keeps the ICER at or below",
-    "the payer's threshold passes the value-for-money test."
-  ),
-  part2_coverage = paste(
-    "A phased rollout funds eQalb for a capped share of the eligible",
-    "population. This lowers the number of users and the total five-year",
-    "budget impact, even when the price per user stays the same."
-  )
 )
 
 # Small, keyboard-accessible information control. `topic` is used both for the
@@ -1899,12 +1113,12 @@ cc_assumptions_modal <- function(values, open_section = NULL) {
 
   bia_inputs <- data.frame(
     Input = c(
-      "Eligible clinical target population", "Year-1 uptake",
+      "Clinical target population (shared with DHT readiness)", "Year-1 uptake",
       "Annual uptake increase", "Budget-impact horizon",
       "Avoided-event savings per active user (not linked to the Markov model)"
     ),
     `Current value` = c(
-      number(get_value("bia_population")), percent_input("bia_year1_uptake"),
+      number(get_value("target_population")), percent_input("bia_year1_uptake"),
       paste0(number(get_value("bia_annual_uptake_increase")), " percentage points"),
       paste0(number(get_value("bia_horizon")), " years"),
       money(get_value("bia_avoided_event_savings"))
@@ -2366,6 +1580,12 @@ EQALB_THEME <- bslib::bs_add_rules(
   body[data-bs-theme='dark'] .text-muted { color: #9fb2bd !important; }
   [data-bs-theme='dark'] hr,
   body[data-bs-theme='dark'] hr { border-top-color: #2b3d47; }
+
+  /* R's one-way interpretation is written one sentence per line: the base case
+     and its decision reference, the parameters that move the outcome most, and
+     the robustness conclusion. Honouring those breaks shows that structure
+     instead of one run-on paragraph. The wording itself is R's, unchanged. */
+  #owsa_summary { white-space: pre-wrap; }
 
   /* Landing-page title screen. Presentation only: no effect on any analysis. */
   .cc-title-screen {
@@ -4120,6 +3340,23 @@ ui <- fluidPage(
             )
           )
         ),
+        tags$h4("Population"),
+        tags$p(class = "text-muted", paste(
+          "Clinical target population is shared by Budget Impact and DHT",
+          "Readiness. It is a cohort size, so it does not change the",
+          "per-person cost-effectiveness result."
+        )),
+        fluidRow(
+          column(
+            4,
+            numericInput(
+              "target_population",
+              cc_label("Clinical target population", "population size",
+                       "population_size", "target_population_info"),
+              value = 100000, min = 0, step = 1000
+            )
+          )
+        ),
         tags$details(
           tags$summary("Fixed model defaults (not editable here)"),
           tags$p(paste(
@@ -4240,15 +3477,9 @@ ui <- fluidPage(
             tags$strong("Budget-impact controls"),
             tags$p(class = "text-muted", paste(
               "Uses the global intervention price, implementation cost, and",
-              "healthcare-use savings from the assumptions above."
+              "healthcare-use savings from the assumptions above, and the",
+              "shared Clinical target population from Global Settings."
             )),
-            numericInput(
-              "bia_population",
-              cc_label("Eligible clinical target population",
-                       "population size", "population_size",
-                       "bia_population_info"),
-              value = 100000, min = 0, step = 1000
-            ),
             numericInput(
               "bia_year1_uptake",
               cc_label("Year-1 eQalb uptake (%)", "uptake", "uptake",
@@ -4292,7 +3523,8 @@ ui <- fluidPage(
           tags$h5("Deterministic sensitivity-analysis ranges"),
           tags$p(class = "text-muted", paste(
             "These low and high values are used only for deterministic",
-            "sensitivity analysis. They do not define the base-case values."
+            "sensitivity analysis. They do not define the base-case values, and",
+            "they follow the current assumptions until you edit one."
           )),
           numericInput(
             "ow_sa_wtp",
@@ -4302,39 +3534,79 @@ ui <- fluidPage(
             value = 100000, min = 0, step = 5000
           ),
           tags$strong("Annual intervention price"),
-          numericInput("ow_sa_low_price", "Low", 180, min = 0),
-          numericInput("ow_sa_high_price", "High", 540, min = 0),
+          numericInput("ow_sa_low_price", "Low",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "intervention_price", "low"),
+                       min = 0),
+          numericInput("ow_sa_high_price", "High",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "intervention_price", "high"),
+                       min = 0),
           tags$strong("Relative risk reduction"),
-          numericInput("ow_sa_low_rrr", "Low", 0.05, min = 0, max = 1, step = 0.01),
-          numericInput("ow_sa_high_rrr", "High", 0.15, min = 0, max = 1, step = 0.01),
+          numericInput("ow_sa_low_rrr", "Low",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "rrr", "low"),
+                       min = 0, max = 1, step = 0.01),
+          numericInput("ow_sa_high_rrr", "High",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "rrr", "high"),
+                       min = 0, max = 1, step = 0.01),
           tags$strong("Year-1 engagement"),
-          numericInput("ow_sa_low_engagement_year1", "Low", 0.50, min = 0, max = 1, step = 0.01),
-          numericInput("ow_sa_high_engagement_year1", "High", 0.85, min = 0, max = 1, step = 0.01),
+          numericInput("ow_sa_low_engagement_year1", "Low",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "engagement_year1", "low"),
+                       min = 0, max = 1, step = 0.01),
+          numericInput("ow_sa_high_engagement_year1", "High",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "engagement_year1", "high"),
+                       min = 0, max = 1, step = 0.01),
           tags$strong("Follow-up engagement"),
-          numericInput("ow_sa_low_engagement_followup", "Low", 0.20, min = 0, max = 1, step = 0.01),
-          numericInput("ow_sa_high_engagement_followup", "High", 0.60, min = 0, max = 1, step = 0.01),
+          numericInput("ow_sa_low_engagement_followup", "Low",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "engagement_followup", "low"),
+                       min = 0, max = 1, step = 0.01),
+          numericInput("ow_sa_high_engagement_followup", "High",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "engagement_followup", "high"),
+                       min = 0, max = 1, step = 0.01),
           tags$strong("Post-MI utility"),
-          numericInput("ow_sa_low_utility_post_mi", "Low", 0.70, min = 0, max = 1, step = 0.01),
-          numericInput("ow_sa_high_utility_post_mi", "High", 0.90, min = 0, max = 1, step = 0.01),
+          numericInput("ow_sa_low_utility_post_mi", "Low",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "utility_post_mi", "low"),
+                       min = 0, max = 1, step = 0.01),
+          numericInput("ow_sa_high_utility_post_mi", "High",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "utility_post_mi", "high"),
+                       min = 0, max = 1, step = 0.01),
           tags$strong("Post-stroke utility"),
-          numericInput("ow_sa_low_utility_post_stroke", "Low", 0.45, min = 0, max = 1, step = 0.01),
-          numericInput("ow_sa_high_utility_post_stroke", "High", 0.75, min = 0, max = 1, step = 0.01),
+          numericInput("ow_sa_low_utility_post_stroke", "Low",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "utility_post_stroke", "low"),
+                       min = 0, max = 1, step = 0.01),
+          numericInput("ow_sa_high_utility_post_stroke", "High",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "utility_post_stroke", "high"),
+                       min = 0, max = 1, step = 0.01),
           tags$strong("Annual healthcare-use savings"),
-          numericInput("ow_sa_low_savings", "Low", 0, min = 0),
-          numericInput("ow_sa_high_savings", "High", 60, min = 0),
+          numericInput("ow_sa_low_savings", "Low",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "healthcare_savings", "low"),
+                       min = 0),
+          numericInput("ow_sa_high_savings", "High",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "healthcare_savings", "high"),
+                       min = 0),
           tags$strong("Implementation cost"),
-          numericInput("ow_sa_low_implementation", "Low", 0, min = 0),
-          numericInput("ow_sa_high_implementation", "High", 100, min = 0),
+          numericInput("ow_sa_low_implementation", "Low",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "implementation_cost", "low"),
+                       min = 0),
+          numericInput("ow_sa_high_implementation", "High",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "implementation_cost", "high"),
+                       min = 0),
           tags$strong("Post-MI cost (year-1 anchor)"),
-          numericInput("ow_sa_low_post_mi_cost", "Low", 10000, min = 0),
-          numericInput("ow_sa_high_post_mi_cost", "High", 20000, min = 0),
+          numericInput("ow_sa_low_post_mi_cost", "Low",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "cost_post_mi", "low"),
+                       min = 0),
+          numericInput("ow_sa_high_post_mi_cost", "High",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "cost_post_mi", "high"),
+                       min = 0),
           tags$strong("Post-stroke cost (year-1 anchor)"),
-          numericInput("ow_sa_low_post_stroke_cost", "Low", 15000, min = 0),
-          numericInput("ow_sa_high_post_stroke_cost", "High", 25000, min = 0),
+          numericInput("ow_sa_low_post_stroke_cost", "Low",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "cost_post_stroke", "low"),
+                       min = 0),
+          numericInput("ow_sa_high_post_stroke_cost", "High",
+                       owsa_range_default(OWSA_SIDEBAR_DEFAULTS, "cost_post_stroke", "high"),
+                       min = 0),
           actionButton("run_owsa", "Run sensitivity analysis")
         ),
         mainPanel(
-          tags$p("Educational analysis using illustrative parameter ranges."),
+          tags$p(OWSA_SUMMARY_NOTE),
           textOutput("owsa_summary"),
           tableOutput("owsa_table"),
           plotOutput("tornado_plot", height = "520px"),
@@ -4434,12 +3706,10 @@ ui <- fluidPage(
       sidebarLayout(
         sidebarPanel(
           tags$h5("Population and access"),
-          numericInput(
-            "target_population",
-            cc_label("Clinical target population", "population size",
-                     "population_size", "target_population_info"),
-            value = 100000, min = 0, step = 1000
-          ),
+          tags$p(class = "text-muted", paste(
+            "Clinical target population is shared by Budget Impact and DHT",
+            "Readiness, and is set in Global Settings."
+          )),
           sliderInput("digital_access",
                       "Smartphone/internet access (%)",
                       min = 0, max = 100, value = 85, step = 1),
@@ -4662,14 +3932,13 @@ server <- function(input, output, session) {
   })
 
   # Minimal OWSA: run the current full-model base case and ten one-at-a-time scenarios.
-  owsa_ready <- reactiveVal(FALSE)
-  owsa_result <- eventReactive(input$run_owsa, {
-    req(input$ow_sa_wtp, input$price, input$implementation, input$savings,
+  #
+  # The scenario the tab analyses, defined once so the canonical range derivation
+  # and the analysis cannot disagree about the current assumptions.
+  owsa_base_args <- reactive({
+    req(input$price, input$implementation, input$savings,
         input$rrr, input$engagement_year1, input$engagement_followup)
-    validate(need(is.finite(input$ow_sa_wtp) && input$ow_sa_wtp >= 0,
-                  "Willingness to pay must be a non-negative number."))
-
-    base_args <- list(
+    list(
       scenario_intervention_price = input$price,
       scenario_implementation_cost = input$implementation,
       scenario_healthcare_savings = input$savings,
@@ -4684,6 +3953,50 @@ server <- function(input, output, session) {
       scenario_cost_post_stroke_year1 = cost_post_stroke_year1,
       scenario_cost_post_stroke_followup = cost_post_stroke_followup
     )
+  })
+
+  # The sidebar ranges follow the current global assumptions, exactly as the
+  # browser's OWSA editor does: eqalb_owsa_range_defaults() derives each range from
+  # the current base-case value, and a bound the user has deliberately edited is
+  # left alone. `ow_sa_ranges_used` records the derived values in force, so a field
+  # whose value still equals the value R last derived for it is an untouched one.
+  ow_sa_ranges_used <- reactiveVal(NULL)
+  observeEvent(owsa_base_args(), {
+    derived <- eqalb_owsa_range_defaults(owsa_base_args())
+    previous <- ow_sa_ranges_used()
+    for (i in seq_len(nrow(OWSA_SIDEBAR_RANGES))) {
+      parameter_id <- OWSA_SIDEBAR_RANGES$parameter_id[[i]]
+      suffix <- OWSA_SIDEBAR_RANGES$suffix[[i]]
+      if (!(parameter_id %in% derived$id)) next
+      for (bound in c("low", "high")) {
+        input_id <- paste0("ow_sa_", bound, "_", suffix)
+        value <- owsa_range_default(derived, parameter_id, bound)
+        if (!is.finite(value)) next
+        was <- if (is.null(previous) || !(parameter_id %in% previous$id)) {
+          NULL
+        } else {
+          owsa_range_default(previous, parameter_id, bound)
+        }
+        current_value <- input[[input_id]]
+        untouched <- is.null(was) || is.null(current_value) ||
+          isTRUE(all.equal(
+            as.numeric(current_value), as.numeric(was), tolerance = 1e-9
+          ))
+        if (isTRUE(untouched)) {
+          updateNumericInput(session, input_id, value = value)
+        }
+      }
+    }
+    ow_sa_ranges_used(derived)
+  }, ignoreNULL = FALSE)
+
+  owsa_ready <- reactiveVal(FALSE)
+  owsa_result <- eventReactive(input$run_owsa, {
+    req(input$ow_sa_wtp)
+    validate(need(is.finite(input$ow_sa_wtp) && input$ow_sa_wtp >= 0,
+                  "Willingness to pay must be a non-negative number."))
+
+    base_args <- owsa_base_args()
     base_model <- tryCatch(
       do.call(run_eqalb_model, base_args),
       error = function(error) {
@@ -4714,10 +4027,12 @@ server <- function(input, output, session) {
         "scenario_utility_post_mi", "scenario_utility_post_stroke"
       ),
       base_value = c(
-        input$price, input$rrr / 100, input$engagement_year1 / 100,
-        input$engagement_followup / 100, input$savings, input$implementation,
-        cost_post_mi_year1, cost_post_stroke_year1,
-        input$utility_post_mi, input$utility_post_stroke
+        base_args$scenario_intervention_price, base_args$scenario_rrr,
+        base_args$scenario_engagement_year1, base_args$scenario_engagement_followup,
+        base_args$scenario_healthcare_savings, base_args$scenario_implementation_cost,
+        base_args$scenario_cost_post_mi_year1,
+        base_args$scenario_cost_post_stroke_year1,
+        base_args$scenario_utility_post_mi, base_args$scenario_utility_post_stroke
       ),
       low_value = c(
         input$ow_sa_low_price, input$ow_sa_low_rrr,
@@ -5127,7 +4442,7 @@ server <- function(input, output, session) {
     ))
   })
 
-  output$psa_summary <- renderTable({
+  output$psa_summary <- renderUI({
     result <- psa_result()
     req(result)
     probability <- result$probability_cost_effective
@@ -5147,38 +4462,155 @@ server <- function(input, output, session) {
     reference_value <- paste0(
       format(round(reference_probability * 100, 1), nsmall = 1), "%"
     )
-    data.frame(
-      Measure = c(
-        "Simulations requested",
-        "Successful simulations",
-        "Failed simulations",
-        "Mean incremental cost",
-        "Mean incremental QALYs",
-        "Median ICER (where interpretable)",
-        reference_label,
-        "Probability cost-effective at €50,000/QALY",
-        "Probability cost-effective at €100,000/QALY",
-        "Probability cost-effective at €150,000/QALY"
+
+    # Component tables for the two mean-value popovers. Both are derived from the
+    # same stored means the summary rows display, and each reconciles against its
+    # headline value before it is shown, so a decomposition that does not add up
+    # fails loudly instead of rendering.
+    components <- result$mean_components
+    cost_components <- c(
+      "eQalb intervention cost" = "cost_intervention",
+      "One-off implementation cost" = "cost_implementation",
+      "Healthcare-use savings" = "cost_savings",
+      "Post-MI state cost" = "cost_post_mi",
+      "Post-stroke state cost" = "cost_post_stroke"
+    )
+    qaly_components <- c(
+      "Time without an event" = "qaly_no_event",
+      "Time after MI" = "qaly_post_mi",
+      "Time after stroke" = "qaly_post_stroke"
+    )
+    cost_total <- sum(components[[cost_components[["eQalb intervention cost"]]]],
+                      components[[cost_components[["One-off implementation cost"]]]]) -
+      components[[cost_components[["Healthcare-use savings"]]]] +
+      components[[cost_components[["Post-MI state cost"]]]] +
+      components[[cost_components[["Post-stroke state cost"]]]] +
+      components[["cost_no_event"]]
+    qaly_total <- sum(components[qaly_components])
+    validate(
+      need(
+        isTRUE(all.equal(cost_total, result$mean_incremental_cost,
+                         tolerance = 1e-8, check.attributes = FALSE)),
+        "PSA cost components do not reconcile with the mean incremental cost."
       ),
-      Value = c(
-        format(result$n_requested, big.mark = ","),
-        format(result$n_successful, big.mark = ","),
-        format(result$n_failed, big.mark = ","),
+      need(
+        isTRUE(all.equal(qaly_total, result$mean_incremental_qalys,
+                         tolerance = 1e-8, check.attributes = FALSE)),
+        "PSA QALY components do not reconcile with the mean incremental QALYs."
+      )
+    )
+
+    component_table <- function(labels, values, total_label, total_value,
+                                formatter) {
+      rows <- Map(function(label, value) {
+        tags$tr(tags$td(label), tags$td(formatter(value)))
+      }, names(labels), unname(values))
+      tags$table(
+        class = "table table-sm table-striped cc-psa-components",
+        tags$tbody(
+          rows,
+          tags$tr(
+            tags$td(tags$strong(total_label)),
+            tags$td(tags$strong(formatter(total_value)))
+          )
+        )
+      )
+    }
+    mean_note <- tags$p(class = "text-muted", style = "font-size:12px;", paste(
+      "Mean eQalb minus usual-care difference across successful PSA",
+      "simulations."
+    ))
+
+    mean_cost_popover <- bslib::popover(
+      tags$button(
+        type = "button",
+        class = "btn cc-info-trigger",
+        `aria-label` = "Information about the mean incremental cost components",
+        tags$span(class = "cc-info-glyph", `aria-hidden` = "true", "i")
+      ),
+      id = "psa_mean_cost_info",
+      title = "Mean incremental cost in the PSA",
+      options = list(customClass = "cc-info-popover"),
+      tags$div(
+        tags$p(CC_INFO_TEXT[["psa_mean_cost"]]),
+        component_table(
+          cost_components,
+          vapply(cost_components, function(name) components[[name]], numeric(1)),
+          "Total incremental cost", cost_total, format_euros_signed
+        ),
+        mean_note,
+        tags$p(class = "text-muted", style = "font-size:12px;", paste(
+          "Positive values increase eQalb costs; negative values indicate lower",
+          "costs under eQalb."
+        ))
+      )
+    )
+
+    mean_qaly_popover <- bslib::popover(
+      tags$button(
+        type = "button",
+        class = "btn cc-info-trigger",
+        `aria-label` = "Information about the mean incremental QALY components",
+        tags$span(class = "cc-info-glyph", `aria-hidden` = "true", "i")
+      ),
+      id = "psa_mean_qalys_info",
+      title = "Mean incremental QALYs in the PSA",
+      options = list(customClass = "cc-info-popover"),
+      tags$div(
+        tags$p(CC_INFO_TEXT[["psa_mean_qalys"]]),
+        component_table(
+          qaly_components,
+          vapply(qaly_components, function(name) components[[name]], numeric(1)),
+          "Total incremental QALYs", qaly_total,
+          # QALY components use the same five-decimal convention as the summary
+          # row, so the total row matches it exactly.
+          function(value) format(round(value, 5), nsmall = 5)
+        ),
+        mean_note
+      )
+    )
+
+    measures <- list(
+      list("Simulations requested", format(result$n_requested, big.mark = ",")),
+      list("Successful simulations", format(result$n_successful, big.mark = ",")),
+      list("Failed simulations", format(result$n_failed, big.mark = ",")),
+      list(
+        "Mean incremental cost",
         format_euros(result$mean_incremental_cost),
+        mean_cost_popover
+      ),
+      list(
+        "Mean incremental QALYs",
         format(round(result$mean_incremental_qalys, 5), nsmall = 5),
+        mean_qaly_popover
+      ),
+      list(
+        "Median ICER (where interpretable)",
         if (is.na(result$median_icer)) {
           "Not interpretable"
         } else {
           paste0(format_euros(result$median_icer), "/QALY")
-        },
-        reference_value,
-        probability_text(50000),
-        probability_text(100000),
-        probability_text(150000)
+        }
       ),
-      stringsAsFactors = FALSE
+      list(reference_label, reference_value),
+      list("Probability cost-effective at €50,000/QALY", probability_text(50000)),
+      list("Probability cost-effective at €100,000/QALY", probability_text(100000)),
+      list("Probability cost-effective at €150,000/QALY", probability_text(150000))
     )
-  }, striped = TRUE, bordered = TRUE, hover = TRUE)
+
+    tags$table(
+      class = "table shiny-table table-striped table-hover table-bordered spacing-s",
+      tags$thead(tags$tr(tags$th("Measure"), tags$th("Value"))),
+      tags$tbody(lapply(measures, function(row) {
+        label <- if (length(row) > 2L) {
+          tagList(row[[1]], tags$span(class = "cc-info", row[[3]]))
+        } else {
+          row[[1]]
+        }
+        tags$tr(tags$td(label), tags$td(row[[2]]))
+      }))
+    )
+  })
 
   psa_plane_object <- reactive({
     result <- psa_result()
@@ -5564,7 +4996,9 @@ server <- function(input, output, session) {
       return(NULL)
     }
     params <- isolate(list(
-      population = input$bia_population,
+      # The shared Clinical target population control now lives in Global
+      # Settings, so Budget Impact and DHT Readiness read the same input.
+      population = input$target_population,
       year1_uptake_pct = input$bia_year1_uptake,
       annual_uptake_increase_pp = input$bia_annual_uptake_increase,
       horizon_years = input$bia_horizon,
@@ -5770,35 +5204,9 @@ server <- function(input, output, session) {
 
   output$owsa_summary <- renderText({
     if (input$run_owsa == 0) {
-      return("Set the assumptions and click Run sensitivity analysis.")
+      return(OWSA_PRERUN_NOTE)
     }
-    result <- owsa_result()
-    impact_by_parameter <- tapply(result$impact, result$parameter, function(x) x[[1]])
-    top_parameters <- names(sort(impact_by_parameter, decreasing = TRUE))[1:3]
-    top_parameters <- top_parameters[!is.na(top_parameters)]
-    details <- vapply(top_parameters, function(parameter) {
-      scenarios <- result[result$parameter == parameter, ]
-      if (any(nzchar(scenarios$error_message))) {
-        return(paste0(parameter, ": at least one scenario failed"))
-      }
-      low_inmb <- scenarios$inmb[scenarios$scenario == "Low"]
-      high_inmb <- scenarios$inmb[scenarios$scenario == "High"]
-      threshold_status <- if (xor(low_inmb >= 0, high_inmb >= 0)) {
-        "crosses the WTP decision threshold"
-      } else {
-        "does not cross the WTP decision threshold"
-      }
-      paste0(parameter, ": ", threshold_status)
-    }, character(1))
-    paste(c(
-      paste("Top parameters by absolute low-to-high INMB range:",
-            paste(details, collapse = " | ")),
-      paste("Base-case INMB: €", format(round(attr(result, "base_inmb")), big.mark = ",",
-                     scientific = FALSE),
-        " at WTP €", format(round(attr(result, "wtp")), big.mark = ",",
-                scientific = FALSE), "/QALY.", sep = ""),
-      "One-way analysis varies one parameter at a time; it does not represent joint parameter uncertainty."
-    ), collapse = "\n")
+    summarize_eqalb_owsa(owsa_result())
   })
 
   output$owsa_table <- renderTable({
@@ -7039,7 +6447,9 @@ server <- function(input, output, session) {
     # calculate_readiness() is called unchanged.
     req(tutorial_open(), input$tutorial_step %in% c("3", "4"))
     calculate_readiness(
-      target_population = input$target_population,
+      # The tutorial keeps its own eligible-population learning input, so it
+      # never inherits the shared full-analysis Clinical target population.
+      target_population = input$tutorial_population,
       digital_access = input$digital_access,
       digital_suitability = input$digital_suitability,
       readiness_year1_engagement = input$tutorial_engagement_year1,

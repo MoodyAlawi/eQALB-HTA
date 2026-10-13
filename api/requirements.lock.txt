@@ -1,0 +1,29 @@
+# Complete, pinned dependency closure of the eQalb model API (api/main.py).
+#
+# This is the environment the API was validated in, recorded exactly:
+# FastAPI and Uvicorn (the two direct dependencies from api/requirements.txt)
+# plus every package they resolve to. Installing this file reproduces that
+# environment instead of letting pip choose newer versions at install time.
+#
+# Recorded with:
+#   api\.venv\Scripts\python.exe -m pip freeze
+# Install it with:
+#   py -3.14 -m venv api\.venv
+#   api\.venv\Scripts\python.exe -m pip install -r api\requirements.lock.txt
+#
+# It applies to the HTTP layer only: the model and every number it reports come
+# from R, whose dependencies are recorded separately in renv.lock.
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+click==8.5.0
+fastapi==0.143.0
+h11==0.16.0
+idna==3.20
+opentelemetry-api==1.45.1
+pydantic==2.14.0
+pydantic_core==2.50.0
+starlette==1.7.0
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+uvicorn==0.54.0

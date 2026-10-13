@@ -16,3 +16,64 @@ rsconnect/
 
 renv/library/
 renv/staging/
+
+# Python layer (api/): virtual environment and bytecode.
+# The venv also carries its own .gitignore, this keeps the intent explicit.
+api/.venv/
+__pycache__/
+*.pyc
+
+# Local development control script (dev.sh): process ids and service output.
+.dev.pids
+.dev-logs/
+
+# --- Deployment readiness: never track machine-local or generated material ---
+
+# Node dependencies and local build output.
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+
+# Python virtual environments, bytecode and tool caches.
+.venv/
+venv/
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# R/renv: the project library is restored on the target machine, never copied.
+renv/sandbox/
+renv/cellar/
+renv/local/
+renv/lock/
+renv/python/
+
+# Environment files are server-local. Committed examples stay tracked.
+.env
+.env.*
+!.env.example
+*.env
+!*.env.example
+
+# Private keys, certificates and other TLS material.
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+*.ppk
+id_rsa*
+id_ed25519*
+
+# Caches, logs and editor/OS temporaries.
+.cache/
+*.bak
+*~
+.DS_Store
+Thumbs.db
