@@ -22,7 +22,10 @@
 #
 # Every path is fixed below. The caller supplies a release id, which is
 # validated against a safe allowlist, and the two incoming files, whose derived
-# paths are required to match exactly - no other location is accepted.
+# paths are required to match exactly - no other location is accepted. The only
+# mutable path is the Caddy-served public pointer, /opt/eqalb/public/dist; the
+# release tree and the incoming directory are the only places the script ever
+# writes, and the frontend checkout is never written by it.
 
 if [ -z "${BASH_VERSION:-}" ]; then
   printf 'frontend-deploy: error: run this script with bash, not sh\n' >&2
@@ -34,8 +37,13 @@ umask 022
 
 RELEASES_ROOT="/opt/eqalb/frontend/releases"
 INCOMING_DIR="/opt/eqalb/frontend/incoming"
-DIST_LINK="/opt/eqalb/frontend/dist"
-LOCK_FILE="/opt/eqalb/frontend/.deploy.lock"
+
+# Caddy serves /opt/eqalb/public/dist, and that symlink is the deployment's only
+# mutable path. The directory is owned by the deploy account, so an activation
+# never needs write access to /opt/eqalb/frontend or the source checkout.
+PUBLIC_DIR="/opt/eqalb/public"
+PUBLIC_DIST_LINK="$PUBLIC_DIR/dist"
+LOCK_FILE="$PUBLIC_DIR/.deploy.lock"
 
 # A release id is a directory name: a letter or digit followed by up to 63
 # characters from [A-Za-z0-9._-]. The workflow generates
@@ -88,31 +96,37 @@ require_release_tree() {
   [ -f "$1/index.html" ] || die "release directory has no index.html: $1"
 }
 
+require_public_dir() {
+  [ -d "$PUBLIC_DIR" ] || die "public directory is missing: $PUBLIC_DIR (run the one-time server migration in deploy/FRONTEND_DEPLOY.md)"
+}
+
 assert_dist_usable() {
-  if [ -e "$DIST_LINK" ] && [ ! -L "$DIST_LINK" ]; then
-    die "$DIST_LINK exists and is not a symlink; migrate it to a release first (see deploy/FRONTEND_DEPLOY.md)"
+  require_public_dir
+  if [ -e "$PUBLIC_DIST_LINK" ] && [ ! -L "$PUBLIC_DIST_LINK" ]; then
+    die "$PUBLIC_DIST_LINK exists and is not a symlink; refusing it (see deploy/FRONTEND_DEPLOY.md)"
   fi
 }
 
-# Prints the release directory the dist symlink points at, or nothing when the
+# Prints the release directory the public pointer points at, or nothing when the
 # symlink does not exist yet.
 current_dist_target() {
-  if [ -L "$DIST_LINK" ]; then
+  if [ -L "$PUBLIC_DIST_LINK" ]; then
     local target
-    target="$(readlink -- "$DIST_LINK")"
+    target="$(readlink -- "$PUBLIC_DIST_LINK")"
     printf '%s' "${target%/}"
   fi
 }
 
-# Replaces the dist symlink in one rename, so a reader either follows the old
+# Replaces the public pointer in one rename, so a reader either follows the old
 # target or the new one and never sees a missing or half-written path.
 publish_dist() {
-  local new_dir="$1" tmp_link="${DIST_LINK}.tmp"
+  local new_dir="$1" tmp_link="${PUBLIC_DIST_LINK}.tmp"
   ln -sfn -- "$new_dir" "$tmp_link"
-  mv -T -- "$tmp_link" "$DIST_LINK"
+  mv -T -- "$tmp_link" "$PUBLIC_DIST_LINK"
 }
 
 take_lock() {
+  require_public_dir
   exec 9>>"$LOCK_FILE"
   flock -w 120 9 || die "another frontend deployment holds $LOCK_FILE"
 }
@@ -162,12 +176,12 @@ activate() {
   if [ -n "$previous_target" ]; then
     case "$previous_target" in
       "$RELEASES_ROOT"/*) previous_id="${previous_target##*/}" ;;
-      *) die "active dist points outside $RELEASES_ROOT: $previous_target" ;;
+      *) die "the public pointer points outside $RELEASES_ROOT: $previous_target" ;;
     esac
   fi
 
   # Extract, verify and harden inside the staging directory; nothing below
-  # touches dist until the release is complete.
+  # touches the public pointer until the release is complete.
   STAGING="$(mktemp -d "$RELEASES_ROOT/.staging-$release_id.XXXXXX")"
   tar -xzf "$archive" -C "$STAGING" --no-same-owner --no-same-permissions
   [ -f "$STAGING/index.html" ] || die "the bundle has no index.html at its root"
@@ -208,12 +222,12 @@ rollback() {
   if [ -n "$previous_target" ]; then
     case "$previous_target" in
       "$RELEASES_ROOT"/*) : ;;
-      *) die "active dist points outside $RELEASES_ROOT: $previous_target" ;;
+      *) die "the public pointer points outside $RELEASES_ROOT: $previous_target" ;;
     esac
   fi
 
   if [ "$previous_target" = "$new_dir" ]; then
-    note "dist already points at release $release_id"
+    note "the public pointer already points at release $release_id"
     printf 'ACTIVE_RELEASE_ID=%s\n' "$release_id"
     return 0
   fi

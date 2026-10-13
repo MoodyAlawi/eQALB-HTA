@@ -2,10 +2,11 @@
 #
 # Scope is deliberately narrow. This workflow builds the Vite production bundle
 # in GitHub Actions, uploads it to a fixed incoming directory, and asks a
-# root-owned script to publish it as an immutable release behind the
-# /opt/eqalb/frontend/dist symlink. It never installs or changes R, renv,
-# Python/API packages, systemd, Caddy configuration, environment files, DNS or
-# the Git checkout on the server, and it never restarts the API.
+# root-owned script to publish it as an immutable release behind the deploy
+# account's one mutable path, /opt/eqalb/public/dist - the symlink Caddy serves.
+# It never installs or changes R, renv, Python/API packages, systemd, Caddy
+# configuration, environment files, DNS or the Git checkout on the server, and
+# it never restarts the API.
 #
 # The server side - a dedicated deploy account and key, the fixed directories,
 # the root-owned script and its forced command, the environment secrets and the

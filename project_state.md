@@ -1488,16 +1488,47 @@ explicitly documented otherwise.
 - The frontend deployment automation is repository-only and unverified. The
   workflow (`.github/workflows/deploy-frontend.yml`), the server script
   (`deploy/frontend-deploy.sh`) and its runbook (`deploy/FRONTEND_DEPLOY.md`)
-  exist and were validated locally, but no GitHub environment, secret or approval
-  rule has been configured, the script has not been installed on the VPS, and no
-  workflow run has happened, so no automated release has ever been deployed or
-  rolled back. The server-side bootstrap - dedicated deploy account and key,
-  fixed directories, root-owned script and forced command, environment secrets,
-  required approval - is a documented manual step, and the action pins are full
-  commit SHAs written from the actions' published releases and still to be
-  confirmed against the action repositories.
+  exist and were validated locally, and the GitHub `production` environment with
+  its six secrets is configured, but the script has not been installed on the
+  VPS in this topology, no workflow run has happened, the passphrase-free
+  CI-only key rotation has not been performed, and the one-time Caddy migration
+  to the served pointer `/opt/eqalb/public/dist` has not been performed, so no
+  automated release has ever been deployed or rolled back. The server-side
+  bootstrap - dedicated deploy account and passphrase-free CI-only key, fixed
+  directories, root-owned script and forced command, and narrow per-user ACL
+  traverse access that leaves `/opt/eqalb` at its existing restrictive `750`
+  mode rather than widening it - is a documented manual step, and the action
+  pins are full commit SHAs written from the actions' published releases and
+  still to be confirmed against the action repositories.
 
 ## Current task
+
+Completed: the approved corrective pass on the same automation, left unstaged.
+The deployment's only mutable path moved from `/opt/eqalb/frontend/dist` to the
+deploy-owned `/opt/eqalb/public/dist` so the deploy account never needs write
+access to `/opt/eqalb/frontend` or the source checkout: the script's constant,
+its refusal of a non-symlink at that path and its lock file
+(`/opt/eqalb/public/.deploy.lock`) follow the new topology while the release tree
+and the incoming directory keep their fixed paths and all validation, staging,
+immutability and output behaviour is unchanged. `deploy/FRONTEND_DEPLOY.md` now
+carries the ordered one-time server migration - create `/opt/eqalb/public`, grant
+`eqalb-deploy` and the Caddy service account narrow per-user ACL traverse (and,
+for Caddy, read) access while `/opt/eqalb` keeps its existing `750` `eqalb:eqalb`
+mode, point the pointer atomically at the currently live release, move Caddy's
+static root to it, validate and reload, verify `/`, `/app`, `/about` and
+`/api/health`, prove the deploy account can move the pointer but cannot write the
+checkout, and roll the Caddy root back if the migration fails - plus the
+passphrase-free CI-only Ed25519 key decision with its no-lockout rotation
+procedure, and the canonical `DEPLOY_KNOWN_HOSTS` naming with the redundant
+`DEPLOY_SSH_KNOWN_HOSTS` recorded only as a secret to delete manually after a
+successful deployment.
+`deploy/DEPLOY.md` §7 states the one-time Caddy root move as the single adoption
+step, `deploy/Caddyfile` is deliberately **not** changed (its root line is
+updated only after that migration is accepted), and the workflow's header comment
+names the new public pointer. Nothing in this corrected topology has been
+deployed or tested on the VPS, the CI key rotation and the Caddy migration remain
+outstanding, and no workflow run has happened. The GitHub `production`
+environment and its six secrets are configured; the server side is not.
 
 Completed: the deliberately small Version 1 frontend-only deployment automation,
 left unstaged for review. It deploys a completed Vue/Vite static bundle and
@@ -1515,13 +1546,13 @@ file, no DNS, no git operation on the VPS, and no API restart.
   (HTTP 200 and a content-hashed asset from the new bundle) plus read-only
   `/api/health`; and, if any check fails, invokes the fixed `rollback` command
   with the previous release id the server reported, then fails the run. The
-  deploy and rollback jobs sit behind the `production` GitHub Environment
-  (required approval to be configured manually), a single concurrency group
-  allows one deploy at a time and never cancels a running one, `permissions` is
-  `contents: read`, every action is pinned to a full commit SHA, and the six
-  expected environment secrets (`DEPLOY_SSH_HOST`, `DEPLOY_SSH_PORT`,
-  `DEPLOY_SSH_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`,
-  `DEPLOY_PUBLIC_BASE_URL`) are documented but not created. `workflow_dispatch`
+  deploy and rollback jobs sit behind the `production` GitHub Environment, a
+  single concurrency group allows one deploy at a time and never cancels a
+  running one, `permissions` is `contents: read`, every action is pinned to a
+  full commit SHA, and the six environment secrets (`DEPLOY_SSH_HOST`,
+  `DEPLOY_SSH_PORT`, `DEPLOY_SSH_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`,
+  `DEPLOY_PUBLIC_BASE_URL`) are documented and configured in that environment
+  (required reviewers to be confirmed with the operator). `workflow_dispatch`
   exists only for a manual rollback and takes one optional input,
   `rollback_release_id`, which only reaches the script's validated rollback mode.
 - `deploy/frontend-deploy.sh` (new): root-owned when installed, exactly two
@@ -1532,29 +1563,38 @@ file, no DNS, no git operation on the VPS, and no API restart.
   containing symbolic links, extracts into a staging directory under
   `/opt/eqalb/frontend/releases/`, requires `index.html`, removes every
   group/world write bit, renames the staging directory into place and replaces
-  the `/opt/eqalb/frontend/dist` symlink in one rename; the previous release is
-  retained and reported as `PREVIOUS_RELEASE_ID`. `rollback` re-validates the id
-  and the release's `index.html` and repoints the symlink in one rename. The
-  script uses `set -euo pipefail`, `umask 022`, `flock` on
-  `/opt/eqalb/frontend/.deploy.lock`, a staging directory and a cleanup trap, and
+  the only mutable path, the Caddy-served `/opt/eqalb/public/dist` symlink, in
+  one rename; the previous release is retained and reported as
+  `PREVIOUS_RELEASE_ID`. `rollback` re-validates the id and the release's
+  `index.html` and repoints the same public pointer in one rename. The script
+  uses `set -euo pipefail`, `umask 022`, `flock` on
+  `/opt/eqalb/public/.deploy.lock`, a staging directory and a cleanup trap, and
   contains no shell evaluation, wildcard deletion, download, package install,
-  git, sudo, systemd, Caddy or API command.
+  git, sudo, systemd, Caddy or API command. The frontend checkout is never
+  written by it: per the approved topology, `eqalb-deploy` owns only
+  `/opt/eqalb/public`, the release tree and the incoming directory.
 - `deploy/FRONTEND_DEPLOY.md` (new): the manual bootstrap (dedicated
   `eqalb-deploy` account, fixed directories and modes, installation of the
   root-owned script and of a root-owned forced-command wrapper that accepts only
   `activate`, `rollback` and the exact `scp -t <incoming dir>` upload, a
-  dedicated key in a `restrict,command=...` `authorized_keys` entry, the six
-  environment secrets, required reviewers), the one-time migration of an
-  existing hand-built `dist` directory into the first release, the normal deploy
-  sequence, automatic rollback on a failed validation, the one-command manual
-  rollback, re-run clean-up, retention, and the unverified status.
+  dedicated passphrase-free CI-only Ed25519 key in a `restrict,command=...`
+  `authorized_keys` entry with its safe rotation procedure, the six environment
+  secrets, required reviewers), the one-time migration of an existing hand-built
+  `dist` directory into the first release (§4.6), the one-time manual Caddy
+  migration of the static root to `/opt/eqalb/public/dist` with its own rollback
+  (§4.7), the normal deploy sequence, automatic rollback on a failed validation,
+  the one-command manual rollback, re-run clean-up, retention, and the unverified
+  status.
 - `deploy/Caddyfile` (updated): `try_files {path} /index.html` is now active and
   the stale no-router/deep-link commentary is corrected; the API proxy,
   certificate handling, logging, compression, headers and TLS settings are
-  unchanged.
+  unchanged, and the `root` line deliberately still names the current path until
+  the §4.7 migration is performed and accepted.
 - `deploy/DEPLOY.md` (updated): a new §7 explains the automation, states that
-  §1-§6 remain the install path for everything non-frontend, and warns that once
-  `dist` is a symlink the in-place `npm run build` of §3.4 must not be used.
+  §1-§6 remain the install path for everything non-frontend, names the one-time
+  Caddy root move as the single migration the adoption needs, and warns that once
+  the live build sits behind a symlink the in-place `npm run build` of §3.4 must
+  not be used.
 - `frontend/vite.config.ts` (updated): the production build sets
   `sourcemap: false`, so no `.map` files are published.
 - `frontend/README.md` (updated): a short "Deployment" section points at the
@@ -1564,11 +1604,16 @@ Validation, all repository-local: `bash -n deploy/frontend-deploy.sh` clean; the
 workflow YAML parsed and passed 44 structural checks (triggers, concurrency,
 permissions, pinned SHAs, the four build commands, the no-`.map` guard,
 checksum verification before upload, the environment gate, the fixed
-`activate`/`rollback` commands, the four URL checks, the six secret names);
-`npm ci --ignore-scripts`, `npm run typecheck`, `npm run lint` and
-`npm run build` all pass and the built `dist` contains no `.map` file;
-`git diff --check` clean. Nothing was committed, staged, pushed, deployed or run
-against GitHub, the VPS or any other remote service.
+`activate`/`rollback` commands, the four URL checks, the six secret names) and
+all 18 `run:` blocks passed `bash -n`; `npm ci --ignore-scripts`,
+`npm run typecheck`, `npm run lint` and `npm run build` all pass and the built
+`dist` contains no `.map` file; the script's behavioural suite (sandboxed copy,
+`flock` stub and junction-backed `ln` shim because this Windows checkout has
+neither) passed 46 of 46 checks before the corrective pass and 50 of 50 after it,
+covering the public pointer, the missing public directory and the
+real-directory-at-the-pointer refusal; `git diff --check` clean. Nothing was
+committed, staged, pushed, deployed or run against GitHub, the VPS or any other
+remote service.
 
 Completed: the minimal production-deployment templates, under `deploy/` and
 committed-ready but not committed. Four files, all placeholders only:
@@ -3469,22 +3514,33 @@ range that sits wholly above its base is not called out), and population EVPI
 remains unimplemented.
 
 The Version 1 frontend deployment automation is written and locally validated but
-deliberately unverified (see Current task). Its next step belongs to an operator,
+deliberately unverified (see Current task). The GitHub `production` environment
+and its six secrets are already configured. What remains belongs to an operator,
 not the repository: bootstrap the host as `deploy/FRONTEND_DEPLOY.md` describes
-(dedicated deploy account and key, fixed directories, root-owned script and
-forced command), create the `production` environment with its six secrets and
-its required-approval rule, confirm the pinned action SHAs with `git ls-remote`,
-then watch one controlled deploy end to end - including a rollback - before
-treating the automation as supported. Until that has happened, the manual
-frontend path in `deploy/DEPLOY.md` §3.4 and §6 stays the authoritative one, no
-further repository work on deployment is planned, and the only frontend surface
-the automation deliberately does not cover (Caddy reload, API/R changes, DNS) is
-unchanged.
+(dedicated deploy account, the deployment-only `/opt/eqalb/public` directory,
+fixed directories, root-owned script and forced command, and narrow per-user ACL
+traverse access instead of any mode change - `/opt/eqalb` keeps its existing
+`750` `eqalb:eqalb` mode), install the passphrase-free CI-only Ed25519 key and
+perform the §4.4 rotation so the `DEPLOY_SSH_KEY` secret holds it, run the
+one-time conversions of `FRONTEND_DEPLOY.md` §4.6 and §4.7 (release the existing
+build, create the public pointer and its ACLs, move Caddy's static root to
+`/opt/eqalb/public/dist`, reload and verify), confirm the required-approval rule
+and the pinned action SHAs with `git ls-remote`, then watch one controlled
+deploy end to end - including a rollback - before treating the automation as
+supported. Only after that migration is accepted is the tracked `deploy/Caddyfile`
+root line updated to `/opt/eqalb/public/dist`. Until then, the manual frontend
+path in `deploy/DEPLOY.md` §3.4 and §6 stays the authoritative one, no further
+repository work on deployment is planned, and the only frontend surfaces the
+automation deliberately does not cover (Caddy reload and the one-time root move,
+API/R changes, DNS) are unchanged.
 
 ## Update log
 
 | Date | Change | Verified? |
 |---|---|---|
+| 2026-10-14 | Documentation-only correction of the Caddy service account's ACL on `/opt/eqalb/public`: it is now `r-x` (read-and-traverse) instead of traverse-only (`--x`), because Caddy must resolve the `dist` symlink name inside that directory, and the change is stated wherever the split is described (the §2 overview and the §4.2 traversal rule). The remaining split is unchanged: `eqalb-deploy` keeps traverse-only (`--x`) ACLs on `/opt/eqalb` and `/opt/eqalb/frontend`; Caddy keeps traverse-only (`--x`) on those same two parents and `r-x` on `/opt/eqalb/frontend/releases`, gains `r-x` on `/opt/eqalb/public`, and receives no write permission anywhere; `/opt/eqalb` stays mode `750 eqalb:eqalb`; and no broad `chmod` or world-access recommendation is added. §4.7's ACL block now applies `setfacl -m u:"$CADDY_USER":--x /opt/eqalb /opt/eqalb/frontend` and `setfacl -m u:"$CADDY_USER":r-x /opt/eqalb/public /opt/eqalb/frontend/releases` with the reason in its comment, and both verification blocks (step 2 before Caddy is touched, step 7 after activation) now prove Caddy can traverse and read `/opt/eqalb/public` and resolve the pointer with `readlink`, and that it can read the live release's `index.html` | Documentation-only: repository-local `git diff --check` clean; the changed-file list remains exactly the two documentation files from the previous pass. **Not verified and not claimed:** no ACL command has been run on the server, the Caddy service account has not been read on the server, the migration has not been performed, and no deploy, key, secret or GitHub setting was touched. Nothing was staged, committed, pushed or run |
+| 2026-10-14 | Documentation-only correction of two facts, in `deploy/FRONTEND_DEPLOY.md` and `project_state.md` only; no workflow, script, Caddyfile or other file touched. (1) All instructions that would widen `/opt/eqalb` to `0755` are removed: the deployed server keeps `/opt/eqalb` at its existing restrictive `750` `eqalb:eqalb` mode, and the one-time Caddy migration (§4.7) now grants the deploy account `--x` traverse and the Caddy service account `--x` traverse plus `r-x` read/traverse of the release tree with **per-user ACLs** (`setfacl`, from the `acl` package, with `getfacl` evidence and `sudo -u <user> test` proofs), adds a read-only step to identify the Caddy service account first (`systemctl show -p User --value caddy`, `systemctl cat caddy`, `getent passwd caddy`) rather than guessing its name, notes that release directories are created 755/644 so no per-release ACL is needed, and records that the ACLs are additive and revertible (`setfacl -x`). (2) Every statement claiming no environment secret exists is corrected: the GitHub `production` environment and its six secrets are configured, while the corrected public-pointer topology, the CI key rotation, the Caddy migration and the first workflow run remain untested. The design is otherwise preserved exactly: `eqalb-deploy` still owns only `/opt/eqalb/public`, `frontend/releases` and `frontend/incoming`, with ACL traverse access to parents only, and Caddy gets exactly the traverse/read access it needs | Documentation-only: repository-local diff validation only (`git diff --check` clean; the changed-file list is exactly the two documentation files). **Not verified and not claimed:** the ACL commands have not been run on the server, the Caddy service account has not been read on the server, the migration has not been performed, and no deploy, key, secret or GitHub setting was touched. Nothing was staged, committed, pushed or run |
+| 2026-10-14 | Corrective pass on the frontend deployment automation, repository-side only and left unstaged, implementing the approved public-pointer topology and the CI key decision. `deploy/frontend-deploy.sh`: the mutable path constant is now the Caddy-served `/opt/eqalb/public/dist` (plus `PUBLIC_DIR=/opt/eqalb/public`), the lock moved to `/opt/eqalb/public/.deploy.lock` inside the deploy-owned directory, a new `require_public_dir()` gives a friendly refusal when the directory is missing (called before the lock is opened and from `assert_dist_usable()`, which still refuses any existing non-symlink at the pointer), and the previous-error/notes wording now says "public pointer"; release-id, incoming-path, checksum, archive-content, staging, immutability, atomic-rename, two-operation and output behaviour are unchanged. `deploy/FRONTEND_DEPLOY.md`: layout and ownership updated to `/opt/eqalb/public` (deploy-owned) with `/opt/eqalb/frontend` traverse-only, the "do not chown the frontend tree" rule, no pre-created lock file, §4.4 rewritten for a passphrase-free CI-only Ed25519 key stored only as the protected `production` secret `DEPLOY_SSH_KEY` with refusal tests and a no-lockout rotation procedure, §4.6 converts a hand-built `dist` as root without chowning the frontend tree, new §4.7 is the ordered one-time Caddy migration (create `/opt/eqalb/public`, atomic pointer to the live release, move Caddy's root, validate and reload, verify `/`, `/app`, `/about` and `/api/health`, prove the permission split, roll the Caddy root back if it fails, remove the old symlink only after acceptance), §7 and §9 use the public pointer, and §10 records the outstanding migration, the deploy-owned blast radius and the releases' ownership caveat. `deploy/DEPLOY.md` §7 names the one-time Caddy root move as the sole adoption step and states `deploy/Caddyfile` stays unchanged until then. `.github/workflows/deploy-frontend.yml`: header comment only. `deploy/Caddyfile` deliberately untouched. `project_state.md` updated (Known limitations, Current task, Next planned task, this row) | Repository-local validation only, and it passed: `bash -n deploy/frontend-deploy.sh` clean; the script's behavioural suite, updated to the public-pointer topology, passed **50 of 50** checks (including the new missing-public-directory refusal and the real-directory-at-the-pointer refusal) in a sandbox whose only substitutions are `/opt/eqalb` -> a temporary prefix, a `flock` stub and a junction-backed `ln` shim, both gaps of this Windows checkout; the workflow YAML re-parsed and passed the 44 structural checks and its 18 `run:` blocks passed `bash -n`; `npm run typecheck` (one transient Windows crash on the first run, clean on re-run), `npm run lint` and `npm run build` all pass and the built `dist` contains no `.map` file; `git diff --check` clean. **Not verified and not claimed:** the topology has never run on a Linux host with real `flock` and the real forced-command wrapper, the one-time §4.7 Caddy migration has not been performed, no Caddy command was executed, and no secret, key or Environment setting was touched. `frontend/README.md` was left untouched because it is outside the approved file scope; its "serves ... from `/opt/eqalb/frontend/dist`" sentence becomes stale when the Caddy migration is accepted, at which point it should be updated. Nothing was staged, committed, pushed, deployed or run, and no package or lockfile changed |
 | 2026-10-13 | Frontend-only deployment automation, Version 1, repository-side only and left unstaged. Added `.github/workflows/deploy-frontend.yml` (push to `main` on the `frontend/**`, `deploy/**` and workflow paths; Node 22; `npm ci --ignore-scripts`, `npm run typecheck`, `npm run lint`, `npm run build`; refuses `.map` files; packages `frontend-<run-number>-<commit-sha>.tar.gz` with a SHA-256 checksum verified before upload; `scp -O` into the fixed incoming directory; one fixed `activate`/`rollback` SSH command; `/`, `/app`, `/about` and read-only `/api/health` validation with automatic rollback to the reported previous release on any failure; `production` environment gate; single non-cancelling concurrency group; `contents: read`; all actions pinned to full commit SHAs; six placeholder environment-scoped secret names; `workflow_dispatch` limited to an optional `rollback_release_id`), `deploy/frontend-deploy.sh` (two fixed operations; validated release id; SHA-256 check; staging extraction under `releases/`; `index.html` requirement; no absolute or parent-relative archive entries and no symbolic links; group/world write bits removed; atomic `dist` symlink swap; previous release retained and reported; `flock`, `umask 022`, cleanup trap; no shell evaluation, wildcard deletion, download, package install, git, sudo, systemd, Caddy or API command) and `deploy/FRONTEND_DEPLOY.md` (manual bootstrap with a dedicated deploy account, directories, root-owned script, root-owned forced-command wrapper restricted to `activate`, `rollback` and the exact `scp -t` upload, key and `authorized_keys`, environment secrets and required approval, migration of an existing hand-built `dist`, deploy sequence, automatic and one-command manual rollback, retention, unverified status). `deploy/Caddyfile` now enables `try_files {path} /index.html` and corrects its stale no-router/deep-link commentary (API proxy, certificates, logging, compression, headers and TLS untouched); `deploy/DEPLOY.md` gains §7 and the warning not to run the in-place build once `dist` is a symlink; `frontend/vite.config.ts` sets `sourcemap: false`; `frontend/README.md` gains a Deployment section; this file records the same facts | Repository-local validation only, and it passed: `bash -n deploy/frontend-deploy.sh` clean; the workflow YAML parsed (no duplicate keys, no tabs) and passed 44 structural checks covering triggers, concurrency, permissions, pinned SHAs, the four build commands, the no-`.map` guard, checksum verification before upload, the environment gate, the fixed `activate`/`rollback` commands, the four URL checks and the six secret names; `npm ci --ignore-scripts`, `npm run typecheck`, `npm run lint` and `npm run build` all pass and the built `dist` contains no `.map` file; `git diff --check` clean; the changed-file list matches the approved scope exactly. **Not verified and not claimed:** no workflow run, no GitHub environment, secret or approval, no server installation, no deploy and no rollback has happened; the action pins are written from the actions' published releases and must be confirmed with `git ls-remote` on first use; the design assumes Caddy resolves the `dist` symlink per request. Nothing was committed, staged, pushed, deployed or run against GitHub or the VPS, and no package dependency or lockfile changed |
 | 2026-10-13 | Documentation-only deployment closeout. `deploy/DEPLOY.md` §1.1 records the four system packages the first Ubuntu 26.04 compatibility run needed (`libuv1-dev` for `fs`, `cmake` for `nloptr`, `libsodium-dev` for `sodium`, `pandoc` for knitr/rmarkdown) and that the source-built R 4.5.1 restored all 135 packages. A short "Deployment closeout" section records that the stack is deployed and smoke-tested at `https://openhealth.ngo` but not fully validated: the frontend is served over HTTPS with a Caddy-obtained certificate, the proxied `/api/health` check returned HTTP 200 with `model_ready: true` and 2 of 2 R workers ready, browser smoke testing found no console errors, no failed API requests and working core interactions, and Caddy needs read and traverse access to the static frontend build directory. `project_state.md` records the same bounded facts and that operational performance testing remains open | Yes for the smoke-test facts, which come from the operator's own evidence. Deliberately **not** claimed: formal load, performance or security testing, clinical or model validation, or exhaustive functional testing. Documentation only - no application, model, API, frontend, Caddy, systemd, lockfile or environment change, and no simulated-data notice added. `git diff --check` clean, clean before commit |
 | 2026-10-13 | Documentation-and-template pass: the source-build path for R 4.5.1 on Ubuntu 26.04, taken as a deliberate decision to preserve the runtime recorded in `renv.lock`. `deploy/DEPLOY.md` replaces the earlier "BLOCKING" section with a "DECISION: R 4.5.1 is built from official source into `/opt/R/4.5.1`" section that keeps the CRAN finding as its justification (this release's suite `resolute-cran40` serves the current R 4.6.x series; R 4.5 binaries are archived and documented only for Ubuntu 20.04; reimaging does not help). §1 is renumbered into §1.1-§1.5: one merged dependency list covering both base R and renv compilation (zlib1g-dev, libbz2-dev, liblzma-dev, libpcre2-dev, libreadline-dev, libcurl4-openssl-dev, libssl-dev, libxml2-dev, libpng-dev, libjpeg-dev, libtiff-dev, libcairo2-dev, libfontconfig1-dev, libfreetype6-dev, libharfbuzz-dev, libfribidi-dev, libicu-dev, build-essential, gfortran, pkg-config, texinfo), then §1.2 which downloads the pinned official archive `https://cran.r-project.org/src/base/R-4/R-4.5.1.tar.gz`, verifies SHA-256 `b42a7921400386645b10105b91c68728787db5c4c83c9f6c30acdce632e1bb70` with `sha256sum -c -` before extracting, checks the single top-level directory and the `VERSION`/`VERSION-NICK` markers, builds with `./configure --prefix=/opt/R/4.5.1 --enable-R-shlib --with-x=no` and `sudo make install`, verifies via `/opt/R/4.5.1/bin/Rscript --version` and `sessionInfo()`, and states the maintenance trade-off (no apt security updates; deliberate rebuilds). No apt R is installed at all - the CRAN repository, its key and the `r-base`/`r-base-dev` step are gone. §3.2, the failure-protocol evidence commands, the §5 binding audit and the §6 re-restore path now use the absolute `/opt/R/4.5.1/bin/Rscript`; checkpoint condition 2 demands exactly R 4.5.1 from that prefix; the failure protocol now explains how to read each condition instead of listing three options. `deploy/api.env.example` sets `EQALB_RSCRIPT=/opt/R/4.5.1/bin/Rscript` with the reasoning, and `deploy/eqalb-api.service` needed **no** change because it contains no R path and inherits the setting. `project_state.md` updated (Known limitations, Current task, Next planned task). No application code, model logic, frontend, Caddy configuration, request/response contract or Shiny file was touched | Yes - the archive URL and the checksum source were verified from primary sources before editing. `R-4.5.1.tar.gz` returns HTTP 200 with Content-Length 40518816 and Last-Modified Fri, 13 Jun 2025 07:12:01 GMT; CRAN publishes no per-file checksum or signature beside it (`R-4.5.1.tar.gz.md5`, `.sig`, `.asc`, `md5sum.txt`, `MD5SUMS`, `/src/checksums/` and `/bin/checksums/` all return 404), so the authoritative values were taken from the R Core Team's own release announcement at `https://stat.ethz.ch/pipermail/r-announce/2025/000713.html` ("[Rd] R 4.5.1 is released", Peter Dalgaard, 13 June 2025), which lists `R-4/R-4.5.1.tar.gz` as SHA-256 `b42a7921...ee8f444` and MD5 `e22eee30af90ec66eb179b66d122ffd9`. Those values were then confirmed against the actual artifact: the downloaded file hashes to the same SHA-256 and MD5, and its size matches the published Content-Length, so `sha256sum -c` is a genuine publisher-to-artifact check rather than a self-computed value. The archive was inspected without installing anything: it contains exactly one top-level directory `R-4.5.1/`, 5379 entries, `R-4.5.1/VERSION` reads `4.5.1`, `R-4.5.1/VERSION-NICK` reads `Great Square Root` (the codename in the announcement), and `R-4.5.1/configure` is 1788095 bytes at mode `-rwxr-xr-x`. The dependency list is grounded in the official R-admin manual (`https://cran.r-project.org/doc/manuals/r-release/R-admin.html`, "Essential and useful other programs under a Unix-alike"), which states that zlib, libbz2 and liblzma are "required", that libcurl "is required", that PCRE2 is preferred, that readline's headers are needed for command-line editing, that the jpeg/png/tiff devices "need the appropriate headers and libraries", and that the modern X11/jpeg/png/tiff devices use Cairo - which is why X11/Tcl/Tk is deliberately omitted (`--with-x=no`) and no LaTeX is installed. `git diff --check` reports no whitespace errors, and the document still has balanced code fences with its heading tree intact. The downloaded tarball and all temporary query files were deleted afterwards. Nothing was installed, no PSA was run, and no VPS, DNS, registrar, remote or credential was touched |
