@@ -144,10 +144,19 @@ jobs:
           set -euo pipefail
           umask 077
           archive="frontend-${RELEASE_ID}.tar.gz"
+          # One file per scp call on purpose: the server's forced-command wrapper
+          # allowlists exactly `scp -t /opt/eqalb/frontend/incoming`, and a
+          # multi-file transfer makes the client send `-d` as well, which would
+          # be refused (exit 64) and drop the connection.
           scp -O -P "${DEPLOY_SSH_PORT:-22}" \
             -i "$HOME/.ssh/deploy_key" \
             -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
-            "bundle/$archive" "bundle/$archive.sha256" \
+            "bundle/$archive" \
+            "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}:${REMOTE_INCOMING}"
+          scp -O -P "${DEPLOY_SSH_PORT:-22}" \
+            -i "$HOME/.ssh/deploy_key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "bundle/$archive.sha256" \
             "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}:${REMOTE_INCOMING}"
 
       - name: Activate the release
