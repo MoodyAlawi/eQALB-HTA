@@ -1507,8 +1507,8 @@ explicitly documented otherwise.
   `-j2` if memory is tight), the systemd hardening (`ProtectHome=read-only` with
   `StateDirectory=eqalb` and a redirected `HOME`/`XDG_CACHE_HOME`), and the R
   source build itself are still to be confirmed on the host.
-- The frontend deployment automation is deployed server-side but has never
-  completed an automated run. The workflow
+- The frontend deployment automation is configured server-side and on GitHub,
+  and one end-to-end automated deployment has succeeded. The workflow
   (`.github/workflows/deploy-frontend.yml`), the server script
   (`deploy/frontend-deploy.sh`) and its runbook (`deploy/FRONTEND_DEPLOY.md`)
   exist and were validated locally; the GitHub `production` environment and its
@@ -1528,14 +1528,15 @@ explicitly documented otherwise.
   restrictive `750 eqalb:eqalb` mode rather than widening it. The first
   automated workflow run was then attempted and **failed before activation**, at
   the `scp` upload step, because the upload command and the server's
-  forced-command wrapper disagreed (see Current task); the workflow now uploads
-  the archive and its checksum as two separate single-file legacy SCP
-  transfers, which is not yet proven by a successful run. What remains: the
-  `production` environment's required-reviewer/approval rule must be confirmed
-  with the operator, the action pins are full commit SHAs written from the
-  actions' published releases and still to be confirmed against the action
-  repositories, and a successful end-to-end automated deployment - including a
-  rollback - remains outstanding.
+  forced-command wrapper disagreed (see Current task); the corrected upload -
+  the archive and its checksum as two separate single-file legacy SCP transfers -
+  has since carried a successful end-to-end automated deployment, which also
+  exercised the pinned action SHAs. The operator has confirmed the `production`
+  environment's required-reviewer/approval rule. What remains untested is
+  rollback: neither the automatic rollback after a failed validation nor the
+  manual rollback has been exercised. The successful release was built from
+  `main`, so the OpenHealth public shell on `feature/openhealth-landing` is not
+  part of a deployed release.
 
 ## Current task
 
@@ -3650,25 +3651,24 @@ interpretation does not yet describe one-sided structural ranges in its own word
 range that sits wholly above its base is not called out), and population EVPI
 remains unimplemented.
 
-The Version 1 frontend deployment automation is deployed and locally validated
-but has not yet completed a workflow run (see Current task): the server-side
-bootstrap, the public-pointer/Caddy migration and the CI key rotation are
-complete and were verified on 2026-10-14, the tracked `deploy/Caddyfile` root
-line matches the live `/opt/eqalb/public/dist`, and the first workflow attempt's
-SCP upload failure has been corrected by uploading the archive and its checksum
-as two separate single-file transfers. What remains is operational and short:
-confirm the `production` environment's required-reviewer/approval rule with the
-operator, confirm the pinned action SHAs with `git ls-remote`, then watch one
-controlled deploy end to end through §5 - including a rollback, which also
-exercises a live public-pointer swap under a running Caddy - before treating the
-automation as supported. A successful end-to-end automated deployment remains
-outstanding until that run passes. The manual frontend path in `deploy/DEPLOY.md`
-§3.4 and §6 remains the authoritative fallback while the workflow is unproven.
-One small repository follow-up is also open outside those steps: the served-path
-sentence in `frontend/README.md` still names `/opt/eqalb/frontend/dist`, which is
-now stale because Caddy serves `/opt/eqalb/public/dist`. No other repository work
-on deployment is planned, and the frontend surfaces the automation deliberately
-does not cover (Caddy configuration changes, API/R changes, DNS) are unchanged.
+The Version 1 frontend deployment automation is deployed and has completed one
+end-to-end automated run (see Current task): the server-side bootstrap, the
+public-pointer/Caddy migration and the CI key rotation are complete and were
+verified on 2026-10-14, the tracked `deploy/Caddyfile` root line matches the live
+`/opt/eqalb/public/dist`, the first workflow attempt's SCP upload failure was
+corrected by uploading the archive and its checksum as two separate single-file
+transfers, and that successful run exercised the pinned action SHAs. The operator
+has confirmed the `production` environment's required-reviewer/approval rule. What
+remains is the rollback path: neither the automatic rollback after a failed
+validation nor the manual rollback has been exercised, and the automatic one also
+performs a live public-pointer swap under a running Caddy, so it is worth watching
+once through §5 before the automation is treated as fully supported. The manual
+frontend path in `deploy/DEPLOY.md` §3.4 and §6 remains the fallback for a host
+that does not use the automation. The served-path sentence in `frontend/README.md`
+was corrected to name `/opt/eqalb/public/dist` and to record the deployment
+status. No other repository work on deployment is planned, and the frontend
+surfaces the automation deliberately does not cover (Caddy configuration changes,
+API/R changes, DNS) are unchanged.
 
 ## Update log
 

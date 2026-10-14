@@ -200,8 +200,8 @@ src/
 
 ## Deployment
 
-The production site serves a static build of this app from
-`/opt/eqalb/frontend/dist` on the VPS, and a release never reloads Caddy or
+Caddy serves a static build of this app from
+`/opt/eqalb/public/dist` on the VPS, and a release never reloads Caddy or
 restarts the API. A frontend-only change can be shipped by the GitHub Actions
 workflow [`deploy-frontend.yml`](../.github/workflows/deploy-frontend.yml), which
 runs `npm ci --ignore-scripts`, `npm run typecheck`, `npm run lint` and
@@ -212,9 +212,12 @@ build sets `sourcemap: false` in [`vite.config.ts`](./vite.config.ts), so no
 rollback are documented in [`../deploy/FRONTEND_DEPLOY.md`](../deploy/FRONTEND_DEPLOY.md);
 the full host runbook remains [`../deploy/DEPLOY.md`](../deploy/DEPLOY.md).
 
-The automation is implemented in the repository but is not configured on GitHub
-or the VPS yet and has never run, so deployment claims stay prospective until a
-real workflow run succeeds.
+The deployment server and the GitHub `production` environment are configured,
+the operator has confirmed the environment's required-reviewer/approval rule, and
+one end-to-end automated deployment has succeeded. Neither the automatic rollback
+after a failed validation nor the manual rollback has been exercised yet, so both
+remain untested. That successful release was built from `main`: the OpenHealth
+public shell on this branch is not part of a deployed release.
 
 ## Known limitations
 
