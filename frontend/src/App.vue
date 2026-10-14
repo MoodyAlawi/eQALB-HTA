@@ -9,6 +9,14 @@
  * eQalb screen shares /app, so nothing below the dashboard branch is aware of the
  * URL at all.
  *
+ * Exactly one page renders at a time, and each one is named by its own v-if /
+ * v-else-if: the analysis dashboard is the first branch below, and the public
+ * pages and the eQalb subviews (Home, tutorial, project description, download
+ * results) follow it. A page must never be the chain's leftover branch - the
+ * download view was, and so appeared under the dashboard in every analysis tab.
+ * Changing the page is what unmounts a view, so a page that is left takes its
+ * controls out of the document rather than hiding them.
+ *
  * Tabs are rendered with v-if rather than v-show so each chart is created only
  * when its tab is visible: an ECharts instance initialised inside a hidden
  * container would latch onto a zero-sized canvas.
@@ -358,12 +366,16 @@ watch(page, (next) => {
       </div>
     </template>
 
+    <!-- The download view is named, not the leftover branch: as a bare v-else it
+         also rendered under the dashboard, so every analysis tab had the panel
+         below it and scrolling down reached it. Each page names itself here, and
+         leaving one unmounts its view. -->
     <OpenHealthHomeView v-if="page === 'openhealth'" />
     <AboutView v-else-if="page === 'about'" />
     <HomeView v-else-if="page === 'home'" />
     <TutorialView v-else-if="page === 'tutorial'" />
     <ProjectDescriptionView v-else-if="page === 'description'" />
-    <DownloadResultsView v-else />
+    <DownloadResultsView v-else-if="page === 'export'" />
 
     <!-- One app-wide loading indicator, above every page. It shows itself only
          when an operation outlives its grace period; see the component. -->
