@@ -198,6 +198,24 @@ src/
   `<caption>`, so no table gains a visible extra row and the responsive
   `.table-scroll` wrapper is unchanged.
 
+## Deployment
+
+The production site serves a static build of this app from
+`/opt/eqalb/frontend/dist` on the VPS, and a release never reloads Caddy or
+restarts the API. A frontend-only change can be shipped by the GitHub Actions
+workflow [`deploy-frontend.yml`](../.github/workflows/deploy-frontend.yml), which
+runs `npm ci --ignore-scripts`, `npm run typecheck`, `npm run lint` and
+`npm run build` on Node 22, packages the bundle with a SHA-256 checksum, and
+activates it as an immutable release behind the `dist` symlink. The production
+build sets `sourcemap: false` in [`vite.config.ts`](./vite.config.ts), so no
+`.map` files are published. Server bootstrap, environment secrets, approval and
+rollback are documented in [`../deploy/FRONTEND_DEPLOY.md`](../deploy/FRONTEND_DEPLOY.md);
+the full host runbook remains [`../deploy/DEPLOY.md`](../deploy/DEPLOY.md).
+
+The automation is implemented in the repository but is not configured on GitHub
+or the VPS yet and has never run, so deployment claims stay prospective until a
+real workflow run succeeds.
+
 ## Known limitations
 
 - No automated test suite yet; the app was verified by hand against a running
