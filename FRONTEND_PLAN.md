@@ -360,10 +360,12 @@ frontend/
     api/client.ts      # typed fetch client
     api/types.ts       # response contracts mirroring the R return shapes
     composables/       # useModel (state), useTutorialSession (isolated tutorial state),
-                       # useTheme (palette), useEcharts (charts), useAppView (which page is shown),
+                       # useTheme (palette), useEcharts (charts), useAppView (which page is shown, and the
+                       # /, /app and /about addresses with the history entries and document title),
                        # useAppBusy (the app-wide loading state)
     components/        # presentation only; charts/ holds the chart options; tutorial/ the four Part 1 steps and Part 2's five sections; InfoTip is the help control; AppLoadingIndicator is the loading indicator
-    views/             # Home, Guided tutorial, Project description and Download results screens
+    views/             # OpenHealth landing (/), the eQalb Home screen (/app, with the Guided tutorial,
+                       # Project description and Download results subviews) and About OpenHealth (/about)
     export/            # results package + per-tab exports: ZIP writer, CSV builders
     format.ts          # EUR/QALY formatting; null becomes a dash
     styles.css         # teal palette + light/dark tokens
