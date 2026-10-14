@@ -1,0 +1,662 @@
+/**
+ * OpenHealth landing page styles (frontend only).
+ *
+ * One file, one page: every rule here belongs to the landing page at "/", the
+ * three-panel scroll page that puts eQalb first. It is kept out of `styles.css`
+ * on purpose, because the landing page must not look like the app and must not
+ * reach it. Everything below is scoped in one of two ways:
+ *
+ * - Page-level rules are keyed on `html[data-landing-theme]`, an attribute
+ *   `useLandingTheme.ts` sets while the landing page is mounted and removes when
+ *   it unmounts (and which `index.html` also sets before the first paint, on the
+ *   landing addresses only). That is where the landing palette lives, so no
+ *   landing token or page rule can outlive the page - and `eqalb.theme` /
+ *   `<html data-theme>`, the application's own preference, is never read or
+ *   written here, so the app keeps its teal identity either way.
+ * - Every other rule sits under the single `.landing` root class of the view.
+ *
+ * The identity is warm and editorial: ivory and clay in light mode, near-black
+ * and soft terracotta in dark mode, a serif for the large headings against a
+ * clean sans for navigation, copy and buttons, and no imagery, gradients or
+ * decorative icons. Contrast is checked for WCAG AA in both themes - body and
+ * muted text at 4.5:1 or better, and the accent, its hover tone, the button text
+ * and the focus ring at 3:1 or better against what they sit on.
+ */
+
+/* --- Landing palette -------------------------------------------------------
+   Font stacks are theme-independent and declared once; the two theme blocks
+   carry only colour, so a theme switch changes nothing else. */
+
+html[data-landing-theme] {
+  --landing-serif:
+    'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', 'Hoefler Text', Georgia,
+    'Times New Roman', serif;
+  --landing-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+html[data-landing-theme='light'] {
+  color-scheme: light;
+
+  --landing-bg: #f4f0e8;
+  --landing-surface: #e8e1d5;
+  --landing-text: #27231f;
+  --landing-muted: #6b6156;
+  --landing-accent: #8c503b;
+  --landing-accent-strong: #75402e;
+  --landing-on-accent: #f7f2ea;
+  --landing-accent-tint: rgba(140, 80, 59, 0.14);
+  --landing-divider: rgba(39, 35, 31, 0.14);
+  --landing-divider-strong: rgba(39, 35, 31, 0.26);
+  --landing-shadow: 0 8px 24px rgba(39, 35, 31, 0.08);
+  --landing-cta-shadow: 0 10px 22px rgba(140, 80, 59, 0.22);
+  --landing-focus: #27231f;
+}
+
+html[data-landing-theme='dark'] {
+  color-scheme: dark;
+
+  --landing-bg: #090909;
+  --landing-surface: #121211;
+  --landing-text: #ece7df;
+  --landing-muted: #a79e93;
+  --landing-accent: #d39477;
+  --landing-accent-strong: #e2a98f;
+  --landing-on-accent: #14110e;
+  --landing-accent-tint: rgba(211, 148, 119, 0.16);
+  --landing-divider: rgba(236, 231, 223, 0.14);
+  --landing-divider-strong: rgba(236, 231, 223, 0.24);
+  --landing-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --landing-cta-shadow: 0 10px 22px rgba(211, 148, 119, 0.16);
+  --landing-focus: #ece7df;
+}
+
+/* --- The page --------------------------------------------------------------
+   The window itself carries the landing palette and its scrolling behaviour,
+   both of which are removed with the attribute when the page unmounts. */
+
+html[data-landing-theme] {
+  /* Anything outside the panels - a short page, overscroll - is the landing
+     background rather than the application's. */
+  background: var(--landing-bg);
+  /* No scroll snapping. It used to settle the page onto a panel edge with
+     `y proximity`, which fought the scroll-linked reveal: a small wheel notch
+     near a panel boundary was pulled back to the boundary, so the reader could
+     not hold an intermediate position and the fade had no scroll distance to
+     travel across. The reveal is now driven by where the content actually is, so
+     the scrolling is left entirely alone. */
+}
+
+html[data-landing-theme] body {
+  background: var(--landing-bg);
+  color: var(--landing-text);
+  font-family: var(--landing-sans);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html[data-landing-theme] {
+    scroll-behavior: smooth;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No smooth scrolling for a visitor who asked for less motion. */
+  html[data-landing-theme] {
+    scroll-behavior: auto;
+  }
+}
+
+/* The page scrollbar follows the landing accent rather than the app's teal. The
+   two rule families mirror the ones in styles.css: engines that understand the
+   pseudo-elements take them, and engines that do not (Firefox) take the standard
+   property, which is why both are declared. */
+@supports selector(::-webkit-scrollbar) {
+  html[data-landing-theme]::-webkit-scrollbar-thumb {
+    background-color: var(--landing-accent);
+    background-color: color-mix(in srgb, var(--landing-accent) 55%, transparent);
+  }
+
+  html[data-landing-theme]::-webkit-scrollbar-thumb:hover,
+  html[data-landing-theme]::-webkit-scrollbar-thumb:active {
+    background-color: var(--landing-accent);
+  }
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  html[data-landing-theme] {
+    scrollbar-color: color-mix(in srgb, var(--landing-accent) 55%, transparent) transparent;
+  }
+}
+
+/* --- The landing page ------------------------------------------------------ */
+
+.landing {
+  background: var(--landing-bg);
+  color: var(--landing-text);
+  font-family: var(--landing-sans);
+  /* The app sets 15px on body for its dense panels; the landing page has its own
+     scale, so a rem inside it is the landing's own. */
+  font-size: 16px;
+}
+
+/* --- Floating navigation --------------------------------------------------- */
+
+/* The header is only a positioning strip across the top; the panel inside it is
+   the visible control, and the strip ignores the pointer so the hero underneath
+   stays reachable in the few pixels it occupies. */
+.landing__header {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  padding: 1rem 1rem 0;
+  pointer-events: none;
+}
+
+.landing__nav {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 1.1rem;
+  max-width: 100%;
+  padding: 0.35rem 0.5rem 0.35rem 1rem;
+  border: 1px solid var(--landing-divider-strong);
+  border-radius: 999px;
+  /* A solid surface first, a translucent one on top of it: a browser without
+     color-mix still gets a readable panel. */
+  background: var(--landing-surface);
+  background: color-mix(in srgb, var(--landing-bg) 86%, transparent);
+  box-shadow: var(--landing-shadow);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* The wordmark is deliberately the quietest thing in the header: eQalb is the
+   subject of the page, OpenHealth is its context. */
+.landing__mark {
+  color: var(--landing-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 140ms ease;
+}
+
+.landing__mark:hover {
+  color: var(--landing-text);
+}
+
+.landing__links {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing__link {
+  display: inline-block;
+  padding: 0.34rem 0.72rem;
+  border-radius: 999px;
+  color: var(--landing-muted);
+  font-size: 0.85rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
+}
+
+.landing__link:hover {
+  color: var(--landing-text);
+}
+
+/* The section the reader is in. Three cues, so the state is never carried by
+   colour alone: the tinted pill, the full-strength text, and the heavier weight.
+   `aria-current` in the view carries the same state to assistive technology. */
+.landing__link.is-active {
+  background: var(--landing-accent-tint);
+  color: var(--landing-text);
+  font-weight: 600;
+}
+
+.landing__theme {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--landing-divider-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--landing-text);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.landing__theme:hover {
+  background: var(--landing-accent-tint);
+  border-color: var(--landing-accent);
+}
+
+/* One focus ring for everything on this page, in the landing palette and in the
+   text colour, so it is visible on the ivory background, on the nav panel and on
+   the accent button alike. */
+.landing a:focus-visible,
+.landing button:focus-visible {
+  outline: 2px solid var(--landing-focus);
+  outline-offset: 3px;
+}
+
+/* The heading takes focus on arrival to place a screen-reader user on the page.
+   It carries tabindex="-1", so it can never be reached with Tab and this ring
+   would only ever be the browser's default box drawn around the eQalb title on
+   every load and refresh. */
+.landing__title:focus-visible {
+  outline: none;
+}
+
+/* --- Panels ---------------------------------------------------------------- */
+
+.landing__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* A viewport each, and more when the content needs it - the panels grow, they
+     never clip or scroll inside themselves. */
+  min-height: 100vh;
+  padding: 6.5rem 1.5rem 5rem;
+}
+
+@supports (min-height: 100svh) {
+  /* The small-viewport unit keeps a mobile panel one screen tall even while the
+     browser's own bars are showing. */
+  .landing__panel {
+    min-height: 100svh;
+  }
+}
+
+.landing__panel + .landing__panel {
+  border-top: 1px solid var(--landing-divider);
+}
+
+.landing__inner {
+  width: 100%;
+  max-width: 76rem;
+  margin: 0 auto;
+}
+
+/* The OpenHealth panel is neither a centred hero nor a two-column group: it is a
+   single column of prose, so it takes one comfortable measure of its own and the
+   `margin: 0 auto` above centres that block in the panel. Its text is centred too
+   - label, heading and paragraphs alike - so the section reads the same way the
+   hero does; the measure keeps every line short enough to stay comfortable
+   centred. The About panel is deliberately left alone: its prose stays
+   left-aligned, where a paragraph reads best. */
+.landing__inner--prose {
+  max-width: 40rem;
+  text-align: center;
+}
+
+/* The scroll-linked reveal.
+
+   `--reveal` is a number from 0 to 1 that the view writes as the page scrolls:
+   the content is fully transparent at 0 and fully opaque at 1, and in between it
+   is exactly as far along as the reader's scroll position puts it. It fades in as
+   the content arrives from below, holds at 1 through the middle of the screen,
+   and fades out again as the content leaves above - so it is reversible and
+   repeats on every pass, rather than latching once seen. There is no duration and
+   no easing here on purpose: the fade is a function of scroll position, not of
+   time, so stopping halfway holds the intermediate state and continuing from there
+   finishes it.
+
+   `--reveal-lift` is separate because the 16px rise belongs to the entry alone:
+   tying it to the same value would drift the content downwards again while it was
+   leaving.
+
+   Two elements do two jobs. `.landing__reveal` is the outer wrapper: it is never
+   transformed, so the geometry the view measures - its own top and bottom edges -
+   is the content's real position. `.landing__reveal-inner` is what is actually
+   faded and lifted, so its own transform can never feed back into that
+   measurement.
+
+   The `var(..., 1)` fallbacks are the visible state, and the whole rule is scoped
+   to `landing--armed`, which the view sets only when it has the browser features
+   to drive the reveal. A browser without them, or a script that fails part way,
+   therefore shows every section as it stands; the print and reduced-motion blocks
+   below override the rule outright. */
+.landing--armed .landing__reveal-inner {
+  opacity: var(--reveal, 1);
+  transform: translateY(calc((1 - var(--reveal-lift, 1)) * 16px));
+  will-change: opacity, transform;
+}
+
+/* Printing is the one place where a scroll-linked reveal has no meaning - the
+   page is laid out whole, with no viewport to scroll - so every section is shown
+   at full strength. */
+@media print {
+  .landing--armed .landing__reveal-inner {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Leaving for the app: the landing page and its navigation fade away under the
+   arrival overlay. Opacity only - a transform here would make the page a
+   containing block for its own fixed header and could move the navigation
+   before it has finished fading. */
+.landing.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 260ms ease;
+}
+
+/* --- Section 1: eQalb ----------------------------------------------------- */
+
+.landing__hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.landing__label {
+  margin: 0;
+  color: var(--landing-muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.landing__title {
+  margin: 1.5rem 0 0;
+  color: var(--landing-text);
+  font-family: var(--landing-serif);
+  font-size: clamp(3.6rem, 15vw, 11rem);
+  font-weight: 400;
+  line-height: 0.92;
+  letter-spacing: -0.015em;
+}
+
+.landing__lede {
+  max-width: 32rem;
+  margin: 1.6rem 0 0;
+  font-size: clamp(1rem, 1.5vw, 1.16rem);
+  line-height: 1.55;
+}
+
+.landing__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 2.3rem;
+  padding: 0.8rem 1.55rem;
+  border-radius: 999px;
+  background: var(--landing-accent);
+  box-shadow: var(--landing-cta-shadow);
+  color: var(--landing-on-accent);
+  font-size: 0.98rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 160ms ease;
+}
+
+.landing__cta:hover {
+  background: var(--landing-accent-strong);
+  color: var(--landing-on-accent);
+}
+
+/* The invitation onwards: a link to the next panel, so it works with the
+   keyboard and reads as text rather than as decoration. */
+.landing__scroll {
+  position: absolute;
+  bottom: 1.9rem;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  color: var(--landing-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: color 140ms ease;
+}
+
+.landing__scroll:hover {
+  color: var(--landing-text);
+}
+
+.landing__scroll-arrow {
+  display: inline-block;
+  font-size: 0.85rem;
+  animation: landing-scroll-hint 2.8s ease-in-out infinite;
+}
+
+@keyframes landing-scroll-hint {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(0.28rem);
+  }
+}
+
+/* --- Sections 2 and 3 ------------------------------------------------------ */
+
+.landing__heading {
+  max-width: 34rem;
+  /* Centred as a box, not only as text. The container is wider than this measure,
+     and with `margin: 0` the heading box sat left of the container's centre - so
+     the two composed lines below, which are blocks and therefore fill this box,
+     were offset from the label and paragraphs around them. `auto` puts the box on
+     the same axis as everything else in the section. */
+  margin: 1.5rem auto 0;
+  color: var(--landing-text);
+  font-family: var(--landing-serif);
+  font-size: clamp(1.85rem, 4vw, 3rem);
+  font-weight: 400;
+  line-height: 1.14;
+  letter-spacing: -0.01em;
+}
+
+/* The heading is two deliberate lines rather than one run of text that happens
+   to wrap: each part is its own block, so "Practical learning." and "Fewer
+   barriers." are composed rather than left to the width of the column. A block
+   can still wrap inside itself, so an unusually narrow window or a large
+   browser font size reflows the line instead of clipping it. */
+.landing__heading-line {
+  display: block;
+}
+
+.landing__body {
+  max-width: 40rem;
+  margin: 1.5rem 0 0;
+  font-size: clamp(0.98rem, 1.2vw, 1.08rem);
+  line-height: 1.7;
+}
+
+.landing__body + .landing__body {
+  margin-top: 0.9rem;
+}
+
+/* The About panel is asymmetric: the label, the name and the portrait hold the
+   narrow column on a wide screen, and the prose and the contact links take the
+   wider one. The two columns are one group, so the grid carries a measure of its
+   own rather than the full panel width - with `margin: 0 auto` inherited from
+   `landing__inner` that centres the pair in the section, the way the hero is
+   centred. Below 900px it is one column and the group stacks: the measure is
+   wider than the panel, so the stack simply fills it. */
+.landing__about {
+  display: grid;
+  gap: 2.5rem;
+  max-width: 56rem;
+}
+
+.landing__name {
+  margin: 1.2rem 0 0;
+  color: var(--landing-text);
+  font-family: var(--landing-serif);
+  font-size: clamp(2rem, 4.4vw, 3rem);
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+}
+
+/* The portrait: a near-square cut-out (640 x 591, with a transparent
+   background) under the name, beside the prose. It carries no box of its own -
+   no border, no background, no frame, no shadow - so it sits directly on the
+   landing page's background in either theme, and it takes its width from the
+   column, stopping a little short of it so it reads as a portrait rather than a
+   banner. The intrinsic size lives in the element's own width and height
+   attributes, so the browser reserves the box from the markup alone and neither
+   the name above it nor the prose beside it moves as the file arrives; the panel
+   is one column below 900px, where the image simply stacks above the prose. */
+.landing__portrait {
+  display: block;
+  width: 100%;
+  max-width: 18rem;
+  height: auto;
+  margin: 1.75rem 0 0;
+}
+
+.landing__contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.8rem;
+  margin: 2.2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing__contact-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding-bottom: 0.15rem;
+  border-bottom: 1px solid var(--landing-divider-strong);
+  color: var(--landing-accent);
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease;
+}
+
+.landing__contact-link:hover {
+  border-color: var(--landing-accent);
+  color: var(--landing-accent-strong);
+}
+
+/* The page's own footer, at the end of the last panel so it is part of the
+   section's screen rather than a strip the reader has to scroll past. It shares
+   the About group's measure, so the rule above it lines up with the content it
+   closes instead of running wider than it. */
+.landing__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1.4rem;
+  width: 100%;
+  max-width: 56rem;
+  margin: 3rem auto 0;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--landing-divider);
+  color: var(--landing-muted);
+  font-size: 0.82rem;
+}
+
+.landing__footer-note {
+  margin: 0;
+}
+
+.landing__footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing__footer-link {
+  border-bottom: 1px solid transparent;
+  color: var(--landing-muted);
+  text-decoration: none;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease;
+}
+
+.landing__footer-link:hover {
+  border-bottom-color: var(--landing-divider-strong);
+  color: var(--landing-text);
+}
+
+/* --- Responsive ------------------------------------------------------------ */
+
+@media (min-width: 900px) {
+  .landing__about {
+    grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
+    gap: 3.5rem;
+    align-items: start;
+  }
+}
+
+@media (max-width: 700px) {
+  .landing__panel {
+    padding: 6rem 1.25rem 4rem;
+  }
+
+  .landing__nav {
+    gap: 0.3rem 0.6rem;
+    padding: 0.3rem 0.4rem 0.3rem 0.7rem;
+  }
+
+  /* The wordmark is the first thing to go when the panel has to stay compact:
+     the three section links and the theme control all have to remain. */
+  .landing__mark {
+    display: none;
+  }
+
+  .landing__link {
+    padding: 0.32rem 0.55rem;
+    font-size: 0.8rem;
+  }
+
+  .landing__scroll {
+    bottom: 1.4rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Every section is simply there: the reveal is overridden outright rather than
+     shortened, so nothing depends on a scroll position or a frame to become
+     readable. The view writes `--reveal` as usual; this rule simply ignores it. */
+  .landing--armed .landing__reveal-inner {
+    opacity: 1;
+    transform: none;
+    will-change: auto;
+  }
+
+  .landing__scroll-arrow {
+    animation: none;
+  }
+}

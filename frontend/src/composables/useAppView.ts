@@ -8,7 +8,10 @@
  * pages never changes an input or a result.
  *
  * Addresses:
- *   /       the OpenHealth landing page
+ *   /       the OpenHealth landing page - one scrolling page whose three
+ *           panels (eQalb, OpenHealth, About me) are reached through its own
+ *           navigation; the landing page carries its own theme, separate from
+ *           the app's (see useLandingTheme.ts)
  *   /app    eQalb - its own Home screen, the tutorial, the project description,
  *           the download view and the analysis dashboard all live here, so one
  *           Back or Forward step moves between the public pages instead of
@@ -49,7 +52,7 @@ const PAGE_PATHS: Record<AppPage, string> = {
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  [LANDING_PATH]: 'OpenHealth — accessible, practical health learning',
+  [LANDING_PATH]: 'eQalb — an interactive introduction to health-economic modelling',
   [APP_PATH]: 'eQalb — illustrative HTA model',
   [ABOUT_PATH]: 'About OpenHealth',
 }

@@ -50,7 +50,14 @@ VS Code tasks are provided for both processes.
 ## Layout
 
 ```
-index.html              # mounts the app; applies the stored theme before first paint
+index.html              # mounts the app; applies the stored theme before first paint (the app's
+                        # eqalb.theme, and the landing page's own openhealth.landing.theme on the
+                        # landing addresses), and declares the browser-tab icons
+public/
+  favicon.ico           # the OpenHealth mark at 16, 32 and 48 px, generated from
+                        # src/assets/onlylogo.png
+  favicon-16x16.png     # the same mark at 16 and 32 px, for the tab icon and its density variant
+  favicon-32x32.png
 src/
   main.ts, App.vue      # shell: the public OpenHealth pages, then the eQalb app (Home button, status, theme, assumptions, tabs)
   api/
@@ -58,14 +65,23 @@ src/
     client.ts           # typed fetch client; no defaults, no model arithmetic
   composables/
     useModel.ts         # shared store: inputs, results, busy/error state, runs
-    useTheme.ts         # light/dark state and the chart palette
+    useTheme.ts         # the app's light/dark state and the chart palette (eqalb.theme / data-theme)
+    useLandingTheme.ts  # the landing page's own light/dark choice (openhealth.landing.theme /
+                        # data-landing-theme), alive only while that page is mounted
+    useAppLaunch.ts     # the landing page's transition into the app: the sequence, its timings and
+                        # its safety clears; the look is in landing.css/styles.css
     useEcharts.ts       # ECharts instance lifecycle for a Vue ref
     useAppView.ts       # which page is shown, plus the /, /app and /about addresses, the history entries and the document title
     useDisclosure.ts    # Escape closes the disclosure the focus is inside, app-wide
     useAppBusy.ts       # the app-wide busy state the loading indicator shows: ref-counted start/finish, label, isActive
     useTutorialSession.ts  # Guided Tutorial: Part 1's inputs/results/step and Part 2's case, price, coverage, readiness answers and section; never touches useModel
   views/
-    OpenHealthHomeView.vue      # public landing page at / : what OpenHealth is, eQalb as its first flagship tool, what is planned, how to collaborate
+    OpenHealthHomeView.vue      # the landing page at / : one scrolling page in three panels - eQalb
+                                # (the hero, and "Open the app"), OpenHealth, About me (with the
+                                # portrait) - under a floating section navigation, with the landing
+                                # page's own theme, a scroll-spy and the per-panel entrance reveal; it
+                                # hands over to the app through LaunchTransition rather than swapping
+                                # the page straight away
     AboutView.vue               # About OpenHealth at /about : the founder, the motivation, and how to get involved
     HomeView.vue                # eQalb's own start screen at /app : eQalb wordmark with ECG pulse, credit, actions, links
     TutorialView.vue            # Guided Tutorial: Part 1 (four steps, completion) and the Part 2 shell
@@ -78,6 +94,8 @@ src/
     tabExports.ts       # per-tab CSV builders (base case, OWSA, KM summary)
   components/
     AppLoadingIndicator.vue # the only loader: a thin teal top bar after 350 ms and a small eQalb/ECG card after 2.5 s, its trace pulse crossing the line once per cycle
+    LaunchTransition.vue    # the landing page's arrival into the app: a still copy of the Home screen's
+                            # eQalb composition, wiped in behind a passing band of light (decoration only)
     AssumptionsForm.vue # the 16 model inputs + the reference WTP threshold
     BaseCasePanel.vue   # base case: metrics, deterministic plane, decompositions on demand
     CostEffectivenessPanel.vue  # PSA, plane, CEAC, threshold table
@@ -95,6 +113,18 @@ src/
     DataTable.vue, MetricCard.vue, InfoTip.vue, StaleNotice.vue, table.ts
   format.ts             # EUR/QALY/percent formatting; `null` becomes a dash
   styles.css            # tokens reproducing the Shiny app's teal palette
+  landing.css           # the landing page only: its own palette, typography, panels and motion, all
+                        # scoped under .landing and html[data-landing-theme]
+  assets/
+    mahmood-portrait.png # the About me portrait the app ships (640 x 591, 346 kB), derived from the
+                         # author's original; keeps the cut-out's alpha, imported so the build
+                         # fingerprints it, rendered at <= 288px and lazy-loaded
+    mahmood.png          # the author's original (1305 x 1206, 962 kB), kept as the source of any
+                         # future re-export; not referenced by the build
+    onlylogo.png         # the OpenHealth mark (1024 x 1024 RGBA, genuinely transparent - the
+                         # corners and 55% of the pixels are fully see-through, with no white
+                         # background), the source of the tab icons in public/; not referenced by
+                         # the build, so the master stays untouched
 ```
 
 ## Conventions that matter
@@ -197,6 +227,134 @@ src/
   set with `aria-label` rather than a
   `<caption>`, so no table gains a visible extra row and the responsive
   `.table-scroll` wrapper is unchanged.
+- **The landing page is a page of its own.** `/` is one scrolling page whose three
+  panels (eQalb, then OpenHealth, then About me) are reached through its floating
+  navigation, which smooth-scrolls, tracks the visible panel with an
+  `IntersectionObserver` and marks it with `aria-current`. The page keeps its own
+  light/dark choice in [`landing.css`](./src/landing.css) and
+  [`useLandingTheme.ts`](./src/composables/useLandingTheme.ts), which publish it
+  as `<html data-landing-theme>` and take that attribute away when the page
+  unmounts: the app's `eqalb.theme` and `<html data-theme>` are neither read nor
+  written there, and no landing rule outlives the page. Scrolling is the
+  browser's own and nothing is snapped, trapped or hijacked — scroll snapping was
+  removed because it pulled small wheel notches back to a panel boundary and made
+  an intermediate position impossible to hold — and the one action that matters,
+  "Open the app", is the
+  existing `/app` address.
+- **The landing page's three sections are centred, and the two below the hero
+  fade with the scroll.** Each panel's content is a centred block —
+  the hero centres its own text, the OpenHealth column takes a `40rem` measure
+  with its text centred to match the hero, and the About group a `56rem` measure
+  with its prose left-aligned, since a paragraph reads better that way — and the
+  page footer shares the About measure so the rule above it lines up with the
+  content it closes. The OpenHealth heading is two deliberate lines
+  (`.landing__heading-line` blocks), not one run left to wrap.
+- **The reveal is linked to the scroll, not to a timer, and it fades both ways.**
+  The view writes a `--reveal` value from 0 to 1 onto each group's inner element,
+  read from the wrapper's own untransformed bounds: the entry looks at its top
+  edge, transparent at 90% of the viewport and fully opaque by 55%, and the exit
+  looks at its bottom edge, still opaque until only the top 22% of the screen holds
+  it and fully transparent once that edge reaches the top. Opacity is the lower of
+  the two, so a group fades in as it arrives, holds at full strength through a wide
+  central band, and fades out as it leaves — and the whole thing reverses when the
+  reader scrolls back up and repeats on every pass. Nothing latches: there is no
+  "seen it once" state, so a group that has been read is faded again on the way
+  back. Using the bottom edge for the exit is what keeps long content legible — a
+  tall block stays fully readable all the way through instead of being faded while
+  it is still being read — and a group that cannot reach the exit range at all
+  (the last section, which the document ends beneath) simply stays fully visible,
+  with no blank space added to force a fade. The stylesheet has no duration and no
+  easing on purpose, so the fade is a function of where the content is: stopping
+  halfway holds the intermediate opacity and continuing from there finishes it.
+  Two elements do two jobs — `.landing__reveal` is the wrapper the geometry is
+  measured from and is never transformed, `.landing__reveal-inner` is what is
+  painted, so its own transform cannot feed back into the measurement. `--reveal`
+  drives opacity and a separate `--reveal-lift` drives the 16px rise, which belongs
+  to the entry alone so content does not drift downwards as it leaves. Work is
+  batched into one `requestAnimationFrame` from a passive `scroll` and `resize`
+  listener (both removed, with any pending frame, on unmount) and the position is
+  measured fresh each paint so a reflow cannot leave it stale. Focus is the one
+  exception to "the scroll decides": a group holding keyboard focus is painted
+  fully in the same turn, because a link must never be focused while it is
+  invisible, and the scroll value comes straight back when focus leaves. The hero is
+  deliberately outside all of this: it is the doorway to the app, so it is fully
+  visible from the first paint and its button is never behind a scroll.
+- **The reveal has a diagnostic, and it is development-only.** Opening
+  [`/`](./src/views/OpenHealthHomeView.vue) with `?debugReveal=1` on the dev
+  server adds a fixed panel reporting the section in view, the reduced-motion
+  preference, the element that actually scrolls and the offset within it, whether
+  the reveal is armed, and then a row per group giving the wrapper's top edge, its
+  top and bottom edges as fractions of the viewport height, the entry and exit
+  progress, and the computed opacity of the element that is actually painted. It
+  lives in
+  [`RevealDiagnostic.vue`](./src/components/RevealDiagnostic.vue), reached through
+  a dynamic import behind `import.meta.env.DEV`, so a production build emits no
+  chunk for it: neither its markup, nor any of its wording, nor its rules reach a
+  deployed bundle. An inline `v-if` on the same flag would not have achieved that —
+  the compiled template and its label strings would have stayed in the bundle,
+  permanently false but present. The panel is `aria-label`led, is not focusable and
+  adds nothing to the page otherwise. It exists because "the fade is invisible" and
+  "the fade is right there" are claims about a machine that cannot always be
+  inspected directly, and the panel lets the two be told apart from a screenshot.
+- **Nothing can leave a group hidden.** The scroll-driven state is scoped to a
+  `landing--armed` class the view sets only when it can drive the reveal, the
+  `var(--reveal, 1)` fallback in the stylesheet is the visible state, a failure
+  while setting up shows everything, focus inside a group overrides the scroll,
+  and `prefers-reduced-motion` and print both override the rule outright.
+  **Scroll snapping is gone**: the page used
+  `scroll-snap-type: y proximity`, and a small wheel notch near a panel boundary
+  was pulled back to the boundary — measured — so the reader could not hold an
+  intermediate position and the fade had no scroll distance to travel across.
+- **The landing page hands over to the app with one transition, not a second
+  animation.** "Open the app" is still the real link to `/app`, so a modified or
+  middle click opens it in a new tab as before; a plain left click plays the
+  crossing instead: the landing page fades, an overlay in the app's own palette
+  wipes in a still copy of the Home screen's eQalb composition behind a band of
+  light, the light falls into its looping state, and the overlay dissolves as the
+  app's existing `home-rise` entrance fades the interface in. The sequence is in
+  [`useAppLaunch.ts`](./src/composables/useAppLaunch.ts) (timings in one place,
+  about 1.2s end to end) and the look is the "Landing page to app transition"
+  section of [`styles.css`](./src/styles.css). Both fades are CSS animations
+  rather than `<Transition>` classes, so a delayed frame shows the crossing
+  further along instead of not at all; the overlay is `aria-hidden`, holds
+  nothing focusable and is `pointer-events: none`, so the app is live underneath
+  it from the moment it is swapped in; and reduced motion drops the sweep and the
+  wipe for a quick fade.
+- **The landing page carries no disclaimer.** The simulated-data and educational
+  wording lives inside the app, where the results are, so `/` does not repeat it.
+- **The About me portrait** ships as
+  [`src/assets/mahmood-portrait.png`](./src/assets/mahmood-portrait.png) — a
+  640 × 591 derivative of the author's [`mahmood.png`](./src/assets/mahmood.png)
+  (1305 × 1206), imported by the landing view so the build fingerprints it and a
+  missing file fails the build. It has to stay a PNG: the original is a cut-out
+  with a transparent background (about 60% of its pixels), which a JPEG would
+  flatten, and Windows' image encoders offer no WebP to convert it to. It sits in
+  the About panel's narrow column under the name, carrying no box of its own — no
+  border, background, frame or shadow — so the cut-out sits directly on the
+  landing page's own background in either theme; its intrinsic `width`/`height`
+  attributes reserve the box, so nothing shifts as it loads, and the panel stacks
+  it above the prose below 900px. The landing page's reduced-motion behaviour —
+  including the portrait's panel, which shows its content immediately rather than
+  fading it in — was verified by emulating the setting over CDP, not by reading
+  the stylesheet.
+
+- **The browser-tab icon is generated from the OpenHealth mark, not drawn.**
+  [`src/assets/onlylogo.png`](./src/assets/onlylogo.png) (1024 × 1024, RGBA) is a
+  circular mark on a genuinely transparent background — 55% of its pixels are
+  fully transparent and all four corners have alpha 0 — so there was no white
+  background to remove and none was touched. The files in `public/` are generated
+  from it by cropping the transparent surround to the mark's bounding box plus a
+  3% margin (the mark then fills 94% of the square) and box-averaging down with
+  **premultiplied alpha**, which is what keeps a cut-out's edges from picking up a
+  dark or light fringe. The source is kept unmodified and is not part of the build.
+  [`index.html`](./index.html) declares the `.ico` first with
+  `sizes="16x16 32x32 48x48"` — the sizes it actually contains, rather than `any`,
+  which would claim a scalable icon it is not — and then the two PNGs, and no
+  longer declares an SVG icon: the stock Vite
+  lightning-bolt `favicon.svg` was deleted along with its declaration, so nothing
+  can take precedence over the mark. A single `index.html` serves `/`, `/app` and
+  `/about`, so all three addresses carry the same icon. There is no web manifest
+  and no PWA setup.
 
 ## Deployment
 
@@ -216,8 +374,12 @@ The deployment server and the GitHub `production` environment are configured,
 the operator has confirmed the environment's required-reviewer/approval rule, and
 one end-to-end automated deployment has succeeded. Neither the automatic rollback
 after a failed validation nor the manual rollback has been exercised yet, so both
-remain untested. That successful release was built from `main`: the OpenHealth
-public shell on this branch is not part of a deployed release.
+remain untested. That successful release was built from `main`, and the workflow
+only deploys on a push to `main` or a manual dispatch: the landing page on this
+branch is **not** part of any deployed release, so `https://openhealth.ngo`
+serves a build from before this work and cannot show the landing page, its
+palette, its portrait or its scroll reveal. Review it on the dev server
+(`http://127.0.0.1:5173`) until this branch is merged and deployed.
 
 ## Known limitations
 

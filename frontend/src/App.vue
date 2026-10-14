@@ -39,6 +39,7 @@ import TutorialView from './views/TutorialView.vue'
 import OpenHealthHomeView from './views/OpenHealthHomeView.vue'
 import AboutView from './views/AboutView.vue'
 import AppLoadingIndicator from './components/AppLoadingIndicator.vue'
+import LaunchTransition from './components/LaunchTransition.vue'
 
 type TabId =
   | 'baseCase'
@@ -230,7 +231,13 @@ watch(page, (next) => {
 </script>
 
 <template>
-  <div class="app" :class="{ 'app--solo': page !== 'dashboard' }">
+  <div
+    class="app"
+    :class="{
+      'app--solo': page !== 'dashboard' && page !== 'openhealth',
+      'app--landing': page === 'openhealth',
+    }"
+  >
     <template v-if="page === 'dashboard'">
       <header class="app__header">
         <div class="app__brand">
@@ -361,6 +368,11 @@ watch(page, (next) => {
     <!-- One app-wide loading indicator, above every page. It shows itself only
          when an operation outlives its grace period; see the component. -->
     <AppLoadingIndicator />
+
+    <!-- The landing page's arrival into the app, above everything while it runs.
+         It is decoration only - aria-hidden, nothing focusable, no pointer
+         events - so the app it is dissolving over is live underneath it. -->
+    <LaunchTransition />
 
     <!-- The once-per-session welcome question. It reuses the app's existing
          modal pattern, and closing it never blocks the app: the page underneath

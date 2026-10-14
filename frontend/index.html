@@ -3,18 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <meta
       name="description"
-      content="OpenHealth is an independent, education-first project making healthcare learning easier to reach. It hosts eQalb, an illustrative health technology assessment teaching simulator."
+      content="eQalb is an interactive introduction to health-economic modelling from OpenHealth: an illustrative teaching tool whose inputs and outputs are simulated, not clinical evidence."
     />
-    <title>OpenHealth — accessible, practical health learning</title>
+    <title>eQalb — an interactive introduction to health-economic modelling</title>
     <script>
       // Applied before the first paint so a stored dark theme does not flash light.
       try {
         var stored = localStorage.getItem('eqalb.theme')
         var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
         document.documentElement.dataset.theme = stored || (prefersDark ? 'dark' : 'light')
+
+        // The landing page keeps its own theme, under its own key, and only "/app"
+        // (the whole eQalb application) and "/about" are not landing addresses.
+        // This attribute is what landing.css keys the landing palette and its page
+        // rules on; useLandingTheme.ts owns it from mount on, and removes it again
+        // when that page unmounts, so the app never sees it.
+        var path = window.location.pathname.replace(/\/+$/, '')
+        if (path !== '/app' && path !== '/about') {
+          var landing = localStorage.getItem('openhealth.landing.theme')
+          document.documentElement.dataset.landingTheme = landing || (prefersDark ? 'dark' : 'light')
+        }
       } catch (error) {
         document.documentElement.dataset.theme = 'light'
       }

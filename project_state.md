@@ -372,15 +372,70 @@ explicitly documented otherwise.
   `./frontend/README.md` for the interface.
 - OpenHealth public shell: three addresses are published on top of the same
   dependency-free view store (`frontend/src/composables/useAppView.ts`). `/` is
-  the OpenHealth landing page
-  (`frontend/src/views/OpenHealthHomeView.vue`), `/about` is About OpenHealth
+  the landing page
+  (`frontend/src/views/OpenHealthHomeView.vue`): one scrolling page in three
+  panels — eQalb first (the hero, with the single action "Open the app"), then
+  OpenHealth and About me — beneath a compact floating navigation panel that
+  smooth-scrolls, tracks the visible panel with an `IntersectionObserver` and
+  marks it with `aria-current`. The two sections below the hero fade with the
+  scroll rather than on a timer: the view writes a `--reveal` value from 0 to 1 onto
+  each section's inner element, from the section wrapper's own untransformed bounds
+  — the entry reads its top edge (0 at 90% of the viewport, 1 at 55%, linear
+  between, with a 16px lift driven separately by `--reveal-lift`) and the exit
+  reads its bottom edge (still 1 until only the top 22% of the screen holds it, 0
+  at the top), with opacity the lower of the two. So a group fades in, holds
+  through a wide central band, and fades out as it leaves; the effect reverses when
+  the reader scrolls back up and repeats on every pass, and nothing latches.
+  Reading the bottom edge for the exit is what keeps a tall block legible, and a
+  group that cannot reach the exit range — the last one, which the document ends
+  beneath — simply stays visible. Stopping halfway holds the intermediate opacity
+  and continuing completes it. The wrapper is never transformed and the inner
+  element is what is painted, so the measurement cannot be skewed by the animation;
+  the work is batched into one `requestAnimationFrame` from passive `scroll` and
+  `resize` listeners; focus inside a group paints it fully in the same turn and the
+  scroll value returns when focus leaves; and the hero is outside the mechanism
+  entirely, so it and its
+  button are visible from the first paint. Each panel's content is a centred block
+  — the hero centres its own text, the OpenHealth column takes a 40rem measure with
+  its text centred too and its heading composed as two deliberate lines, and the
+  About group a 56rem measure with its prose left-aligned — with the page footer
+  sharing the About measure. The hidden state of the reveal is scoped to a
+  `landing--armed` class the view sets only when it can drive the reveal, so every
+  section is readable outright in a browser without the features, or if the setup
+  fails; focus inside a group overrides the scroll so a link is never focused while
+  invisible;
+  `prefers-reduced-motion` and print override it outright; and scroll snapping was
+  removed because it pulled small wheel notches back to a panel boundary and so
+  made an intermediate position impossible to hold. The page has its
+  own light/dark choice
+  (`frontend/src/composables/useLandingTheme.ts`, stored as
+  `openhealth.landing.theme` and published as `<html data-landing-theme>`, set
+  before the first paint on the landing addresses and removed when the page
+  unmounts), so it shares neither the app's teal palette nor `eqalb.theme`; all
+  of its styles are namespaced in `frontend/src/landing.css`, and it carries no
+  simulated-data notice of its own (that wording lives inside the app). The one
+  action, "Open the app", is still the real `/app` link — modified and middle
+  clicks open it in a new tab — and a plain left click plays the crossing
+  instead: `frontend/src/composables/useAppLaunch.ts` holds the sequence
+  (about 1.2s: reveal pass, then the light's looping state, then the hand-over)
+  and `frontend/src/components/LaunchTransition.vue` shows a still copy of the
+  Home screen's eQalb composition wiped in behind a passing band of light, both
+  fades being CSS animations so a delayed frame never leaves the overlay hidden
+  or stuck. `/about` is About OpenHealth
   (`frontend/src/views/AboutView.vue`), and `/app` is the whole eQalb application,
   so its Home screen, tutorial, project description, download view and dashboard
   share one address and keep their existing behaviour; an unrecognised path opens
   the landing page and is rewritten to `/`. Links between the public pages carry a
   real `href` and are handled by the store unless the click is modified, so
   open-in-new-tab and copy-link still work; the external LinkedIn and GitHub links
-  keep `target="_blank"` and `rel="noopener noreferrer"`. No router was introduced
+  keep `target="_blank"` and `rel="noopener noreferrer"`. The browser-tab icon is
+  the OpenHealth mark, generated from `frontend/src/assets/onlylogo.png` (1024 x
+  1024 RGBA, genuinely transparent) into `frontend/public/favicon.ico` (16, 32 and
+  48 px), `favicon-16x16.png` and `favicon-32x32.png` by cropping to the mark's
+  bounding box plus a 3% margin and box-averaging down with premultiplied alpha;
+  `frontend/index.html` declares them and no longer declares an SVG icon, the stock
+  Vite `favicon.svg` having been deleted, and the single `index.html` means `/`,
+  `/app` and `/about` all carry it. No router was introduced
   and no dependency was added.
 - DHT readiness logic extracted into `eqalb_readiness.R`, sourced by `app.R` and
   by `api/plumber.R`, so the Shiny DHT Readiness tab, Tutorial Part 1 (Step 3),
@@ -1536,9 +1591,635 @@ explicitly documented otherwise.
   rollback: neither the automatic rollback after a failed validation nor the
   manual rollback has been exercised. The successful release was built from
   `main`, so the OpenHealth public shell on `feature/openhealth-landing` is not
-  part of a deployed release.
+  part of a deployed release. The workflow's only automatic trigger is a push to
+  `main`, and this work is still uncommitted on that branch, so
+  `https://openhealth.ngo` necessarily serves a bundle from before the landing
+  page existed: its JS and CSS are `index-DHn5KSsW.js` / `index-DoeXKmoo.css`
+  (title "OpenHealth — accessible, practical health learning") and neither
+  contains `--reveal`, `landing__reveal-inner`, `landing--armed` or
+  `mahmood-portrait`, while the local build ships
+  `index-Di0v34KJ.js` / `index-BlmOXbwG.css` with all four. The live site
+  therefore cannot be used to review the landing page at all; use the dev server
+  on `http://127.0.0.1:5173` until this branch is merged and deployed.
+- The redesigned landing page is a first draft for the author's review, and its
+  constraints are honest ones. Its navigation is the three section links plus the
+  theme control: the OpenHealth wordmark is hidden below 700px so the floating
+  panel stays compact. The About me portrait ships as a 640 x 591 PNG (346 kB)
+  derived from the author's original, which is kept beside it as
+  `frontend/src/assets/mahmood.png` (1305 x 1206, 962 kB) as the source of any
+  future re-export; the shipped file has to stay a PNG because the original is a
+  cut-out with a transparent background and Windows' image encoders offer no WebP
+  to convert it to, so 346 kB is the floor reachable without a new dependency. The
+  serif is a local font
+  stack (`Iowan Old Style`, `Palatino Linotype`, Georgia) rather than a webfont,
+  so the exact face depends on the visitor's machine, and the copy, the contact
+  details and the `/app` route are decisions for the author to approve. The About
+  page at `/about` still uses the app's teal theme while the landing page uses its
+  own palette: that is deliberate (only the landing page carries the landing
+  identity), but it is a visual jump worth settling one way or the other, and
+  `AboutView.vue` still calls the founder "a health economist" where the landing
+  page now says "a health economics graduate" — the landing page is what was
+  asked for, so the About page was left alone and the wording is the author's to
+  settle. The landing page reaches the application only through the one "Open the
+  app" link, so it makes no API request of its own. The crossing into the app is
+  decoration that owns no navigation: the page is mounted and interactive as soon
+  as the sequence hands it over, and the overlay can never take a click, hold the
+  keyboard or outlive its own timers. Two consequences of the scroll fade being
+  reversible are worth stating rather than discovering later: the About Me group
+  never fades out, because the document ends beneath it and its bottom edge never
+  rises to the exit threshold — that is the specified behaviour, and forcing a fade
+  would mean adding blank scrolling space, which was ruled out; and because the
+  effect is now a function of position in both directions, a reader who scrolls
+  back up sees content fade out above them, which is the intended reversal rather
+  than a lost state. How the fade feels at speed is a judgement about the reveal
+  range rather than a defect, and the numbers that set it (`ENTER_FROM`,
+  `ENTER_DONE`, `EXIT_START`, `EXIT_DONE`) are named constants at the top of
+  `frontend/src/views/OpenHealthHomeView.vue` for exactly that reason. The tab icon
+  is raster-only — `.ico` at 16,
+  32 and 48 px plus 16 and 32 px PNGs, generated from `onlylogo.png`; there is no
+  scalable SVG icon, because the mark is a raster cut-out and nothing in the
+  project can trace one, so a context that needs a vector or a much larger icon
+  would show the mark scaled from those bitmaps. The source PNG's own faint halo
+  (pixels at alpha 1 or 2 of 255 carrying saturated leftover colour) survives into
+  the icons at the same opacity; it is imperceptible and was left rather than
+  stripped, since removing pixels is not the generator's business.
 
 ## Current task
+
+Completed: the landing page's scroll fade is now reversible and repeats, instead of
+revealing each group once and latching it visible. Frontend only, left uncommitted
+on `feature/openhealth-landing`. The alignment, copy, portrait, palette, themes,
+favicon, navigation and app-launch transition are unchanged.
+
+`frontend/src/views/OpenHealthHomeView.vue` no longer has a `settled` set or a
+`settleTarget()`: nothing latches, so the value written each paint is purely a
+function of where the content is, and it fades in and out on every pass in both
+directions. `revealProgress()` is replaced by `enterProgress()` and
+`exitProgress()` plus `revealFor()`, which keeps two separate ranges so the
+fade-out cannot steal reading time from long content:
+
+- **Entry** is read from the wrapper's top edge: transparent at 90% of the
+  viewport height, fully opaque at 55%, linear between (previously the single
+  range ended at 47.5%).
+- **Exit** is read from the wrapper's **bottom** edge: still 1 until only the top
+  22% of the screen still holds the group, 0 once that edge reaches the top. This
+  is the part that protects legibility - a centre-point or top-edge formula would
+  start fading a tall block while the reader was still in it - and a group whose
+  bottom edge never gets that high, which is the last section because the document
+  ends beneath it, stays at 1 with no blank space added to force a fade.
+- Opacity is `min(entry, exit)`, so the two gradual ends meet in a wide
+  fully-visible band.
+
+The 16px lift moved to its own `--reveal-lift` property, written from the entry
+only: tying it to the opacity would have drifted the content downwards again while
+it was leaving. `frontend/src/landing.css` reads
+`translateY(calc((1 - var(--reveal-lift, 1)) * 16px))`, so the `var(..., 1)`
+fallback is still the visible, untransformed state and nothing depends on a frame
+to become readable.
+
+Focus is the one thing that outranks the scroll, and it is painted in the same
+turn rather than through a frame: `paintFocusChange()` cancels any pending frame
+and repaints, `paintReveal()` treats a group as focused when it matches
+`:focus-within` **or** when it contains `document.activeElement`, and `focusout` is
+listened for alongside `focusin` so the scroll value comes back the moment focus
+leaves. That last part was found by testing rather than assumed: with the
+scheduled repaint alone, blurring a contact link left the group at the focused
+value because the queued frame had not run, so a one-off event like a focus change
+is now painted synchronously.
+
+The landing page's reveal diagnostic is now its own component,
+`frontend/src/components/RevealDiagnostic.vue`, reached from the view through a
+dynamic import behind `import.meta.env.DEV`. It used to be markup inline in the
+view behind a `v-if`; the flags that drove it were compiled away, so it could never
+render in production, but the compiled template - every label, heading and column
+name as a string - stayed in the bundle, permanently false. Moving it out means a
+production build emits no chunk for it at all, so it is now genuinely absent rather
+than merely unreachable: the built bundle carries no `Reveal diagnostic`,
+`landing-debug`, `debugReveal`, `debugState`, `Wrapper top`, `bottom / vh`,
+`Reveal armed` or `Scrolling element`, the CSS shrank by about 1 kB and the JS by
+about 1.6 kB, and the build emits only one JS chunk, one CSS file and the portrait.
+Its `?debugReveal=1` panel was also brought in line with the reversible fade, since
+its old "Latched" column would now be a lie: it reports wrapper top, top/vh,
+bottom/vh, Entry, Exit and Opacity, and its hint explains that opacity is the lower
+of the two ends and that focus holds a group at 1. The animation itself was not
+touched - the diagnostic only ever read from it.
+
+Completed: the browser-tab icon is now the OpenHealth mark. Frontend only, left
+uncommitted on `feature/openhealth-landing`.
+
+The source is `frontend/src/assets/onlylogo.png`, identified by inspection as the
+only newly added file in that directory (1024 x 1024, `Format32bppArgb`) rather than
+either portrait. It has **genuine transparency, not a white background**: 55.45% of
+its pixels are fully transparent, 38.51% fully opaque and 6.04% partially so, and
+all four corners are `A=0 R=0 G=0 B=0`; its centre is `#D5A77D` and its commonest
+opaque tones are `#D0B080`, `#C09870`, `#D8B888`, `#B89068` and `#B87050`, so the
+warm sand-and-clay design is its own. The file is unmodified, checked by SHA-256
+before and after generation (`A0E3025A...36CFD9`).
+
+`frontend/public/favicon-16x16.png`, `favicon-32x32.png` and `favicon.ico`
+(16, 32 and 48 px, 32 bpp) were generated with `System.Drawing` through a compiled
+throwaway C# helper - no dependency, no new tooling. The mark's content bounding
+box is 889 x 888 px at (66, 67) inside 1024 px, so each icon is cropped to that box
+plus a 3% margin (a 943 px square from (38, 39)), leaving the mark filling 94.3% of
+the square, and then box-averaged down. The averaging is done with **premultiplied
+alpha**: colours and coverage are accumulated as `colour x alpha` and the colour is
+divided back out at the end, which is what stops a cut-out's edges taking a dark or
+light fringe. A first pass saturated every painted pixel to white by scaling RGB by
+255 and then multiplying by 255 a second time; the regenerated files carry the real
+palette (89 distinct 5-bit colours at 16 px, 154 at 32 px; clay centre tones
+`#AC6D4E` and `#B07150`; brightest fully-visible pixel `#DBC091`/`#DEC399`, the
+sand tone rather than white).
+
+`frontend/index.html` replaced its single
+`<link rel="icon" type="image/svg+xml" href="/favicon.svg">` with the ICO first
+(`sizes="16x16 32x32 48x48"`, the sizes it actually holds rather than `any`, which
+would claim a scalable icon it is not) and then the two PNGs by size, and
+`frontend/public/favicon.svg` - the stock Vite lightning bolt in `#863bff`, whose
+only reference in the whole repository was that one declaration - was deleted so
+nothing can take precedence over the mark. `index.html` is the only document the
+build produces and `/`, `/app` and `/about` are all resolved from it by
+`useAppView.ts`, so the same icon is used on the landing page and in the app. No
+web manifest, PWA setup, image plugin or dependency was added, and no
+landing-page, app-theme, transition, copy, reveal or R/API/deployment file was
+touched.
+
+Completed: diagnosed why the scroll fade is not visible when the author browses,
+and added the development-only diagnostic the brief asked for. Frontend only, left
+uncommitted on `feature/openhealth-landing`.
+
+**The confirmed cause is the address, not the code.** The reveal is working. The
+author was looking at `https://openhealth.ngo`, which serves a bundle built before
+the landing page existed, so there is nothing there to fade. The deployed JS and
+CSS are `index-DHn5KSsW.js` / `index-DoeXKmoo.css` with the title "OpenHealth —
+accessible, practical health learning", and a search of the deployed JavaScript
+finds no `--reveal` (0), no `landing__reveal-inner` (0), no `landing--armed` (0)
+and no `mahmood-portrait` (0); the local build is `index-Di0v34KJ.js` /
+`index-BlmOXbwG.css` and carries 3, 3, 1 and 1 respectively. The deployment
+workflow's only automatic trigger is a push to `main` and this work is uncommitted
+on `feature/openhealth-landing`, so nothing that has been built here can have
+reached the public site. Nothing needed fixing for this; the fix is to review on
+the dev server.
+
+Every other candidate in the brief was inspected on the page and ruled out with
+evidence rather than assumed: `prefers-reduced-motion: reduce` is `false`;
+`document.scrollingElement` is the document element with `overflow: visible`, so
+the document scrolls and the listener is on the right target; the wrappers
+measured are the ones painted; the reveal is armed (`landing--armed` present) and
+the initial state is a truthful `--reveal: 0` / `opacity: 0` on both sections; no
+stylesheet rule overrides the animated element's opacity or transform, because the
+value is written inline on the element whose computed opacity was read back; and
+there is exactly one painted content element per section, so nothing fades behind
+a duplicate that stays solid. One genuine prior observation was explained rather
+than left open: the author's tab once showed `--reveal: 1` on both sections while
+at `scrollY: 0`, which is not a latch firing early but the latch working — both had
+been scrolled through earlier in that page visit, and reaching full opacity settles
+a section for the rest of the visit by design.
+
+Driving real keyboard input in the author's own browser tab reproduces the effect
+they could not see, ~0.11 of opacity per `ArrowDown` with no jumps: OpenHealth at
+wrapper top 781px is `--reveal 0`; 745px gives `0.0797`; 705px gives `0.1891`;
+665px gives `0.2986`; 623px gives `0.4135`; 584px gives `0.5202`; 542px gives
+`0.6351`; 502px gives `0.7445`, with the transform tracking it exactly
+(`translateY(12.01px)` at 0.2493, `6.10px` at 0.6187, `0` at 1). About Me behaves
+identically, sampled through `0.041`, `0.258`, `0.323`, `0.342`, `0.348`, `0.351`
+as the scroll stops approaching its target, so an intermediate value is held rather
+than completed. Reaching 1 and scrolling back to the top leaves the section at
+`opacity: 1`, `transform: none`, latched `true`, while the panel's geometric
+progress column truthfully reads `0` — the visible state and the measured position
+are allowed to disagree, and the latch is what the author's earlier session was
+showing.
+
+Three screenshots of the author's own tab were taken to judge the fade as an image
+rather than only as a number, capturing the OpenHealth content element at
+`--reveal 0.2493` (borderline ghosted), `0.6187` (mid) and `1` (solid), and the
+About Me content element at `0.3505`; the same element at increasing progress reads
+progressively darker. A screencast/video capture was **not** possible with the
+tools available, so the fade is evidenced by those stills plus the per-step
+readings above, not by a recording.
+
+Reduced motion was verified by driving the real setting in the author's browser
+(`page.emulateMedia({ reducedMotion: 'reduce' })`, reload, then reading it back)
+rather than by reading the stylesheet: `matchMedia` reports `true`, both reveal
+sections compute `opacity: 1` with `transform: none` at the top of the page and
+after scrolling to 900, i.e. the value 0 and 0.35 a normal page would paint at,
+while the hero is not part of the mechanism at all — `#eqalb` has no
+`.landing__reveal-inner` and its "Open the app" button is at opacity 1 from the
+first paint.
+
+The `?debugReveal=1` diagnostic is `frontend/src/views/OpenHealthHomeView.vue`
+plus the `.landing-debug` rules in `frontend/src/landing.css`. (Both have since
+moved: see the newest Current task entry — the panel is now its own
+`RevealDiagnostic.vue`, loaded behind a dynamic `import.meta.env.DEV` import, and
+its rules moved with it.) It reports the
+section in view, the reduced-motion preference, the scrolling element and offset,
+the armed state, and a row per section with the wrapper top, that top over the
+viewport height, the calculated progress, the latch, and the computed opacity of
+the painted element, and it is read inside an `import.meta.env.DEV` guard. It was
+confirmed to render with the flag on the dev server (reporting `Scroll offset 0px
+of 1720px`, both sections `progress 0` / `opacity 0` / `latched false`), to be
+absent without the flag, and to be absent from the production build even with the
+flag set — the overlay is not rendered on `vite preview` at `?debugReveal=1`.
+
+Completed: the reveal is now scroll-linked rather than timed, and the OpenHealth
+heading is composed as two lines. Frontend only, left unstaged on
+`feature/openhealth-landing`.
+
+The timed reveal is gone, not layered over. `frontend/src/views/OpenHealthHomeView.vue`
+no longer carries `revealed`/`is-revealed`/`revealObserver` at all: it writes a
+`--reveal` number (0 to 1) onto an inner element, computed from the section
+wrapper's top edge as a fraction of the viewport height - 0 while that edge is at
+or below 90%, 1 once it reaches about 47.5%, linear in between, with a 16px lift -
+so the fade is a function of where the content is rather than of elapsed time.
+Stopping halfway holds the intermediate opacity; continuing completes it; a
+section that reaches full opacity is settled for the rest of the visit and never
+fades again on the way back up. Two elements do two jobs: `.landing__reveal` is
+the untransformed wrapper the geometry is measured from, `.landing__reveal-inner`
+is what is painted, so the animation cannot skew its own measurement. Work is
+batched into one `requestAnimationFrame` behind passive `scroll` and `resize`
+listeners, both removed with any pending frame on unmount; the position is
+measured fresh each paint so a resize or reflow cannot leave it stale; `focusin`
+settles a section before a Tab can reach a link inside it; the hero is outside the
+mechanism so it and its button are visible from the first paint; and
+`landing--armed` plus the `var(--reveal, 1)` fallback mean a browser without the
+features, or a setup that throws, simply shows every section.
+
+Scroll snapping was removed rather than worked around: `scroll-snap-type: y
+proximity` pulled a small wheel notch back to a panel boundary, so the reader
+could not hold a position inside the reveal range at all. The three-panel layout
+and normal scrolling are unchanged.
+
+`frontend/src/landing.css` replaces the transition with
+`opacity: var(--reveal, 1)` and `translateY(calc((1 - var(--reveal, 1)) * 16px))`,
+and gives the OpenHealth heading two block lines
+(`.landing__heading-line`) instead of one run left to wrap. It also fixes a
+centring bug the new geometry exposed: the heading box carried `max-width: 34rem`
+with `margin: 0`, so it sat 48px left of its container's centre and the two
+composed lines were offset from the label and paragraphs; `margin: 1.5rem auto 0`
+puts the box on the same axis as everything else.
+
+Verified with `npm run typecheck`, `npm run lint` and a production `vite build`
+(all clean; the built CSS carries `--reveal`, `landing__heading-line` and the
+print block, with no `scroll-snap` and no `700ms` transition left anywhere).
+Measured in the browser at a 900px viewport, reading each section's content-top as
+a fraction of the viewport against the inner element's computed opacity:
+
+- OpenHealth: transparent above 0.949vh; `0.893vh -> 0.016`, `0.838 -> 0.147`,
+  `0.782 -> 0.277`, `0.727 -> 0.408`, `0.671 -> 0.539`, `0.615 -> 0.670`,
+  `0.560 -> 0.800`, `0.504 -> 0.931`, and fully opaque from `0.449vh`.
+- About Me: the same shape, `0.890vh -> 0.024` through `0.501 -> 0.939`, fully
+  opaque from `0.445vh`.
+
+The steps are even (~0.13 per 50px of scroll), so the change is spread across the
+range rather than front-loaded. Stopping mid-reveal at scrollY 435 held opacity
+`0.238` unchanged when sampled at 0ms, 400ms, 1200ms and 2400ms - it does not
+complete on its own - then reached `1` on further scrolling and stayed `1` after
+reverse-scrolling 400px and after returning to the top. The heading renders as two
+blocks reading "Practical learning." and "Fewer barriers.", each occupying exactly
+one visual line at 320, 390, 430, 768, 1024 and 1440px, each centred on its
+container to 0px, in the serif face, with `overflowX: 0` at every width and the
+About panel still `text-align: start`. Reduced motion leaves both sections at
+opacity 1 with no transform at the top and after scrolling, with the hero visible
+on load and the button still pointing at `/app`; print media does the same. The
+"Open the app" crossing is unchanged and still runs end to end (overlay with its
+sheen, `/app` with the light looping, overlay gone, landing unmounted), and a
+fresh load logs no error, no console warning and no failed request.
+
+The four access paths the brief names were then driven directly and the opacity
+read back, rather than inferred from the code: a real mouse click on the
+navigation's "About me" link took both sections from `0.000` to `1.000` as the
+page scrolled to 1800; focusing the About panel's contact link - which lives in
+content that was at `0.000` a moment earlier - put it at `1.000` with the link
+both focused and painted, and it stayed at `1.000` after blurring and scrolling
+away, so no link can ever receive invisible focus; a scroll position restored to
+1500 (both by scrolling after load and by a reload with the offset applied) gave
+About Me its truthful intermediate `0.808`, matching the value the sweep predicts
+for that position, rather than being stuck at 0; and loading `/#about-me` directly
+landed with the section at the top of the viewport, fully readable, at `1.000`.
+**Not claimed:** running the browser's own wheel was not part of the final
+measurement - the positions were stepped and read, which is what the reveal is a
+function of - and no pixel-level judgement of the fade's feel was made. No R, API,
+deployment, app-theme, dependency, copy or transition file was touched, and
+nothing was committed, staged, pushed or deployed. All one-off harnesses and their
+browser profiles were deleted.
+
+Completed: two frontend-only corrections to the landing page, left unstaged on
+`feature/openhealth-landing`. The structure, palette, navigation, portrait, copy,
+themes and the "Open the app" crossing are unchanged.
+
+1. The scroll fade-in is now actually visible, which took finding why it was not.
+   The reveal observer watched each section's *panel* — a full viewport tall, with
+   its content centred inside it — at a 0.15 threshold. Measured on the page, the
+   OpenHealth panel crossed that threshold at 129px of scroll while its content did
+   not reach the fold until 248px: the whole transition therefore played and
+   finished while the content was still off screen, which is why it read as no
+   animation at all. It watched the wrong element; the fix is to watch the
+   *content*, and to trigger on its leading edge crossing the bottom fifth of the
+   viewport (`rootMargin: '0px 0px -18% 0px'`, `threshold: 0`) rather than on a
+   ratio of the panel's area. That also makes the trigger independent of section
+   height, so it holds at every width and for content taller than the viewport.
+   The effect itself was strengthened as asked: `opacity: 0` with
+   `translateY(20px)` to `opacity: 1` and `translateY(0)`, over 700ms with
+   `cubic-bezier(0.22, 1, 0.36, 1)`, once per section, entries unobserved as they
+   fire. Two small robustness additions came with it: content already on screen
+   when the page settles is revealed immediately rather than waiting for the
+   observer's first callback, and a print rule shows the whole page, since
+   "reveal it when it scrolls into view" has no meaning on paper.
+
+2. The OpenHealth section's text is now centre-aligned, not just its block: the
+   label, the heading and the paragraphs all centre, matching the hero, while the
+   `40rem` measure keeps every line comfortably short. Its copy is untouched. The
+   About Me section is deliberately left exactly as it was — centred as a group,
+   prose left-aligned — as is the hero.
+
+Verified in the browser at frame resolution rather than by reading the code. A
+fresh load produces no page errors and no failed requests (the
+`sectionNodes is not defined` message the dev server logged was a hot-reload
+artifact of an intermediate edit and does not reproduce). A stepped scroll journey
+down the page and back up, sampled every frame inside the page at 60fps, recorded
+for both OpenHealth and About Me: the trigger firing with the content **on screen**
+(content top 497px and 593px in a 749px viewport, against 129px-of-scroll-early
+before the fix), 33 intermediate frames per section, a ~530ms visible fade, an
+opacity trace of 0.106 → 0.534 → 0.783 → 0.905 → 0.961 → 0.986 → 0.996, and the
+transform interpolating in step (ty=17.88 → 3.70 → 0.52); neither section
+replayed after settling, including after returning to the top. A real trusted
+mouse-wheel run (CDP `Input.dispatchMouseEvent`) showed the fade mid-flight for
+About Me (0.463 → 0.703 → 0.905 → 0.953) before proximity snapping pulled the
+small notches back, and an isolated in-page test confirmed the stylesheet
+interpolates (13 distinct opacity values over a smooth trace) with the observer
+and the wheel out of the picture. Reduced motion, emulated over CDP, leaves all
+three sections at opacity 1 with no transform and a 0s transition — including the
+two off screen and never revealed — with their text present. Alignment measured
+live: the OpenHealth label, heading and first paragraph each have their last line's
+centre exactly on the block's centre (delta 0) with `text-align: center`, while
+About Me still reports `start` and the hero still reports `center`; the reveal
+computes to `0.7s` with `cubic-bezier(0.22, 1, 0.36, 1)`; and there is no
+horizontal overflow. Light and dark were both checked visually, with the landing
+theme and the app's own `data-theme` independent as before.
+
+`npm run typecheck`, `npm run lint` and a production `vite build` are all clean,
+and the built CSS carries the new values (`translateY(20px)`, `.7s`,
+`cubic-bezier(.22,1,.36,1)`, `text-align:center`, the print block). **Not
+claimed:** the wheel-driven measurement in this headless environment is
+unreliable — small wheel notches are undone by the page's own proximity snapping
+and the frame loop idles unless something forces a paint, which is why the
+journey was stepped and sampled in-page instead — so "obvious during ordinary
+mouse-wheel scrolling" is supported by the frame-level recording and the partial
+wheel run rather than by a full wheel-driven trace. No R, API, deployment,
+app-theme, dependency, copy, navigation or transition file was touched, and
+nothing was committed, staged, pushed or deployed. All one-off harnesses and their
+browser profiles were deleted.
+
+Completed: three frontend-only refinements to the landing page, left unstaged on
+`feature/openhealth-landing`. The structure, palette, navigation, themes,
+portrait, copy and "Open the app" crossing are unchanged; what changed is
+alignment, the portrait's box and how the entrance is armed.
+
+1. The OpenHealth and About me sections are now centred blocks, so the three
+   panels read as one page instead of two left-aligned ones. The hero already
+   centred its own text; the OpenHealth column takes a 40rem measure
+   (`landing__inner--prose`, matching the measure its own paragraphs already
+   used) and the About group a 56rem one, and the page footer shares that same
+   measure so its rule lines up with the content it closes. The text inside each
+   block stays left-aligned, because a paragraph reads better that way. Nothing
+   was added around the content: no card, border, background or container.
+
+2. The portrait's box is gone. Its rule lost the `1px solid
+   var(--landing-divider-strong)` border and the 0.8rem radius, leaving no
+   border, border-radius, background, outline or shadow, so the cut-out sits
+   directly on the landing background in both themes. The file, its import path,
+   its intrinsic `width`/`height`, its alt text, its 18rem cap and its layout are
+   untouched.
+
+3. The reveal is the same `IntersectionObserver` pattern, made robust rather than
+   reworked: 480ms and a 14px lift, once per section, consistent across all
+   three. The hidden state is now scoped to a `landing--armed` class on the page
+   root, which the view sets only when an `IntersectionObserver` exists to reveal
+   a section again, and the observer setup is wrapped so a failure there reveals
+   every panel instead of leaving one blank. `prefers-reduced-motion` forces the
+   end state (opacity 1, no transform, no transition) rather than shortening the
+   animation, so nothing waits on an observer to become readable.
+
+Verified with `npm run typecheck`, `npm run lint` and a production `vite build`
+(all clean; the built CSS carries `landing--armed` and `landing__inner--prose`,
+and the build is otherwise unchanged at 353.80 kB for the portrait). Measured in
+the browser and in same-origin 390 / 768 / 899 / 900 / 1440px viewports: the
+OpenHealth block is centred in its panel at every width (gaps 305/305 at 1260px,
+395/395 at 1440, 59/59 at 768, 20/20 at 390) and so is the About group
+(177/177 at 1260, 267/267 at 1440, 24/24 at 900 and below), with the About's two
+columns 320 + 520 at 1440 and 320 + 466 at 900, stacking to a single column below
+900; the footer matches the About group's left and right edges at every width;
+the portrait measures 0px border, 0px radius, `box-shadow: none`, a transparent
+background and `outline-style: none` in both themes (its computed 3px
+outline-width is Chrome's unpainted initial value, identical on control elements);
+and no viewport showed any horizontal overflow. The entrance was sampled through
+a full scroll cycle - `eqalb` revealed at load, `openhealth` as it came into
+view, `about-me` as it did, and all three still revealed after scrolling back up
+and returning to the top, so it plays once and never replays. `prefers-reduced-
+motion` was emulated over CDP (`Emulation.setEmulatedMedia`): all three sections
+report opacity 1 with no transform and a 0s transition, including the two that
+were off-screen and had never been revealed, with `scroll-behavior: auto`,
+`scroll-snap-type: none` and the scroll hint's animation off, and the crossing a
+quick fade that reaches `/app` in about 340ms. A second CDP run deleted
+`IntersectionObserver` before the page's scripts ran: the page root then carried
+no `landing--armed` class and all three sections - two of them off-screen - sat
+at opacity 1 with their text present, and the call to action and portrait were
+both visible. The "Open the app" crossing was re-timed end to end after the
+changes (`/` with the overlay at 120ms, `/app` with the light looping at 1100ms,
+overlay gone by 1800ms). **Not claimed:** the portrait was not visually diffed
+against the original beyond the alpha and geometry measurements made earlier.
+No R, API, deployment, app-theme, dependency, copy or transition file was
+touched, and nothing was committed, staged, pushed or deployed.
+
+Completed: the About me portrait shipped as a web-ready derivative, frontend
+only, left unstaged on `feature/openhealth-landing`.
+
+The author's original (`frontend/src/assets/mahmood.png`, 1305 x 1206, 962 kB) is
+kept in place as the source, and the app now ships
+`frontend/src/assets/mahmood-portrait.png`: the same image resized to 640 x 591
+(346 kB, a 64% reduction), which is a little over twice the 288px the layout can
+display it at. It has to stay a PNG, because the original is a cut-out with a
+transparent background - about 60% of its pixels are fully transparent and all
+four corners are alpha 0 - which a JPEG would flatten; Windows' image encoders
+offer no WebP to convert it to, so 346 kB is the floor reachable without adding
+a dependency, and adding one was not warranted for a single image. The resize
+(Bicubic, `SourceCopy`, `TileFlipXY` against edge artefacts) preserves the alpha
+channel, the cut-out edge and the aspect ratio, and the landing view imports the
+derivative with the matching `width="640" height="591"` attributes. Nothing else
+about the section changed: the alt text, the narrow-column placement, the
+side-by-side desktop and stacked-below-900px behaviour, the copy and the reveal
+animation are all as they were. (The border that the portrait then carried has
+since been removed - see the refinement entry below.)
+
+Verified with `npm run typecheck`, `npm run lint` and a production `vite build`
+(all clean; the bundle now carries `dist/assets/mahmood-portrait-BCiKK700.png`
+at 353.80 kB instead of the 985.19 kB original, which is no longer emitted at
+all), and in the browser: the image resolves to the derivative and decodes at
+natural 640 x 591, rendering 288 x 266 at ratio 1.082 (the original's 1.0821), so
+the layout is unchanged; a canvas readback of the served file reports the four
+corners at alpha 0 and the centre at alpha 253, confirming the cut-out survived;
+the shipped file measures 99.97% transparent-background character in the same
+proportion as the source (59.6% fully transparent before, 59.8% after); and
+measured in same-origin 390, 899, 900 and 1440px viewports the image is above the
+text below 900 and beside it at 900 and 1440 (320px column against 466px and
+840px text columns), with no horizontal overflow at any width. Both themes were
+re-checked (light `1px rgba(39, 35, 31, 0.26)`, dark `1px rgba(236, 231, 223, 0.24)`,
+no shadow, 12.8px radius) and the "Open the app" crossing and the panel reveal
+were confirmed unaffected.
+
+No R, API, deployment, app-theme or dependency file was touched, and nothing was
+committed, staged, pushed or deployed.
+
+Completed: the About me portrait, frontend only, left unstaged on
+`feature/openhealth-landing`.
+
+The author's own file is used as supplied (`frontend/src/assets/mahmood.png`,
+1305 x 1206, 962 kB). It is imported by the landing view rather than referenced
+from `public/`, so the build fingerprints it and a missing file fails the build
+instead of 404ing at runtime, and it is emitted as its own asset file (985 kB in
+`dist/assets/`) rather than being inlined into the JavaScript bundle. The markup
+is a plain `<img class="landing__portrait" alt="Portrait of Mahmood Alawi">`
+carrying the intrinsic `width="1305"`/`height="1206"`, plus `loading="lazy"` and
+`decoding="async"`; the intrinsic pair is what reserves the box, so the box is the
+right size from the markup alone and neither the name above it nor the prose
+beside it can move as the file arrives. Its rule is in `frontend/src/landing.css`
+and follows the page's existing restraint: a hairline `--landing-divider-strong`
+border, a 0.8rem radius, no shadow and no frame, `width: 100%` capped at 18rem so
+it fills the narrow column without becoming a banner. It sits in the About panel's
+first column under the name, so it is beside the prose on desktop and stacks above
+it below 900px, and the About copy and the panel's reveal animation are unchanged.
+
+Verified with `npm run typecheck`, `npm run lint` and a production `vite build`
+(all clean; the build emits `dist/assets/mahmood-a5TepQJk.png`), and in the
+browser: the element renders with the exact alt text and the source resolves to
+the PNG; the rendered box is 288 x 266 from the attributes alone while
+`naturalWidth` is still 0, then 288 x 266 again once loaded at natural 1305 x
+1206, so the aspect ratio is preserved and there is no layout shift; at 1260px the
+image sits inside the first column (right edge 312 against the text column's left
+edge 400) and overlaps it vertically, so it is beside the text; measured in
+same-origin 390 x 844, 768 x 900 and 1440 x 900 viewports the image is above the
+text (image bottom at or before the text top) below 900 and beside it at 1440
+(320px column against an 840px text column), with no horizontal overflow in the
+page, the About grid, the contacts, the footer or the navigation at any of the
+three widths; and at the 899/900px boundary the layout switches exactly as
+specified (899px one 841px column with the image above the text, 900px 320 + 466
+side by side, still no overflow). Both themes were checked - the border reads
+`1px rgba(39, 35, 31, 0.26)` in light and `1px rgba(236, 231, 223, 0.24)` in dark,
+with no shadow in either - and the "Open the app" crossing was re-checked after
+the edit (the app is reached at 820ms with the light looping and the overlay gone
+by ~1.2s), together with the About panel's reveal still firing.
+
+`prefers-reduced-motion` was then verified at the browser level rather than by
+inspection: a one-off harness drove the Playwright-cached Chromium over CDP with
+`Emulation.setEmulatedMedia` set to `prefers-reduced-motion: reduce` (the browser
+tooling in this environment cannot set it), and the page reported the setting as
+active and behaved as specified - `scroll-behavior: auto` and `scroll-snap-type:
+none`, every panel at `opacity: 1` with `transform: none` and a `0s` transition
+duration, the scroll hint's animation `none`, the crossing's light
+`display: none` and the logo wipe `animation: none` with no clip path, the app
+reached by 360ms with no overlay left, and the app itself unaffected
+(`data-landing-theme` absent, `data-theme` still `dark`, teal `--accent` intact).
+The harness and its temporary browser profile were deleted afterwards.
+
+No R, API, deployment, app-theme or dependency file was touched, and nothing was
+committed, staged, pushed or deployed.
+
+Completed: six frontend-only refinements to the landing page, left unstaged on
+`feature/openhealth-landing`.
+
+1. "Open the app" now plays a crossing into the app instead of swapping the page
+   outright. The landing page fades, an overlay in the app's own palette wipes in
+   a still copy of the Home screen's eQalb composition (the same `home__*`
+   classes, so the two are one design) behind a band of light, the light falls
+   into its looping state, and the overlay dissolves as the app's existing
+   `home-rise` entrance fades the interface in — no second, competing entrance
+   animation. The sequence lives in `frontend/src/composables/useAppLaunch.ts`
+   (reveal at 820ms, dissolve by ~1.18s, one safety clear at 2.4s) and the look in
+   the new section of `frontend/src/styles.css`; `frontend/src/components/LaunchTransition.vue`
+   renders it. Both fades are CSS animations rather than Vue `<Transition>`
+   classes, which a first attempt used and which left the overlay stuck at
+   opacity 0 whenever the browser stalled its animation frames; a CSS animation is
+   timed by the document's clock, so a late frame shows the crossing further
+   along instead of not at all. The overlay is decoration: `aria-hidden`, nothing
+   focusable, `pointer-events: none`, and the app is mounted and interactive from
+   the moment the sequence hands over, so an interrupted, failed or skipped
+   animation can never block the app. Modified and middle clicks still open the
+   real `/app` link in a new tab, and reduced motion drops the sweep and the wipe
+   for a quick fade (app reached at ~300ms). 2. The hero's simulated-data note is
+   removed from the landing page only. 3. The OpenHealth copy is replaced with the
+   supplied three paragraphs, and 4. the About me copy with the supplied two
+   paragraphs ("a health economics graduate" replaces "a health economist"), both
+   verbatim and both keeping the section's plain paragraph layout. 6. The
+   per-panel entrance reveal is kept and refined: 480ms and a 14px lift, threshold
+   0.15, once per panel, unobserved after it fires, and dropped under reduced
+   motion.
+
+Verified with `npm run typecheck`, `npm run lint` and a production `vite build`
+(all clean; the built CSS carries every new rule, 6 `prefers-reduced-motion`
+blocks, and no `landing__note`), and in the browser: the crossing sampled at
+60/600/900/1150/1800/2600ms (veil opaque with `launch-veil-in`, landing faded to 0,
+the logo wipe progressing behind the light, `/app` reached at 820ms with the light
+in `launch-sheen-loop`, the Home screen's hero at opacity 0 and then 1 as the
+overlay dissolved, overlay gone and the app interactive afterwards); a Ctrl-click
+leaving the link to the browser with no overlay; the reduced-motion branch landing
+on `/app` by 300ms with no sweep; panel 1 revealed by the observer at load and the
+About panel revealed on scroll, with the nav's `aria-current` following; light
+(theme switched: page #F4F0E8, title #27231F, clay #8C503B) and dark (#090909,
+#ECE7DF, terracotta #D39477) palettes; and 390 / 768 / 1440px layouts with no
+horizontal overflow in the page, the About grid, the contact list, the footer or
+the navigation, and one viewport per panel. **Not verified:** the portrait image
+of item 5 — no image file exists in the repository, so the section stands
+without one and the author is asked to supply the file rather than use a
+placeholder — and OS-level reduced-motion emulation, which this environment
+cannot perform. Nothing was committed, staged, pushed or deployed.
+
+Completed: the frontend-only redesign of the OpenHealth landing page, left
+unstaged on `feature/openhealth-landing`.
+
+The mission-heavy landing page is replaced by one scrolling page in three panels,
+with eQalb first. The hero carries the large `eQalb` title, the single line "An
+interactive introduction to health-economic modelling.", the one action "Open the
+app" pointing at the existing `/app` address, a one-line simulated-data note and a
+discreet scroll link to the next panel; section 2 introduces OpenHealth as a
+personal project with eQalb as its first step; section 3 is About me - Mahmood
+Alawi, one paragraph and the Email, GitHub and LinkedIn details already used
+elsewhere in the project - with the page's footer inside that last panel, so the
+page ends at the panel boundary and each section stays one screen. A compact
+floating navigation panel holds a quiet OpenHealth wordmark, the three section
+links and the landing page's own light/dark control: the links smooth-scroll,
+an `IntersectionObserver` marks the visible panel with `aria-current`, and the
+wordmark is hidden below 700px so the panel stays compact. Section 3 carries the
+author's portrait in the narrow column under the name, so it sits beside the prose
+on desktop and stacks above it below 900px; the shipped file is a 640 x 591 PNG
+(`frontend/src/assets/mahmood-portrait.png`, 346 kB) derived from the author's
+original (`frontend/src/assets/mahmood.png`, 1305 x 1206, 962 kB), which is kept
+beside it unused as the source of any future re-export.
+
+The landing page is deliberately separate from the app's identity. Its palette
+(warm ivory and clay in light mode, near-black and terracotta in dark mode), serif
+headings, spacing and motion live in the new `frontend/src/landing.css`, every rule
+scoped under `.landing` or `html[data-landing-theme]`, and its theme lives in
+`frontend/src/composables/useLandingTheme.ts` under its own key
+(`openhealth.landing.theme`). That attribute is set while the page is mounted and
+removed when it unmounts, and `index.html` sets it before the first paint for the
+landing addresses only, so `eqalb.theme` / `<html data-theme>` and the app's teal
+theme are neither read nor written by the landing page. The replaced page's styles
+(the `.oh*` block) were removed from `frontend/src/styles.css`, which gains
+`.app--landing`; `App.vue` adds that class for the landing page; and fonts are
+local stacks, so no dependency and no external font request were added.
+
+Verified with `npm run typecheck`, `npm run lint` and a production `vite build`
+(all clean), and in a browser against the running dev server: the three panels and
+the floating navigation, nav clicks scrolling to their section and moving
+`aria-current` (a scroll to the OpenHealth panel measured `scrollY` equal to the
+panel's offset, with the active link following it), the entrance reveal firing
+once per panel, the landing theme toggling from #090909 to #F4F0E8 while
+`eqalb.theme`, `<html data-theme>` and the app's own colours stayed put and
+`data-landing-theme` was absent on `/app`, a direct load of `/#about-me` starting
+in place, "Open the app" reaching `/app`, `/about` rendering unchanged, and
+390 x 844, 768 and 1440 px layouts each with no horizontal overflow (snapping off
+and the wordmark hidden at 390 px, one viewport per panel at every width). No R,
+API, deployment, lockfile or generated file was touched, and nothing was committed,
+pushed or deployed.
 
 Completed: the SCP upload-command fix for the first failed workflow run. The
 first automated run reached the deploy job - SSH public-key authentication and
@@ -3589,6 +4270,53 @@ contract is unchanged.
 
 ## Next planned task
 
+The landing page's scroll fade is reversible and scroll-linked - it fades in as a
+group arrives, holds at full strength through a wide central band, fades out as the
+group leaves, reverses on the way back up and repeats on every pass, with no latch
+and no timer - and it is implemented and validated on
+`feature/openhealth-landing`, waiting for the author's review. The two-line
+OpenHealth heading, the centring, the portrait, the palette, the navigation and the
+arrival into the app are unchanged.
+
+**Review it on the dev server, not the live site.** `https://openhealth.ngo`
+serves a bundle built before the landing page existed (its JS contains none of
+`--reveal`, `landing__reveal-inner`, `landing--armed`, `--reveal-lift` or
+`mahmood-portrait`), and the deploy workflow only runs on a push to `main`, so the
+public site cannot show any of this until the branch is merged and deployed. The
+page to review is `http://127.0.0.1:5173/`, or `http://127.0.0.1:5173/?debugReveal=1`
+for the development-only diagnostic panel, which reports each group's entry, exit
+and painted opacity side by side.
+
+One thing is worth confirming on the author's own machine, because it is a judgement
+about feel rather than correctness and cannot be made from here: whether the exit
+fade starts late enough for long content on a phone. The value to move is
+`EXIT_START` in `frontend/src/views/OpenHealthHomeView.vue` (currently `0.22`, the
+fraction of the viewport height its bottom edge must rise above before the fade
+begins); raising it makes the content linger longer, and the other three constants
+`ENTER_FROM` (0.9), `ENTER_DONE` (0.55) and `EXIT_DONE` (0) sit beside it. The `16px`
+in `.landing--armed .landing__reveal-inner`'s transform still sets the entry lift,
+and note that `--reveal-lift` now drives it independently of `--reveal`.
+
+The About Me group deliberately does not fade out, because the document ends beneath
+it and its bottom edge never rises to the exit threshold. That is the specified
+behaviour rather than a gap, so it needs no work; forcing a fade would mean adding
+blank scrolling space, which the brief ruled out.
+
+The one item still open from the earlier portrait work is optional and unchanged:
+the shipped PNG is 346 kB for a display of at most 288px, so a smaller export or a
+WebP/JPEG derivative would trim the transfer further — the author's call, and not
+started.
+
+Still the author's to decide: the section copy, the local serif stack, the three
+contact details, the `/app` route the single action points at, whether the About
+page at `/about` should follow the landing page's palette or wording (it still
+says "a health economist"), and whether the OpenHealth wordmark should stay
+hidden in the navigation below 700px. The landing page's crossing into the app is
+tuned in one place — `LAUNCH_TIMING` in `frontend/src/composables/useAppLaunch.ts`
+with the matching `--launch-sheen` / `--launch-fade` tokens — so the roughly 1.2s
+end-to-end timing can be adjusted after local review without touching anything
+else.
+
 The OpenHealth public shell is implemented in the frontend and verified locally,
 and is committed on `feature/openhealth-landing` as `f3acd2a`; it is not merged
 into `main` and not deployed. The single-page fallback these addresses need is
@@ -3674,6 +4402,17 @@ API/R changes, DNS) are unchanged.
 
 | Date | Change | Verified? |
 |---|---|---|
+| 2026-10-14 | The landing page's scroll fade is now reversible and repeats, replacing the one-time reveal that latched each group visible. Frontend only, left uncommitted on `feature/openhealth-landing`; alignment, copy, portrait, palette, themes, favicon, navigation and the app-launch transition are untouched. `frontend/src/views/OpenHealthHomeView.vue` drops the `settled` set and `settleTarget()` entirely, so nothing latches: `revealProgress()` becomes `enterProgress()` plus `exitProgress()` and a `revealFor()` that returns `min(entry, exit)`. Entry reads the wrapper's top edge (transparent at 90% of the viewport, fully opaque at 55%, linear between); exit reads the wrapper's **bottom** edge (1 until only the top 22% of the screen holds the group, 0 at the top), which is what stops a tall block being faded while it is still being read and what leaves the last section - which the document ends beneath - fully visible with no space added to force a fade. The lift moved to its own `--reveal-lift`, written from the entry alone, so content does not drift downwards as it leaves; `frontend/src/landing.css` reads `translateY(calc((1 - var(--reveal-lift, 1)) * 16px))` with the visible state still the `var(..., 1)` fallback. Focus outranks the scroll and is painted in the same turn rather than through a frame: `paintFocusChange()` cancels any pending frame and repaints, `paintReveal()` accepts either `:focus-within` or containment of `document.activeElement`, and `focusout` joins `focusin` so the scroll value returns when focus leaves. The `?debugReveal=1` panel now reports top, top/vh, bottom/vh, Entry, Exit and Opacity instead of a "Latched" column. `frontend/README.md` and this file were updated to match, including correcting a stale claim that the page still used proximity scroll snapping | Repository-local validation only: `npm run typecheck`, `npm run lint` and `npm run build` all exit 0, with the built CSS carrying the new `--reveal-lift` rule and no `latched` string anywhere in the JS. Verified with **real wheel input** (22 notches down, 20 up) at 1440x900, reading the painted opacity each step: OpenHealth 0.000 through y=260, then 0.041, 0.317, 0.594, 0.867, 1.000 (fade in), a 606px plateau of solid 1.000 from y=693 to y=1299, then 0.990, 0.555, 0.116, 0.000 as its bottom edge rose past 0.22vh (fade out) - all three phases in one traversal. Scrolling back up reversed it exactly (0.000 -> 0.212 -> 0.646 -> 1.000, plateau, 1.000 -> 0.810 -> 0.533 -> 0.257 -> 0.000) and a third downward pass faded it out again, so there is no latch. Stopping inside the exit ramp held 0.555 unchanged at 0ms, 600ms, 1200ms and 2400ms, and inside the entry ramp held 0.435 at 0ms, 1500ms and 3000ms, then completed on further scrolling - it is position, not a timer. About Me fades in the same way but never fades out: at the document's end its bottom sits at 0.706vh, above the 0.22vh exit threshold, so it stays at 1.000 - the required "keep it readable" case. Mobile checked at 390x844 (no horizontal overflow, About Me solid from 0.591 at entry through 1.000 to the end) and at 390x600 where the group is 1.33x the viewport: it passes 0.540, then holds 1.000 from 49% screen coverage to the document bottom, while OpenHealth on the same viewport runs the full fade in / 600px plateau / fade out. Reduced motion verified by emulating the real setting: everything at opacity 1 with `transform: none`, at the top and after scrolling to 1400, where the normal page reads 0.919 and 0.664. Print verified by emulating print media at a scrolled position where the screen shows 0.555 and 0.892: both read 1 with no transform. Keyboard verified with real Tab presses (focus reached "Email" after 3 presses, painted at opacity 1 and no transform) and with `focus({ preventScroll: true })` so the page did not move: 0 before focus, 1 while focused, 0 again after blur. The app-launch transition still runs end to end (overlay with `launch-veil-in`, `.landing.is-leaving`, then `/app` with the overlay and landing gone and the title changed), two full mount/unmount cycles logged no console or page errors and re-armed the reveal correctly, the OpenHealth label, heading and body all still centre on the same axis (centre 715 at 1440x900) with the heading still two lines, About Me still `text-align: start` in its grid, the portrait still borderless, and no horizontal overflow at either width. **Not claimed:** the screenshots are of the page content only, so the fade was judged from captured mid-fade stills plus the per-step opacity readings, not from a recording. No R, API, deployment, app-theme, dependency, copy, portrait, alignment or transition file was touched; nothing was committed, staged, pushed or deployed |
+| 2026-10-14 | Corrected one attribute of the favicon markup: the `.ico` declaration's `sizes="any"` became `sizes="16x16 32x32 48x48"`, the sizes the file actually holds - `any` claims a scalable icon, which a raster `.ico` is not. `frontend/index.html` only, one line; the two PNG declarations and every generated image file are unchanged and were not regenerated. `frontend/README.md` and this file were updated to quote the new value | Repository-local validation only: `npm run typecheck`, `npm run lint` and `npm run build` all exit 0, and the built `dist/index.html` and the served HTML from both the dev server and `vite preview` carry `sizes="16x16 32x32 48x48"` on the `.ico` with the two PNG declarations unchanged. No image file, no other markup and no other work in the tree was touched; nothing was committed, staged, pushed or deployed |
+| 2026-10-14 | The browser-tab icon is now the OpenHealth mark. Frontend only, left uncommitted on `feature/openhealth-landing`. The source, identified by inspection as the only newly added file in `frontend/src/assets/` and distinct from either portrait, is `onlylogo.png` (1024 x 1024, `Format32bppArgb`) with **genuine transparency rather than a white background** - 55.45% of pixels fully transparent, 38.51% opaque, 6.04% partial, all four corners `A=0`, centre `#D5A77D`, commonest opaque tones `#D0B080` / `#C09870` / `#D8B888` / `#B89068` / `#B87050` - and it is left unmodified. `frontend/public/favicon-16x16.png`, `favicon-32x32.png` and `favicon.ico` (16/32/48 px, 32 bpp) were generated with `System.Drawing` via a compiled throwaway C# helper, adding no dependency: each is cropped to the mark's content bounding box (889 x 888 at (66,67)) plus a 3% margin, so the mark fills 94.3% of the square, and box-averaged down with **premultiplied alpha** so the cut-out's edges take no fringe. A first pass was discarded because it scaled RGB by 255 and multiplied by 255 again, saturating every painted pixel to white (one distinct colour, luminance 254-255); the shipped files carry the real palette (89 distinct 5-bit colours at 16 px, 154 at 32 px, clay centres `#AC6D4E`/`#B07150`). `frontend/index.html` replaced its single SVG-favicon declaration with the `.ico` first (`sizes="16x16 32x32 48x48"`) then `favicon-32x32.png` and `favicon-16x16.png`, and `frontend/public/favicon.svg` (the stock Vite lightning bolt, `#863bff`, referenced nowhere else in the repository) was deleted so nothing takes precedence. `frontend/README.md` and this file were updated to match | Repository-local validation only: `npm run typecheck`, `npm run lint` and `npm run build` all exit 0. `dist/` contains `favicon.ico` (15086 B), `favicon-16x16.png` (991 B) and `favicon-32x32.png` (2841 B) with `favicon.svg` absent, and `dist/index.html` carries exactly the three new declarations with the title unchanged. The ICO was re-parsed byte by byte: header `reserved=0 type=1 entries=3`, each entry 32 bpp, planes 1, DIB heights 32/64/96 as required, and offsets running 54 -> 1182 -> 5446 with the last entry ending exactly at the file length; its pixel bytes match the standalone PNGs to within a delta of 1. The browser's PNG decoder was used as an independent check of the generator's own: no visible (alpha >= 128) pixel in the 16, 32 or 48 px icon exceeds luminance 235, and the brightest fully-visible pixel is the sand tone `#DBC091`/`#DEC399`; the only bright pixels are 14 at 32 px and 30 at 48 px carrying alpha 1 or 2 of 255 (<= 0.8% opacity), which are the source's own faint halo reproduced faithfully and are imperceptible, so the data was deliberately left as the source has it rather than stripped. Legibility was judged from rendered images, not from numbers alone: the source mark and the generated 16 and 32 px icons were displayed at actual size and magnified with `image-rendering: pixelated` against white, ivory `#F4F0E8`, stone `#E8E1D5`, `#090909`, `#121211` and simulated light and dark tab strips, and the mark reads as a clean circular form at both sizes with its detail and warm palette intact. Loading `/` in the shared browser tab, `document.querySelectorAll('link[rel~="icon"]')` returns exactly the three new links, `link[href*="favicon.svg"]` returns 0, and the browser itself requested all three with `responseStatus 200`; the icon URLs were also confirmed over HTTP against the dev server (`/favicon.ico` 200 `image/x-icon` 15086 B, `/favicon-16x16.png` 200 `image/png` 991 B, `/favicon-32x32.png` 200 `image/png` 2841 B). The same three URLs were then confirmed against the **production build** served by `vite preview` (200 `image/x-icon` 15086 B; 200 `image/png` 991 B; 200 `image/png` 2841 B), the served production HTML carries exactly the three declarations, and a browser loading it resolves those three links with no SVG reference and no dev diagnostic. `/app` was loaded and carries the identical three links with no SVG reference, its `data-theme` still `dark` with no landing theme attribute and its title unchanged, so the app's own theme and the landing page's isolation are untouched. **Not claimed:** the browser's own chrome was not captured - the screenshot tooling records page content only, so the mark was judged in a simulated tab strip rather than in a real one; and a `favicon.svg` request now falls through to the SPA shell, which is harmless because nothing references it. No R, API, deployment, app-theme, landing-page, transition, copy or reveal file was touched; nothing was committed, staged, pushed or deployed; the throwaway C# helper, the preview folder and its inspection page were deleted |
+| 2026-10-14 | Diagnosed why the landing page's scroll fade is invisible to the author, and added the development-only diagnostic the brief asked for. Frontend only, left uncommitted on `feature/openhealth-landing`. **The cause is the address, not the code:** `https://openhealth.ngo` serves a bundle built before the landing page existed, so there is nothing there to fade. The deployed `index-DHn5KSsW.js` / `index-DoeXKmoo.css` (title "OpenHealth — accessible, practical health learning") contains no `--reveal` (0 occurrences), no `landing__reveal-inner` (0), no `landing--armed` (0) and no `mahmood-portrait` (0), while the local build's `index-Di0v34KJ.js` / `index-BlmOXbwG.css` carries 3, 3, 1 and 1; the deploy workflow's only automatic trigger is a push to `main` and this work is uncommitted on `feature/openhealth-landing`, so nothing built here can have reached the public site. No animation code was changed — the brief forbade another timing or range change before the cause was found, and none was warranted. Added `?debugReveal=1` in `frontend/src/views/OpenHealthHomeView.vue` plus `.landing-debug` styles in `frontend/src/landing.css`: a dev-only panel reporting the section in view, the reduced-motion preference, the scrolling element and offset, the armed state, and a row per section with wrapper top, top over viewport height, calculated progress, latch and computed opacity, behind an `import.meta.env.DEV` guard. `frontend/README.md` and this file were updated to match | Repository-local validation only: `npm run typecheck`, `npm run lint` and a production `vite build` all clean. The diagnostic was confirmed to render with the flag on the dev server, to be absent without it, and to be **absent from the production build even with the flag set** (verified on `vite preview`, itself confirmed to return the stale-free local build). Every other suspect in the brief was inspected on the live page and ruled out with evidence rather than assumed: reduced-motion `false`; `document.scrollingElement` is the document element with `overflow: visible`, so the listener is on the element that actually scrolls; the wrappers measured are the ones painted; the reveal is armed with a truthful initial `--reveal: 0` / `opacity: 0`; nothing overrides the painted element's opacity, which was read back from the element carrying the inline value; and there is exactly one painted content element per section. A previously unexplained observation was explained rather than left open: `--reveal: 1` at `scrollY: 0` in the author's tab is the latch working after an earlier scroll-through, not a premature trigger. Driving real keyboard input in the **author's own browser tab** reproduces the effect: OpenHealth steps `top 781px -> 0`, `745 -> 0.0797`, `705 -> 0.1891`, `665 -> 0.2986`, `623 -> 0.4135`, `584 -> 0.5202`, `542 -> 0.6351`, `502 -> 0.7445`, about 0.11 per key press with no jumps and the transform tracking exactly (`translateY(12.01px)` at 0.2493, `6.10px` at 0.6187, `0` at 1); About Me sampled at `0.041`, `0.258`, `0.323`, `0.342`, `0.348`, `0.351` while the scroll approaches its target, so an intermediate value is held rather than completed; reaching 1 and returning to the top leaves `opacity: 1`, `transform: none`, latched `true` while the geometric progress column reads `0`. Three screenshots of the author's own tab captured the OpenHealth content element at `--reveal 0.2493`, `0.6187` and `1` and the About Me element at `0.3505`, each state reading progressively darker. Reduced motion verified by driving the real setting in the author's browser (`emulateMedia({ reducedMotion: 'reduce' })`, reload, read back), not by reading the stylesheet: `matchMedia` `true`, both reveal sections `opacity: 1` / `transform: none` at the top and after scrolling to 900 (values of 0 and 0.35 a normal page would paint at), the hero outside the mechanism with its button at opacity 1. **Not claimed:** a screencast/video recording of the fade was not possible with the tools available, so the visual evidence is the three stills plus the per-step readings, not a recording; the live site was never a valid place to review this work, so no claim is made about how the landing page looks when deployed. No R, API, deployment, app-theme, dependency, copy, alignment, portrait or transition file was touched; nothing was committed, staged, pushed or deployed |
+| 2026-10-14 | The landing page's reveal was replaced with a scroll-linked one, and the OpenHealth heading composed as two lines. Frontend only, left unstaged on `feature/openhealth-landing`. The timed system is removed outright rather than layered over: `frontend/src/views/OpenHealthHomeView.vue` drops `revealed`/`is-revealed`/`revealObserver` and instead writes a `--reveal` number (0 to 1) onto each section's inner element, computed from the section wrapper's top edge as a fraction of the viewport height (0 at 90%, 1 at about 47.5%, linear between, 16px lift), so the fade follows the scroll position instead of a duration; `frontend/src/landing.css` replaces the transition with `opacity: var(--reveal, 1)` and `translateY(calc((1 - var(--reveal, 1)) * 16px))` and adds `.landing__heading-line` blocks with the heading box centred (`margin: 1.5rem auto 0`, fixing a 48px offset the new block geometry exposed). Two elements do two jobs so the measurement cannot be skewed by the animation; work is batched into one `requestAnimationFrame` behind passive `scroll`/`resize` listeners cleaned up with any pending frame on unmount; the position is measured fresh each paint; `focusin` settles a section before a Tab reaches a link in it; the hero is outside the mechanism; and `landing--armed` plus the `var(--reveal, 1)` fallback keep every section visible if the enhancement cannot run. Scroll snapping was removed because it pulled small wheel notches back to a panel boundary and made an intermediate position impossible to hold. `frontend/README.md` and this file were updated to match | Repository-local validation only: `npm run typecheck`, `npm run lint` and a production `vite build` all clean, with `--reveal` and `landing__heading-line` in the built CSS and no `scroll-snap` or `700ms` transition anywhere. Measured at a 900px viewport, content-top (as a fraction of the viewport) against the inner element's computed opacity: OpenHealth `0.893vh -> 0.016`, `0.838 -> 0.147`, `0.782 -> 0.277`, `0.727 -> 0.408`, `0.671 -> 0.539`, `0.615 -> 0.670`, `0.560 -> 0.800`, `0.504 -> 0.931`, fully opaque from `0.449vh`; About Me the same shape from `0.890vh -> 0.024` to `0.501 -> 0.939`, fully opaque from `0.445vh`; steps even at about 0.13 per 50px, so nothing is front-loaded. Stopping mid-reveal at scrollY 435 held opacity `0.238` at 0ms, 400ms, 1200ms and 2400ms, then reached `1` on further scrolling and stayed `1` after reverse-scrolling and after returning to the top. Both heading lines occupy exactly one visual line at 320/390/430/768/1024/1440px, each centred on its container to 0px, in the serif face, with no horizontal overflow at any width and the About panel still `text-align: start`. Reduced motion and print both leave the sections at opacity 1 with no transform, the hero visible on load and the button still at `/app`. The "Open the app" crossing still runs end to end, and a fresh load logs no error, warning or failed request. The four access paths the brief names were driven directly rather than inferred: a real mouse click on the nav's "About me" link took both sections from 0.000 to 1.000 at scrollY 1800; focusing the About panel's contact link from `0.000` put it at 1.000 with the link focused and painted, and it stayed at 1.000 after blurring and scrolling away; a scroll position restored to 1500 - both by scrolling and by a reload with the offset applied - gave About Me its truthful intermediate 0.808 rather than sticking at 0; and loading `/#about-me` landed readable with the section at the top of the viewport at 1.000. **Not claimed:** the browser's own wheel was not part of the final measurement (positions were stepped and read, which is what the reveal is a function of), and no pixel-level judgement of the fade's feel was made. No R, API, deployment, app-theme, dependency, copy or transition file was touched; nothing was committed, staged, pushed or deployed; all one-off harnesses and browser profiles were deleted |
+| 2026-10-14 | Two frontend-only landing-page corrections, left unstaged on `feature/openhealth-landing`. (1) The scroll fade-in was invisible because the reveal observer watched each section's full-viewport *panel* at a 0.15 threshold while the content is centred inside it: measured on the page, the OpenHealth panel fired at 129px of scroll but its content only reached the fold at 248px, so the transition ran to completion off screen. `frontend/src/views/OpenHealthHomeView.vue` now resolves each section's panel *and* content (`sectionNodes()`), keeps the nav observer on the panel and points the reveal observer at the **content**, triggering on its leading edge crossing the bottom fifth of the viewport (`rootMargin: '0px 0px -18% 0px'`, `threshold: 0`) so the trigger no longer depends on a ratio of panel area and holds at any section height. It also reveals anything already on screen at load instead of waiting for the observer's first callback. `frontend/src/landing.css` strengthens the effect to `opacity: 0` / `translateY(20px)` → `opacity: 1` / `translateY(0)` over 700ms with `cubic-bezier(0.22, 1, 0.36, 1)` and adds an `@media print` block so the whole page is shown on paper. (2) `.landing__inner--prose` gains `text-align: center`, so the OpenHealth label, heading and paragraphs centre to match the hero while keeping the 40rem measure; the About Me section and the hero are untouched, and no copy changed. `frontend/README.md` and this file were updated to match | Repository-local validation only: `npm run typecheck`, `npm run lint` and a production `vite build` all clean, with `translateY(20px)`, `.7s`, `cubic-bezier(.22,1,.36,1)`, `text-align:center` and the print block present in the built CSS. A fresh load logs no page error and no failed request (the `sectionNodes is not defined` console message was a hot-reload artifact of an intermediate edit and does not reproduce). A stepped scroll journey sampled every frame inside the page at 60fps recorded, for OpenHealth and About Me, the trigger firing with the content on screen (content top 497px and 593px in a 749px viewport), 33 intermediate frames each, a ~530ms visible fade with opacity 0.106 → 0.534 → 0.783 → 0.905 → 0.961 → 0.986 → 0.996 and the transform interpolating (ty=17.88 → 3.70 → 0.52), and no replay after settling or after returning to the top. A trusted CDP mouse-wheel run caught the fade mid-flight for About Me (0.463 → 0.703 → 0.905 → 0.953), and an isolated in-page test with the observer and wheel removed confirmed the stylesheet interpolates (13 distinct opacity values). Reduced motion, emulated over CDP, leaves all three sections at opacity 1 with no transform and a 0s transition, including the two off screen, with their text present. Live alignment check: OpenHealth label, heading and first paragraph all `text-align: center` with each last line's centre exactly on the block centre (delta 0); About Me still `start`; hero still `center`; no horizontal overflow; landing and app themes still independent. **Not claimed:** the wheel-driven measurement is unreliable in this headless environment - small wheel notches are undone by the page's own proximity snapping and the frame loop idles unless a paint is forced - so "obvious during ordinary mouse-wheel scrolling" rests on the frame-level recording and the partial wheel run rather than a full wheel-driven trace. No R, API, deployment, app-theme, dependency, copy, navigation or transition file was touched; nothing was committed, staged, pushed or deployed; and all one-off harnesses and their browser profiles were deleted |
+| 2026-10-14 | Three frontend-only refinements to the landing page, left unstaged on `feature/openhealth-landing`. (1) The OpenHealth and About me sections are centred blocks: `landing__inner--prose` gives the OpenHealth column a 40rem measure and `.landing__about` a 56rem one, both centred by the `margin: 0 auto` they already inherited from `.landing__inner`, with `.landing__footer` sharing the About measure so its rule lines up with the content above it; the text inside each block stays left-aligned, and no card, border, background or container was added. (2) `.landing__portrait` lost its `1px solid var(--landing-divider-strong)` border and its 0.8rem radius, leaving no border, radius, background, outline or shadow, so the cut-out sits directly on the landing background; the file, import path, intrinsic size, alt text, 18rem cap and layout are unchanged. (3) The reveal is the same IntersectionObserver pattern - 480ms, a 14px lift, once per section, all three - but its hidden state is now scoped to a `landing--armed` class that `frontend/src/views/OpenHealthHomeView.vue` sets only when an IntersectionObserver exists to reveal a section again, its observer setup is wrapped so a failure reveals every panel instead of leaving one blank, and the `prefers-reduced-motion` block forces the end state rather than merely shortening the transition. `frontend/README.md` and this file were updated to match | Repository-local validation only: `npm run typecheck`, `npm run lint` and a production `vite build` all clean, with `landing--armed` and `landing__inner--prose` present in the built CSS and the bundle otherwise unchanged. Measured in the browser and in same-origin 390 / 768 / 899 / 900 / 1440px viewports: the OpenHealth block centred in its panel at every width (305/305 at 1260px, 395/395 at 1440, 59/59 at 768, 20/20 at 390) and the About group likewise (177/177 at 1260, 267/267 at 1440, 24/24 at 900 and below), the About columns 320 + 520 at 1440 and 320 + 466 at 900 and a single column below 900, the footer matching the About group's left and right edges at every width, and no horizontal overflow anywhere. The portrait measures 0px border, 0px radius, `box-shadow: none`, transparent background and `outline-style: none` in light and dark (its 3px computed outline-width is Chrome's unpainted initial value, the same on control elements). The entrance was sampled across a full scroll cycle: `eqalb` revealed at load, `openhealth` and then `about-me` as they came into view, and all three still revealed after scrolling back up and returning to the top, so it plays once and never replays. `prefers-reduced-motion` was emulated over CDP: all three sections at opacity 1, transform none and a 0s transition - including the two off-screen and never revealed - with `scroll-behavior: auto`, `scroll-snap-type: none` and the scroll hint's animation off, and the crossing a quick fade reaching `/app` in about 340ms. A second CDP run deleted `IntersectionObserver` before the page's scripts ran: the root then carried no `landing--armed` class, all three sections (two off-screen) sat at opacity 1 with their text present, and the call to action and portrait were visible. The "Open the app" crossing was re-timed after the changes (`/` with the overlay at 120ms, `/app` with the light looping at 1100ms, overlay gone by 1800ms). **Not claimed:** the portrait was not visually diffed against the original beyond the earlier alpha and geometry measurements. No R, API, deployment, app-theme, dependency, copy or transition file was touched; nothing was committed, staged, pushed or deployed; and the temporary probe page, the two one-off harnesses and their browser profiles were deleted |
+| 2026-10-14 | The About me portrait is shipped as a web-ready derivative, frontend only, left unstaged on `feature/openhealth-landing`. The brief asked for an appropriately sized image rather than an unnecessarily large original, so `frontend/src/assets/mahmood.png` (the author's 1305 x 1206, 962 kB master) is now kept in place unused as the source, and the app imports the new `frontend/src/assets/mahmood-portrait.png` - the same image resized to 640 x 591 at 346 kB, a 64% reduction and a little over twice the 288px the layout can display it at - with the matching `width="640" height="591"` attributes in `frontend/src/views/OpenHealthHomeView.vue`. It had to stay a PNG: the original is a cut-out whose background is transparent (about 60% of its pixels, all four corners alpha 0), which JPEG would flatten, and Windows' image encoders expose no WebP to convert it to, so no dependency was added for one image. The resize preserves the alpha channel, the cut-out edge and the aspect ratio; the alt text, narrow-column placement, desktop/mobile layout, border treatment, copy and reveal animation are all unchanged, and `frontend/README.md` and the limitations and working-modules notes were updated to describe which file ships and why | Repository-local validation only: `npm run typecheck`, `npm run lint` and a production `vite build` all clean, with the bundle now emitting `dist/assets/mahmood-portrait-BCiKK700.png` at 353.80 kB instead of the 985.19 kB original, which is no longer emitted. Browser checks: the image resolves to the derivative and decodes at natural 640 x 591, rendering 288 x 266 at ratio 1.082 against the original's 1.0821; a canvas readback of the served file reports corners at alpha 0 and centre at alpha 253, so the cut-out survived the resize; the alpha histogram shows the same character as the source (59.6% fully transparent before, 59.8% after) and the centre pixel still opaque at alpha 253; in same-origin 390 / 899 / 900 / 1440px viewports it is above the text below 900 and beside it at 900 and 1440 (320px against 466px and 840px text columns) with `scrollWidth == clientWidth` throughout; both themes measure a hairline border with no shadow (light `rgba(39, 35, 31, 0.26)`, dark `rgba(236, 231, 223, 0.24)`); and the "Open the app" crossing and the panel reveal were re-checked as unaffected. **Not claimed:** the derivative was not visually diffed pixel by pixel against the original beyond the alpha and aspect measurements above, so a human should confirm the portrait still reads well at full size. Nothing was committed, staged, pushed or deployed, and the temporary probe page and one-off harnesses were deleted |
+| 2026-10-14 | The About me portrait on the landing page, frontend only, left unstaged on `feature/openhealth-landing`. The author's own file is used as supplied (`frontend/src/assets/mahmood.png`, 1305 x 1206, 962 kB): `frontend/src/views/OpenHealthHomeView.vue` imports it (so the build fingerprints it, a missing file fails the build, and it is emitted as a separate 985 kB asset rather than inlined into the JS bundle) and renders `<img class="landing__portrait" alt="Portrait of Mahmood Alawi" width="1305" height="1206" loading="lazy" decoding="async">` in the About panel's first column under the name; `frontend/src/landing.css` gains the `.landing__portrait` rule (width 100% capped at 18rem, height auto, a hairline `--landing-divider-strong` border, a 0.8rem radius, no shadow). The intrinsic width/height reserve the box, so the prose beside the image cannot shift as the file loads; the image is beside the prose on desktop and stacks above it below 900px; the About copy and the panel's reveal animation are unchanged; and the previous note that asked the author for the file was replaced now that it exists | Repository-local validation only: `npm run typecheck`, `npm run lint` and a production `vite build` all clean (the build emits `dist/assets/mahmood-a5TepQJk.png`). Browser checks: the element renders with the exact alt text and the PNG resolves (200, `image/png`, 985,193 bytes); the box renders 288 x 266 from the attributes alone while `naturalWidth` is 0, then 288 x 266 again at natural 1305 x 1206 once loaded, so the ratio is preserved and there is no layout shift; at 1260px the image (right edge 312) sits inside the first column, left of the text column (left edge 400) and overlapping it vertically, so it is beside the prose; in same-origin 390 x 844, 768 x 900 and 1440 x 900 viewports it is above the text below 900 and beside it at 1440 (320px column against an 840px text column) with `scrollWidth == clientWidth` in the page, the About grid, the contacts, the footer and the navigation at every width; at the boundary, 899px gives one 841px column with the image above the text and 900px gives 320 + 466 side by side, still without overflow; the border measures `1px rgba(39, 35, 31, 0.26)` in light and `1px rgba(236, 231, 223, 0.24)` in dark with no shadow in either; and the "Open the app" crossing still reaches `/app` at 820ms with the light looping and the overlay gone by ~1.2s, with the About panel's reveal still firing. `prefers-reduced-motion` was verified by emulation rather than inspection: a one-off harness drove the Playwright-cached Chromium over CDP with `Emulation.setEmulatedMedia({ features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })`, and the page reported the media query as matching with `scroll-behavior: auto`, `scroll-snap-type: none`, all three panels at `opacity: 1` with `transform: none` and a `0s` transition, the scroll hint's animation `none`, the crossing's light `display: none` and the logo wipe `animation: none` with `clip-path: none`, `/app` reached by 360ms with no overlay left, and the app unaffected (`data-landing-theme` absent, `data-theme` still `dark`, `--accent` still `#7fd1d8`); the harness and its temporary browser profile were deleted. **Not claimed:** the image's weight — 962 kB displayed at ~288px is heavier than it needs to be, so a smaller export would still be worth having, and none was made because the author supplied this file. Nothing was committed, staged, pushed or deployed, and the temporary probe pages used for the responsive and motion checks were deleted again |
+| 2026-10-14 | Six frontend-only landing-page refinements, left unstaged on `feature/openhealth-landing`. (1) "Open the app" now plays a crossing into the app: the landing page fades out, an overlay in the app's own palette wipes in a still copy of the Home screen's eQalb composition (the same `home__*` classes) behind a band of light, the light enters its looping state, and the overlay dissolves as the app's existing `home-rise` entrance fades the interface in; the new `frontend/src/composables/useAppLaunch.ts` owns the sequence (`LAUNCH_TIMING`: reveal at 820ms, dissolve by ~1.18s, safety clear at 2.4s) and `frontend/src/components/LaunchTransition.vue` renders it with the new "Landing page to app transition" section of `frontend/src/styles.css`. Both fades are CSS animations rather than Vue `<Transition>` classes: the first attempt used `<Transition>` and the overlay stayed at opacity 0 whenever the browser stalled its animation frames, which the rework fixes. The overlay is `aria-hidden`, holds nothing focusable and is `pointer-events: none`, the app is mounted and interactive as soon as the sequence hands over, modified/middle clicks still open the real `/app` link, and reduced motion drops the sweep and wipe for a quick fade. (2) The hero's simulated-data note is removed from the landing page only (the app keeps its own notices). (3) The OpenHealth copy is the supplied three paragraphs verbatim, and (4) the About me copy the supplied two paragraphs ("a health economics graduate"), both keeping plain paragraph spacing. (6) The per-panel entrance reveal is refined to 480ms with a 14px lift at threshold 0.15, once per panel, and is dropped under reduced motion. Item (5), the portrait, is outstanding by design: no image file exists in the repository, so no placeholder or generated image was used and the author is asked to supply one. `frontend/README.md` and `project_state.md` record the new files, the transition and the reason the portrait is absent | Repository-local validation only: `npm run typecheck`, `npm run lint` and a production `vite build` all clean, and the built CSS carries every new rule (5 launch animations, 6 `prefers-reduced-motion` blocks) with no `landing__note` left. Browser checks: the crossing sampled at 60/600/900/1150/1800/2600ms (veil opaque on `launch-veil-in`, landing at opacity 0, the logo wipe progressing, `/app` at 820ms with the light in `launch-sheen-loop`, the Home hero at opacity 0 then 1, overlay gone and the app interactive); a Ctrl-click left to the browser with no overlay started, `href` still `/app`; the reduced-motion branch on `/app` by 300ms; panel 1 revealed by the observer at load and the About panel on scroll with `aria-current` following; the landing theme toggling to light (page #F4F0E8, title #27231F, CTA #8C503B) while `eqalb.theme`/`data-theme` stayed dark; dark palette measured (#090909, #ECE7DF, #D39477); 390 / 768 / 1440px layouts with no horizontal overflow in the page, About grid, contacts, footer or navigation. **Not claimed:** the portrait image (no asset exists; not fabricated or substituted), and OS-level `prefers-reduced-motion` emulation, which this environment cannot perform (the media rules were confirmed in the CSS and through a stubbed preference). Nothing was committed, staged, pushed or deployed. A temporary probe page used for the responsive check was deleted again |
+| 2026-10-14 | Frontend-only redesign of the landing page at `/`, left unstaged on `feature/openhealth-landing`. The mission-heavy OpenHealth landing page is replaced by one scrolling page in three panels - eQalb (the hero: the title, one line of description, the single action "Open the app" to `/app`, a simulated-data note and a scroll link), OpenHealth (a personal project, eQalb as its first step) and About me (Mahmood Alawi, one paragraph and the email/GitHub/LinkedIn details already in the project) - under a compact floating navigation panel that smooth-scrolls to each section, tracks the visible panel with an `IntersectionObserver` and marks it with `aria-current`, with a one-off fade-and-lift entrance per panel and the page footer inside the last panel. The landing page has its own light/dark theme (`frontend/src/composables/useLandingTheme.ts`, key `openhealth.landing.theme`, published as `<html data-landing-theme>`, set before the first paint on the landing addresses only and removed when the page unmounts), so it shares neither the app's teal palette nor `eqalb.theme`, and all of its styles are namespaced in the new `frontend/src/landing.css`; `frontend/src/styles.css` loses the now-unused `.oh*` block and gains `.app--landing`, `App.vue` adds that class for the landing page, and the landing page's document title and meta description were updated. Fonts are local stacks: no dependency, no external font request, no lockfile change. No R, API, deployment or generated file was touched | Repository-local validation only: `npm run typecheck`, `npm run lint` and a production `vite build` all clean. Browser checks against the running dev server: the three panels and the floating navigation; nav clicks scrolling to their section and moving `aria-current` (scrolling to the OpenHealth panel measured `scrollY` equal to that panel's offset, with the active link following); the entrance reveal firing once per panel; the theme toggle switching the landing palette from #090909 to #F4F0E8 while `eqalb.theme`, `<html data-theme>`, the body background and the app's teal `--accent` were unchanged, `data-landing-theme` absent and scroll snapping off on `/app`; a direct load of `/#about-me`; "Open the app" reaching `/app`; and `/about` unchanged. Layout measured in same-origin 390 x 844, 768 x 900 and 1440 x 900 viewports: no horizontal overflow at any width, one viewport per panel, proximity snapping on at 768 and 1440 and off at 390, the wordmark hidden at 390. The reduced-motion path was checked three ways: the rules parse under `@media (prefers-reduced-motion: reduce)` in the live CSSOM (smooth scrolling and snapping off, the reveal shown outright, the scroll hint's animation removed), they survive minification in the production bundle (5 `prefers-reduced-motion` blocks, `scroll-snap-type:none` in both the reduce and the 700px block, the reveal rules and the scroll-hint keyframes all present), and with the preference stubbed true the nav click jumped straight to the panel offset instead of animating. **Not claimed:** no pixel-level design review by the author yet; OS-level media emulation was not available in this environment, so the media query was verified in CSS and through the stubbed preference rather than by emulating the setting; and nothing was committed, staged, pushed or deployed |
 | 2026-10-14 | Workflow-only fix for the first failed automated run, plus the state file. The first workflow reached the deploy job, where SSH public-key authentication and pinned host-key verification succeeded, then failed at "Upload the bundle to the incoming directory" with "lost connection"; activation and validation were skipped and nothing was published. Cause: the step uploaded `bundle/frontend-<release-id>.tar.gz` and its `.sha256` in a single multi-file `scp` call, and a multi-file legacy request also sends the `-d` flag (`scp -d -t /opt/eqalb/frontend/incoming` in the operator's verbose local reproduction), while the server's forced-command wrapper allowlists exactly `scp -t /opt/eqalb/frontend/incoming` and refused it with exit 64. Change: that step now makes two separate single-file legacy SCP invocations, one per file, each preserving `scp -O`, `-P "${DEPLOY_SSH_PORT:-22}"`, `-i "$HOME/.ssh/deploy_key"`, `-o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes` and the `${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}:${REMOTE_INCOMING}` destination, with `set -euo pipefail` kept so either failed upload still prevents activation, and a short comment recording the wrapper's exact `scp -t` allowlist and the `-d` reason. The forced-command wrapper, activation script, permissions, secrets, concurrency, approval gate, validation and rollback steps are unchanged; `project_state.md` Known limitations, Current task, the migration entry's outstanding line and Next planned task were updated to record the failed attempt, the identified mismatch and the corrected upload, and that a successful end-to-end deployment remains outstanding | Repository-local validation only: `git diff --check` clean; changed files exactly `.github/workflows/deploy-frontend.yml` and `project_state.md`. **Not claimed:** the corrected workflow has not been re-run, so the two-transfer upload is unproven; no VPS, GitHub, secret, key or network access was used, and nothing was staged, committed, pushed or deployed |
 | 2026-10-14 | Server-side migration and CI key rotation completed on the VPS, operator-performed, and recorded in the repository; the only repository change is documentation plus the tracked `deploy/Caddyfile` root line, now `root * /opt/eqalb/public/dist` to match the live file. Evidence recorded: Caddy runs as user and group `caddy`; `/opt/eqalb` remains `750 eqalb:eqalb` and was not widened; `/opt/eqalb/public` exists at mode `0755`, owned by `eqalb-deploy:eqalb-deploy`; ACLs are `eqalb-deploy` `--x` on `/opt/eqalb` and `/opt/eqalb/frontend`, `caddy` `--x` on those same two paths, and `caddy` `r-x` on `/opt/eqalb/public` and `/opt/eqalb/frontend/releases`, with no write access for Caddy anywhere; `/opt/eqalb/public/dist` is an `eqalb-deploy`-owned symlink to `/opt/eqalb/frontend/releases/initial-20261013`, and that release is still the active one; `/etc/caddy/Caddyfile` uses `root * /opt/eqalb/public/dist`; Caddy was validated and reloaded and `systemctl is-active caddy` reports `active`; public verification returned HTTP 200 at `https://openhealth.ngo/` and `/api/health` returned JSON with `"status":"ok"` and `"model_ready":true`. Key rotation: a new passphrase-free CI-only Ed25519 key was created locally, its public half installed in `/home/eqalb-deploy/.ssh/authorized_keys` behind the same `restrict,command="/opt/eqalb/bin/eqalb-frontend-deploy-wrapper"` restriction, tested for the legacy `scp -O` upload path and for refusal of arbitrary commands, the `production` environment secret `DEPLOY_SSH_KEY` updated to the new private half, and the old `eqalb GitHub Actions frontend deploy` authorized-keys entry removed so only the new `eqalb frontend CI deploy` key remains. `deploy/FRONTEND_DEPLOY.md` status block, §4.5, §4.7 and §10 and this file's Known limitations, Current task and Next planned task updated so the migration, ACL setup, public-pointer creation and key rotation are no longer described as outstanding, with the server state and verification recorded | Verified from the operator's own evidence, which is the source of every server fact recorded here. **Not claimed:** no automated workflow run has happened, the `production` environment's required-reviewer/approval rule is still to be confirmed with the operator, the pinned action SHAs are still to be confirmed with `git ls-remote`, and a live public-pointer swap under a running Caddy has not been exercised. Repository-local validation only in this pass (`git diff --check` clean; changed files exactly `deploy/Caddyfile`, `deploy/FRONTEND_DEPLOY.md` and `project_state.md`). Nothing was staged, committed, pushed or deployed by this pass |
 | 2026-10-14 | Documentation-only correction of the Caddy service account's ACL on `/opt/eqalb/public`: it is now `r-x` (read-and-traverse) instead of traverse-only (`--x`), because Caddy must resolve the `dist` symlink name inside that directory, and the change is stated wherever the split is described (the §2 overview and the §4.2 traversal rule). The remaining split is unchanged: `eqalb-deploy` keeps traverse-only (`--x`) ACLs on `/opt/eqalb` and `/opt/eqalb/frontend`; Caddy keeps traverse-only (`--x`) on those same two parents and `r-x` on `/opt/eqalb/frontend/releases`, gains `r-x` on `/opt/eqalb/public`, and receives no write permission anywhere; `/opt/eqalb` stays mode `750 eqalb:eqalb`; and no broad `chmod` or world-access recommendation is added. §4.7's ACL block now applies `setfacl -m u:"$CADDY_USER":--x /opt/eqalb /opt/eqalb/frontend` and `setfacl -m u:"$CADDY_USER":r-x /opt/eqalb/public /opt/eqalb/frontend/releases` with the reason in its comment, and both verification blocks (step 2 before Caddy is touched, step 7 after activation) now prove Caddy can traverse and read `/opt/eqalb/public` and resolve the pointer with `readlink`, and that it can read the live release's `index.html` | Documentation-only: repository-local `git diff --check` clean; the changed-file list remains exactly the two documentation files from the previous pass. **Not verified and not claimed:** no ACL command has been run on the server, the Caddy service account has not been read on the server, the migration has not been performed, and no deploy, key, secret or GitHub setting was touched. Nothing was staged, committed, pushed or run |

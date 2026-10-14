@@ -278,6 +278,14 @@ code {
   max-width: 1000px;
 }
 
+/* The landing page is a full-bleed scrolling page of its own, so the shell's
+   centred column and its padding step aside for it and its own stylesheet
+   (landing.css) lays the page out. No eQalb screen carries this class. */
+.app--landing {
+  max-width: none;
+  padding: 0;
+}
+
 .home {
   display: flex;
   flex-direction: column;
@@ -537,156 +545,15 @@ code {
   color: var(--border-strong);
 }
 
-/* --- OpenHealth public shell ----------------------------------------------
-   The landing page and the About page sit outside eQalb. They reuse the same
-   tokens, buttons and focus conventions, with quieter surfaces and more space
-   between blocks than the dashboard: the teal identity is present but restrained.
-   Layout only - no rule above this block is touched. */
+/* --- OpenHealth public pages ----------------------------------------------
+   The About page sits outside eQalb and reuses the app's tokens, buttons and
+   focus conventions, with quieter surfaces and more space between blocks than
+   the dashboard.
 
-.oh {
-  display: flex;
-  flex-direction: column;
-  gap: 1.1rem;
-  padding: 0.75rem 0 2rem;
-}
-
-/* The same pinned theme control as the eQalb Home screen, in the same corner, so
-   the light/dark switch is in one place on every public page. */
-.oh__topbar {
-  display: flex;
-  justify-content: flex-end;
-  min-height: 2.1rem;
-}
-
-.oh__topbar .btn {
-  position: fixed;
-  top: 1rem;
-  right: 1.25rem;
-  z-index: 4;
-}
-
-.oh__hero {
-  text-align: center;
-  padding: 2.25rem 0.75rem 1.5rem;
-}
-
-.oh__eyebrow {
-  margin: 0 0 0.6rem;
-  font-size: 0.78rem;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.oh__name {
-  margin: 0 0 0.9rem;
-  font-size: clamp(2.6rem, 10vw, 4rem);
-  font-weight: 750;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  color: var(--heading);
-}
-
-/* The landing heading is focused on arrival, like the other standalone views, so
-   it keeps its own visible outline. */
-.oh__name:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 6px;
-}
-
-.oh__lede {
-  max-width: 46rem;
-  margin: 0 auto 1.75rem;
-  font-size: 1.02rem;
-  color: var(--text);
-}
-
-.oh__actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.6rem;
-}
-
-.oh__actions .btn {
-  padding: 0.55rem 1.2rem;
-  font-size: 0.95rem;
-}
-
-.oh__actions--left {
-  justify-content: flex-start;
-  margin-top: 1.1rem;
-}
-
-.oh__section {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-  padding: 1.5rem 1.9rem 1.6rem;
-}
-
-.oh__section-title {
-  margin: 0 0 0.6rem;
-}
-
-.oh__prose {
-  max-width: 48rem;
-  font-size: 0.95rem;
-}
-
-.oh__prose--last {
-  margin-bottom: 0;
-}
-
-.oh__list {
-  max-width: 48rem;
-  font-size: 0.95rem;
-}
-
-/* The one place the calm tone turns explicit: the eQalb scope statement reads as
-   a note rather than as body copy, in the same information styling the dashboard
-   uses for its own notices. */
-.oh__notice {
-  max-width: 48rem;
-  margin: 1rem 0 0;
-  padding: 0.7rem 0.9rem;
-  background: var(--info-bg);
-  border: 1px solid var(--info-border);
-  border-radius: var(--radius-sm);
-  font-size: 0.9rem;
-}
-
-.oh__link {
-  color: var(--accent);
-}
-
-.oh__separator {
-  color: var(--border-strong);
-}
-
-.oh__footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  margin-top: 0.5rem;
-  padding-top: 1.1rem;
-  border-top: 1px solid var(--border);
-  font-size: 0.85rem;
-  overflow-wrap: anywhere;
-}
-
-@media (max-width: 1023px) {
-  .oh__hero {
-    padding: 1.5rem 0.25rem 1rem;
-  }
-
-  .oh__section {
-    padding: 1.25rem 1.15rem 1.35rem;
-  }
-}
+   The landing page at "/" is deliberately not styled here: it has its own
+   palette, typography and light/dark theme in `landing.css`, because it has to
+   read as a portfolio rather than as the app and must not be able to affect any
+   rule on this sheet. See that file for how it stays scoped. */
 
 .page {
   padding: 1rem 0 2rem;
@@ -2491,5 +2358,180 @@ button:focus-visible {
 
   .app-loading__trace-pulse {
     stroke-dasharray: none;
+  }
+}
+
+/* --- Landing page to app transition ----------------------------------------
+   The overlay that carries the visitor from the landing page into the app, and
+   the app's own arrival. It is decoration: the sequence is in useAppLaunch.ts
+   and the durations here are the animation's own, kept in step with it
+   (`--launch-sheen` with LAUNCH_TIMING.arrive, `--launch-fade` with the
+   overlay's own fade).
+
+   Nothing here is a second entrance animation. The overlay is a still copy of
+   the Home screen's logo composition - the same classes, so the two are one
+   design - and the Home screen completes the arrival with the `home-rise`
+   entrance it already had, which is what fades the interface, its buttons and
+   its links in as the overlay dissolves. */
+
+:root {
+  /* The light itself, and the band's soft edges, in the app's own teal. Light
+     mode needs a tinted band to be visible at all on #f4f7f9, so it carries a
+     white core inside a teal veil. */
+  --launch-veil: rgba(23, 107, 115, 0.18);
+  --launch-core: rgba(255, 255, 255, 0.85);
+  --launch-sheen: 820ms;
+  --launch-fade: 360ms;
+}
+
+[data-theme='dark'] {
+  /* In the dark the core is the accent itself rather than white: a white band
+     on #101a1f reads as a flash, a tinted one as light. */
+  --launch-veil: rgba(127, 209, 216, 0.16);
+  --launch-core: rgba(127, 209, 216, 0.42);
+}
+
+.launch {
+  position: fixed;
+  inset: 0;
+  /* Above the app's own overlays (the modal and the loading card), so the
+     crossing is never interrupted by chrome from the page being left. */
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  overflow: hidden;
+  background: var(--bg);
+  /* The veil comes up on its own animation rather than a Vue transition: a CSS
+     animation is timed by the document's clock, so a frame that arrives late
+     shows the veil further along rather than not at all. */
+  animation: launch-veil-in 240ms ease both;
+  /* Decoration only: the overlay never takes a click, and the app underneath is
+     live from the moment it is swapped in. */
+  pointer-events: none;
+}
+
+@keyframes launch-veil-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Leaving: the same treatment in reverse, over the app whose own entrance is
+   already playing. The compound selector is deliberate - it must beat the
+   mounted state's animation, which would otherwise hold the veil opaque. */
+.launch.launch--leaving {
+  animation: launch-veil-out var(--launch-fade) ease both;
+}
+
+@keyframes launch-veil-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+/* The reveal: the composition is clipped to nothing and wiped in from the left,
+   a beat behind the light, so the logo appears as the light passes rather than
+   before it. The end state is a clip that shows everything, held by the fill. */
+.launch__logo {
+  position: relative;
+  z-index: 1;
+  clip-path: inset(0 100% 0 0);
+  animation: launch-logo-wipe var(--launch-sheen) cubic-bezier(0.33, 0, 0.25, 1) 90ms both;
+}
+
+@keyframes launch-logo-wipe {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+/* The wordmark is a paragraph in the shell rather than the Home screen's
+   heading, so it takes the composition's type from .home__title and only loses
+   the heading's own bottom margin. */
+.launch__word {
+  margin: 0;
+}
+
+/* The light: a wide soft band that crosses the screen once. Its own width is
+   60% of the viewport, so its travel in its own units clears the screen on both
+   sides: -100% parks it past the left edge, 200% past the right. */
+.launch__sheen {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 60%;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    var(--launch-veil) 34%,
+    var(--launch-core) 50%,
+    var(--launch-veil) 66%,
+    transparent 100%
+  );
+  animation: launch-sheen-pass var(--launch-sheen) cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes launch-sheen-pass {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(200%);
+  }
+}
+
+/* Once the logo has been revealed the light keeps passing on its own quiet
+   cycle: one crossing, then a pause, so it stays a passing light rather than a
+   moving background. */
+.launch--looping .launch__sheen {
+  animation: launch-sheen-loop 2.4s linear infinite;
+}
+
+@keyframes launch-sheen-loop {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  30% {
+    transform: translateX(200%);
+  }
+
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No sweep and no reveal: the light is dropped and the logo is simply there,
+     so the crossing is a quick fade in and out with nothing passing over it. */
+  .launch__sheen {
+    display: none;
+  }
+
+  .launch__logo {
+    clip-path: none;
+    animation: none;
+  }
+
+  .launch,
+  .launch.launch--leaving {
+    animation-duration: 140ms;
   }
 }
