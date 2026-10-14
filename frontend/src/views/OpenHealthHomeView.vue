@@ -691,9 +691,9 @@ onBeforeUnmount(() => {
             <li>
               <a
                 class="landing__footer-link"
-                :href="pagePath('about')"
-                @click="followLink($event, 'about')"
-                >About OpenHealth</a
+                :href="pagePath('blog')"
+                @click="followLink($event, 'blog')"
+                >Blog</a
               >
             </li>
             <li>

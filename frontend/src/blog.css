@@ -1,0 +1,428 @@
+/**
+ * OpenHealth blog styles (frontend only).
+ *
+ * The blog is the landing page's sibling rather than a screen of the app: it is
+ * shown at "/blog" and "/blog/<slug>", it reads the same earthy ivory-and-clay /
+ * near-black palette, the same serif-against-sans typography and the same stored
+ * light/dark preference, and it keeps its rules in a file of its own so
+ * `landing.css` stays the landing page's alone.
+ *
+ * Scoping follows the landing page's convention exactly. The palette is not
+ * declared here - it is the landing page's, declared once in `landing.css`, which
+ * `main.ts` loads before this file - and the rules below simply read those
+ * tokens, so there is one palette rather than two that have to be kept in step.
+ * Everything sits under the single `.blog` root class of the blog's shell, so no
+ * rule can reach an eQalb screen, and the app's own teal tokens are never read.
+ *
+ * The reading column is deliberately narrow and its text is left-aligned with
+ * generous line height: an article is read, not scanned. Nothing here is a card,
+ * a thumbnail or a fade - the index is text with a rule between entries, and the
+ * article is text with headings. Nothing animates as the page scrolls.
+ */
+
+/* --- The page -------------------------------------------------------------- */
+
+/* The window's own background and body font already come from `landing.css`,
+   keyed on `html[data-landing-theme]`, which the blog's shell sets while it is
+   mounted. This is the page itself: full width, at least one screen tall so the
+   footer closes the page rather than floating in the middle of a short one, and
+   with the landing page's own type scale - the app sets 15px on `body` for its
+   dense panels. */
+.blog {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--landing-bg);
+  color: var(--landing-text);
+  font-family: var(--landing-sans);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+@supports (min-height: 100svh) {
+  /* The small-viewport unit keeps a short page one screen tall on a phone even
+     while the browser's own bars are showing. */
+  .blog {
+    min-height: 100svh;
+  }
+}
+
+/* --- Header ---------------------------------------------------------------- */
+
+.blog__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 1.1rem;
+  border-bottom: 1px solid var(--landing-divider);
+}
+
+.blog__nav {
+  display: flex;
+  align-items: baseline;
+  gap: 1.1rem;
+  min-width: 0;
+}
+
+/* The wordmark is the quietest thing in the header, as it is on the landing
+   page: the blog is the page, OpenHealth is its context. */
+.blog__mark {
+  color: var(--landing-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 140ms ease;
+}
+
+.blog__mark:hover {
+  color: var(--landing-text);
+}
+
+.blog__nav-links {
+  display: flex;
+  align-items: baseline;
+  gap: 1.1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.blog__nav-link {
+  color: var(--landing-muted);
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: color 140ms ease;
+}
+
+.blog__nav-link:hover {
+  color: var(--landing-text);
+}
+
+/* The section the reader is in. The state is carried by the text colour and its
+   weight as well as by the underline, so it is never colour alone; the view
+   marks the same thing with `aria-current="page"` for assistive technology. */
+.blog__nav-link[aria-current='page'] {
+  color: var(--landing-text);
+  font-weight: 600;
+  border-bottom: 1px solid var(--landing-divider-strong);
+}
+
+.blog__theme {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--landing-divider-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--landing-text);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.blog__theme:hover {
+  background: var(--landing-accent-tint);
+  border-color: var(--landing-accent);
+}
+
+/* One focus ring for the whole blog, in the landing palette and in the text
+   colour, so it is visible on the ivory background, on a heading link and on the
+   theme control alike. It is declared after `styles.css` and after
+   `landing.css`, so it is the ring the blog actually shows. */
+.blog a:focus-visible,
+.blog button:focus-visible {
+  outline: 2px solid var(--landing-focus);
+  outline-offset: 3px;
+}
+
+/* The heading takes focus on arrival to place a screen-reader user on the page.
+   It carries tabindex="-1", so it can never be reached with Tab and this ring
+   would only be the browser's own box drawn around the page title on every load
+   and refresh. */
+.blog__title:focus-visible {
+  outline: none;
+}
+
+/* --- The reading column ---------------------------------------------------- */
+
+.blog__main {
+  flex: 1 0 auto;
+  width: 100%;
+}
+
+/* One measure for the index and for an article: wide enough for a comfortable
+   line, narrow enough that the eye does not lose it. The side padding is what
+   keeps the text off the window edge on a phone. */
+.blog__inner {
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 3rem;
+  min-width: 0;
+}
+
+.blog__inner--article {
+  max-width: 46rem;
+}
+
+.blog__title {
+  margin: 0;
+  color: var(--landing-text);
+  font-family: var(--landing-serif);
+  font-size: clamp(2.1rem, 5vw, 3.1rem);
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  overflow-wrap: break-word;
+}
+
+/* --- The index ------------------------------------------------------------- */
+
+.blog__posts {
+  margin: 2.2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A quiet rule above each entry, and above the first one too, so the list is
+   separated from the page title by the same line that separates the posts from
+   each other. Nothing is boxed: there is no card, no border, no background and
+   no thumbnail anywhere in the index. */
+.blog__post {
+  padding-top: 1.6rem;
+  border-top: 1px solid var(--landing-divider);
+}
+
+.blog__post + .blog__post {
+  margin-top: 1.6rem;
+}
+
+.blog__post-title {
+  margin: 0;
+  font-family: var(--landing-serif);
+  font-size: clamp(1.2rem, 2.4vw, 1.5rem);
+  font-weight: 400;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  overflow-wrap: break-word;
+}
+
+.blog__post-link {
+  color: var(--landing-text);
+  text-decoration: none;
+  transition: color 140ms ease;
+}
+
+.blog__post-link:hover {
+  color: var(--landing-accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.blog__post-date {
+  margin: 0.55rem 0 0;
+  color: var(--landing-muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.blog__post-summary {
+  margin: 0.7rem 0 0;
+  max-width: 38rem;
+  color: var(--landing-text);
+  font-size: 1rem;
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+
+/* The index with no posts in it: one sentence, in the same column, in muted
+   text. It is a state the page can be in, not an error. */
+.blog__empty {
+  margin: 1.6rem 0 0;
+  max-width: 36rem;
+  color: var(--landing-muted);
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+
+/* Development-only, so it never appears in a published build: it points whoever
+   is writing a post at the content directory. */
+.blog__note {
+  margin: 1.6rem 0 0;
+  max-width: 36rem;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--landing-divider-strong);
+  color: var(--landing-muted);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+/* --- An article ------------------------------------------------------------ */
+
+.blog__back {
+  margin: 0 0 2.2rem;
+  font-size: 0.92rem;
+}
+
+.blog__article {
+  margin: 0;
+}
+
+.blog__article-head {
+  margin: 0 0 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--landing-divider);
+}
+
+.blog__date {
+  margin: 1rem 0 0;
+  color: var(--landing-muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.blog__summary {
+  margin: 1.2rem 0 0;
+  color: var(--landing-muted);
+  font-size: clamp(1rem, 1.4vw, 1.12rem);
+  line-height: 1.6;
+}
+
+/* The body: long-form prose at a comfortable measure. Every block is a real
+   element - a `<p>`, an `<h2>`, a `<ul>`, a `<blockquote>` - so a reader, a
+   find-in-page and a screen reader all see the structure the post was written
+   with. Nothing is aligned other than left, and nothing is justified. */
+.blog__paragraph {
+  margin: 1.25rem 0 0;
+  font-size: 1.06rem;
+  line-height: 1.78;
+  overflow-wrap: break-word;
+}
+
+.blog__heading {
+  margin: 2.4rem 0 0;
+  color: var(--landing-text);
+  font-family: var(--landing-serif);
+  font-size: clamp(1.3rem, 2.6vw, 1.62rem);
+  font-weight: 400;
+  line-height: 1.25;
+  overflow-wrap: break-word;
+}
+
+.blog__list {
+  margin: 1.25rem 0 0;
+  padding-left: 1.15rem;
+  font-size: 1.06rem;
+  line-height: 1.7;
+}
+
+.blog__list li {
+  margin: 0.5rem 0 0;
+  overflow-wrap: break-word;
+}
+
+.blog__quote {
+  margin: 1.6rem 0 0;
+  padding: 0.15rem 0 0.15rem 1.1rem;
+  border-left: 2px solid var(--landing-divider-strong);
+  color: var(--landing-muted);
+  font-size: 1.06rem;
+  line-height: 1.7;
+}
+
+.blog__quote p {
+  margin: 0;
+}
+
+.blog__quote-source {
+  margin: 0.6rem 0 0;
+  font-size: 0.88rem;
+}
+
+/* --- Links and inline code ------------------------------------------------- */
+
+/* The site's links, in the landing accent, both in a post's prose and in the
+   small navigation lines ("All posts"). Underlined rather than colour-only, so
+   a link is identifiable without relying on colour perception. */
+.blog a {
+  color: var(--landing-accent);
+  text-decoration: underline;
+  text-decoration-color: var(--landing-divider-strong);
+  text-underline-offset: 3px;
+  transition:
+    color 140ms ease,
+    text-decoration-color 140ms ease;
+}
+
+.blog a:hover {
+  color: var(--landing-accent-strong);
+  text-decoration-color: var(--landing-accent-strong);
+}
+
+/* `styles.css` styles `code` with the app's tokens; this keeps the one place a
+   post's text can carry code in the blog's own palette. */
+.blog code {
+  padding: 0.05rem 0.32rem;
+  border: 1px solid var(--landing-divider);
+  border-radius: 0.25rem;
+  background: var(--landing-surface);
+  color: var(--landing-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  overflow-wrap: break-word;
+}
+
+/* --- Footer ---------------------------------------------------------------- */
+
+.blog__footer {
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem 2.5rem;
+  border-top: 1px solid var(--landing-divider);
+  color: var(--landing-muted);
+  font-size: 0.82rem;
+}
+
+.blog__footer-note {
+  margin: 0;
+}
+
+/* --- Responsive ------------------------------------------------------------ */
+
+@media (max-width: 700px) {
+  .blog__header {
+    padding: 1.1rem 1.1rem 0.9rem;
+  }
+
+  .blog__inner {
+    padding: 2rem 1.1rem 2.5rem;
+  }
+
+  .blog__footer {
+    padding: 1.1rem 1.1rem 2rem;
+  }
+
+  .blog__paragraph,
+  .blog__list,
+  .blog__quote {
+    font-size: 1.02rem;
+  }
+}

@@ -370,8 +370,9 @@ explicitly documented otherwise.
   `null` and are shown as a dash rather than as a number. Source `./api/run_api.py`
   for the service, `./api/api_contract.md` for the contract, and
   `./frontend/README.md` for the interface.
-- OpenHealth public shell: three addresses are published on top of the same
-  dependency-free view store (`frontend/src/composables/useAppView.ts`). `/` is
+- OpenHealth public shell: the public addresses are published on top of the same
+  dependency-free view store (`frontend/src/composables/useAppView.ts`) — `/`,
+  `/blog` and `/blog/<slug>`, `/about` and `/app`. `/` is
   the landing page
   (`frontend/src/views/OpenHealthHomeView.vue`): one scrolling page in three
   panels — eQalb first (the hero, with the single action "Open the app"), then
@@ -435,8 +436,51 @@ explicitly documented otherwise.
   bounding box plus a 3% margin and box-averaging down with premultiplied alpha;
   `frontend/index.html` declares them and no longer declares an SVG icon, the stock
   Vite `favicon.svg` having been deleted, and the single `index.html` means `/`,
-  `/app` and `/about` all carry it. No router was introduced
+  `/app` and `/about` all carry it. The landing page's footer link is "Blog"
+  (`pagePath('blog')`), which is the one change the blog made to the page. No
+  router was introduced
   and no dependency was added.
+- OpenHealth blog: `/blog` is the posts newest first and `/blog/<slug>` is one
+  post at its own address, published by the same view store that owns every other
+  public address — the store carries the slug (`postSlug`), resolves
+  `/blog/<anything>` to the blog rather than rewriting it, and exposes
+  `blogPostPath()` and `followPostLink()`, so a post address survives a direct
+  load, a reload and Back/Forward and the address always names what is on screen.
+  The views are `frontend/src/views/BlogIndexView.vue` (title, date and optional
+  summary per entry, separated by a quiet rule; no cards or thumbnails) and
+  `frontend/src/views/BlogPostView.vue` (a link back to the index, the title and
+  date, then the post's blocks in a narrow reading column, or a readable
+  "Post not found" state naming the address). The shell is
+  `frontend/src/components/blog/BlogLayout.vue` — the wordmark back to `/`, the
+  `Blog` link, the landing page's own light/dark control and the same footer note
+  — and it is where the blog's landing theme is owned and where a followed page
+  returns to the top (`cameFromHistory()` distinguishes a followed page from a
+  Back/Forward entry, so a history entry keeps the position the browser restores).
+  The wordmark that leaves the blog for the landing page carries the same rule at
+  the link (`followLandingLink`, beside `followLink` and `followPostLink` in
+  `useAppView.ts`): it navigates to `/` and then scrolls that page to its top once
+  it has replaced the blog, because the landing page has no scroll reset of its own
+  — without it the reader arrived part-way down a page they had just asked for.
+  Only a followed link goes through it, so Back and Forward are still left to the
+  browser's own restoration, and the landing page's section anchors are untouched.
+  Posts live in `frontend/src/content/blog/` as typed data: `types.ts` defines the
+  closed block set (paragraph, heading, list, quote, with link segments inside a
+  paragraph), each post is a module, and `posts.ts` is the registry that publishes
+  them (a file that is not listed is a draft) and the only place a post is looked
+  up; `frontend/src/components/blog/date.ts` renders a `YYYY-MM-DD` date as text
+  from UTC parts. There is no Markdown parser, no HTML and no CMS, so nothing is
+  sanitised and no dependency was added; the registry holds the one published post
+  (the release of eQalb and the introduction of OpenHealth, dated 2026-10-14), and
+  the index shows a restrained empty state (with a dev-server-only note pointing at
+  the content README) whenever the registry is empty. `frontend/src/blog.css`, scoped under
+  `.blog` and keyed on nothing else, holds the blog's layout and declares no
+  palette of its own: it reads the landing tokens, so the blog is the landing
+  page's palette and typography rather than the app's. `useLandingTheme.ts` now
+  counts its mounted pages and removes `<html data-landing-theme>` only when the
+  last of them unmounts, which is what keeps it on the page that has just arrived
+  when the landing page and the blog hand over to each other — without it, Vue's
+  end-of-flush unmounted hook took the attribute off the arriving page — while
+  still removing it for every `/app` screen.
 - DHT readiness logic extracted into `eqalb_readiness.R`, sourced by `app.R` and
   by `api/plumber.R`, so the Shiny DHT Readiness tab, Tutorial Part 1 (Step 3),
   Tutorial Part 2 (DHT readiness) and the HTA decision summary readiness domain
@@ -1264,16 +1308,36 @@ explicitly documented otherwise.
 - Validation practice: PSA checks use `n_sim = 100` with `seed = 12345` (about
   20 s). The 1,000-draw default is only run when a full default PSA is explicitly
   requested, because it takes about three minutes.
-- The three public addresses are resolved in the browser, not by the server, so a
-  host serving `frontend/dist` must return `index.html` for an unmatched path.
-  Vite's dev server and `vite preview` both do this already, which is how `/`,
-  `/app` and `/about` were verified; on a host that does not, a direct load or a
-  reload of `/app` or `/about` would return 404. The repository's
+- The public addresses are resolved in the browser, not by the server, so a host
+  serving `frontend/dist` must return `index.html` for an unmatched path. Vite's
+  dev server and `vite preview` both do this already, which is how `/`, `/blog`,
+  `/blog/<slug>`, `/app` and `/about` were verified; on a host that does not, a
+  direct load or a reload of any of them would return 404. The repository's
   `deploy/Caddyfile` now carries `try_files {path} /index.html`, added by the
   frontend-deployment work recorded in Current task rather than by the public-shell
   task, so the fallback these addresses need is part of the deployment
   configuration instead of outstanding. eQalb's internal
   screens deliberately have no deep links, so `/app` is the only eQalb address.
+- The blog is published with one post: *Release of eQalb & The introduction of
+  OpenHealth!* (2026-10-14), the author's own text published exactly as written,
+  with no wording edited and no links added — the slug `release-of-eqalb-and-openhealth`
+  is derived from the title, and the date was given as 14/10/2026 and written in the
+  format's `YYYY-MM-DD`. The article path, the index and the not-found state were
+  verified against this post and with temporary posts that were deleted afterwards.
+  A post is typed data in `frontend/src/content/blog/`; there is no Markdown renderer
+  and no HTML, which keeps the blog dependency-free, so Markdown would be one small
+  dependency plus its approval if it is wanted later.
+- The landing page no longer links to `/about`: the footer's "About OpenHealth"
+  link was replaced by "Blog", as instructed. `/about` itself is unchanged, still
+  resolves directly and still links back to `/`, but it has no entry point on the
+  landing page until that is decided.
+- The blog's shell starts a followed page at its top and leaves a history entry
+  where the browser restores it — and the wordmark that leaves the blog for `/`
+  does the same for the landing page (`followLandingLink`), which otherwise keeps
+  whatever position it is left in. The landing page is still not reset when it is
+  reached some other way from a scrolled public page: `/about`'s "Back to
+  OpenHealth" link inherits the position, exactly as it did before the blog
+  existed. That is pre-existing behaviour and was out of scope.
 - Unresolved documentation discrepancy, found while regression-testing the PSA for
   the value-based price task: a 100-draw PSA at `seed = 12345` with the model's
   default inputs now gives mean incremental cost 2417.75112277353, mean
@@ -1645,6 +1709,95 @@ explicitly documented otherwise.
   stripped, since removing pixels is not the generator's business.
 
 ## Current task
+
+Completed: the OpenHealth blog exists as a frontend-only addition at `/blog` and
+`/blog/<slug>`, and the landing page's bottom-right footer link is now "Blog".
+Frontend only; no R, API, server configuration, model logic, dependency or
+deployment file was touched, and nothing was committed. `/blog` is a
+reverse-chronological list of the posts (title, date, optional summary, quiet
+rules between entries — no cards or thumbnails) and `/blog/<slug>` is one post at
+a stable address in a narrow reading column, with a heading, a date, paragraphs,
+lists and quotes; an address naming no post shows a readable "Post not found"
+state at that address. The blog is laid out in `frontend/src/blog.css`, scoped
+under `.blog`, which declares no palette of its own and reads the landing tokens
+from `landing.css`, so it is the landing page's earthy light / near-black dark
+identity, typography and stored preference rather than the app's teal. Posts are
+content in `frontend/src/content/blog/`: one typed module per post plus
+`types.ts`, the registry `posts.ts` (a post is published by being listed there; a
+file that is not listed is a draft) and a `README.md` documenting the format and
+the add / preview / publish workflow. No Markdown renderer was added and no HTML
+is rendered, so nothing needs sanitising; the list is empty until a first post is
+approved, so the index shows a restrained empty state instead of a placeholder
+article. Post addresses are resolved by the existing view store
+(`useAppView.ts`), which now also carries the post slug, the `/blog` title and the
+`blogPostPath()`/`followPostLink()` helpers — no router and no dependency was
+introduced, and `page` gains one value (`'blog'`) that the shell renders as two
+named branches. The blog's shell (`components/blog/BlogLayout.vue`) owns the
+landing theme for its pages and starts a followed page at the top, leaving a Back
+or Forward entry where the browser restores it.
+
+One real defect was found and fixed while verifying, in the shared theme
+composable: `useLandingTheme.ts` removed `<html data-landing-theme>` from every
+unmounting component, but Vue runs an unmounted hook at the end of the flush —
+after the arriving page's setup has already set the attribute — so handing over
+between the landing page and the blog stripped the attribute from the page that
+had just arrived, leaving either page in the application's palette (the landing
+page's `.landing` background fell through to the app's `#101a1f`). The composable
+now counts the mounted landing-themed pages and removes the attribute only when
+the last of them unmounts; the landing page alone behaves exactly as before, and
+the attribute still leaves `/app` when either page unmounts. Also verified: the
+"Download results" view still names itself and renders nothing under the
+dashboard, light and dark both apply, `/about` still resolves directly, and
+`/app` keeps `eqalb.theme` and `<html data-theme>` untouched by any blog choice.
+
+Left for the author: the landing page no longer links to `/about` (the instructed
+replacement — `/about` itself is unchanged and still resolves at its address); and
+the empty state was verified with temporary posts that were deleted afterwards.
+The first post has since been added; see the paragraph below.
+
+Completed after that: one focused navigation correction to the blog. Following
+the blog's wordmark — an explicit link to `/` — now navigates to the landing page
+and starts it at the top, through a third link handler beside the other two,
+`followLandingLink` in `useAppView.ts` (it is the only caller; `BlogLayout.vue`'s
+wordmark uses it). The scroll is written in the same turn as the address, exactly
+as `followPostLink` writes its own: the landing page is taller than anything the
+blog shows, so the position the reader arrives at is already the top and the page
+that replaces the blog keeps it — and deferring it past the turn instead let the
+browser record the page being left as having been at its top, which cost that
+entry its Back position. That was the whole change: two files plus documentation.
+Nothing global was added — the store still forces no navigation to the top,
+`popstate` still only resolves the page and the slug, and the blog shell's own
+reset is unchanged — so browser Back and Forward keep the browser's own
+restoration. Verified both directions over repeated runs: with the blog's index
+scrolled to 191 of a 411px document and a post scrolled to 120, following the
+wordmark landed on `/` with the document at 0 and the landing page's first panel
+at the top of the viewport, and Back then returned to the blog index at 191 and to
+the post at 120; `/` scrolled to 1200, the footer "Blog" link and Back returned to
+`/` at 1208 with its `#about-me` hash intact; and the landing page's section links
+(`eQalb`, `OpenHealth`, `About me`, `Back to top`) still scroll and set the hash
+as before. One measurement caveat, recorded because the first pass reported it as
+a defect: an automated click scrolls its target into view before dispatching it,
+so driving the wordmark with the harness's own click appeared to lose the blog's
+Back position. Dispatching the click without that scroll-into-view — the state a
+real reader is in — showed the position is kept, so nothing about it is a defect
+in the page. `/about` and the app were not touched, and no theme, design,
+content-format, animation or unrelated work was changed.
+
+Completed after that: the blog's first post, *Release of eQalb & The introduction
+of OpenHealth!* (2026-10-14). One new content module,
+`frontend/src/content/blog/release-of-eqalb-and-openhealth.ts`, registered in
+`posts.ts`; the only other changes were the documentation statements that said the
+blog had no posts. The text is the author's own, published exactly as written —
+no wording edited, nothing added, and no links invented (the body is nine plain
+paragraphs, including the "Till next time!" / "Mahmood" sign-off as its own two).
+The slug is derived from the title because none was preferred, and the date the
+author gave as 14/10/2026 is written in the format's `YYYY-MM-DD`. The index shows
+it newest first with `14 October 2026`, and the post page renders all nine
+paragraphs character-for-character against the supplied text (checked by comparing
+each rendered paragraph with the expected string, typographic apostrophes
+included), with the title, the `<time datetime="2026-10-14">` element, the "← All
+posts" link, the correct document title and no summary (none was supplied). No
+style, component or application code changed.
 
 Completed: the Download results view no longer renders outside the eQalb page it
 belongs to. Frontend only, one file: `frontend/src/App.vue`. The page chain's last
@@ -4421,10 +4574,21 @@ status. No other repository work on deployment is planned, and the frontend
 surfaces the automation deliberately does not cover (Caddy configuration changes,
 API/R changes, DNS) are unchanged.
 
+The blog's first post is published, so the decisions left are two rather than
+three: whether `/about` should regain an entry point on the landing page, since
+the instructed link replacement leaves it reachable only by its address; and
+whether later posts should be written in Markdown, which would mean one small
+renderer dependency and its approval, in place of the typed content model
+documented in `frontend/src/content/blog/README.md`. Nothing is required for
+another post beyond writing it and listing it in `posts.ts`.
+
 ## Update log
 
 | Date | Change | Verified? |
 |---|---|---|
+| 2026-10-14 | The blog's first post, *Release of eQalb & The introduction of OpenHealth!*, dated 2026-10-14. One new module, `frontend/src/content/blog/release-of-eqalb-and-openhealth.ts`, registered in `posts.ts`; the only other edits were documentation statements that said the blog had no posts (`frontend/README.md`, `FRONTEND_PLAN.md`, `frontend/src/content/blog/README.md` and this file). The text is the author's own, published exactly as written: no wording edited, nothing added, no links invented, and no summary — the body is nine plain paragraphs of the one block kind, with the "Till next time!" / "Mahmood" sign-off kept as its own two paragraphs. The slug `release-of-eqalb-and-openhealth` is derived from the title because none was preferred, and the date the author gave as 14/10/2026 is written in the format's `YYYY-MM-DD`. No style, component, composable, application or content-format code was touched, and the file was not committed or deployed | `npm run typecheck`, `npm run lint` and `npm run build` all exit 0 (the >500 kB chunk notice unchanged; the bundle grew by about 2 kB for the content). Verified in the browser on the dev server already running for this repository (127.0.0.1:5173, started outside this session and left alone). **Content format:** the post is one `BlogPost` with `slug`, `title`, `date` and a `body` of `{ kind: 'paragraph' }` blocks; it type-checks against `types.ts`, and the registry's newest-first ordering is a no-op with one post. **Index:** `/blog` lists it as `Release of eQalb & The introduction of OpenHealth!` linking to `/blog/release-of-eqalb-and-openhealth`, dated `14 October 2026` inside `<time datetime="2026-10-14">`, with no summary line — and the empty-state paragraph and dev-only note are gone. **Post page:** all nine paragraphs render character-for-character against the supplied text, checked by comparing every rendered paragraph with the expected string rather than by eye (typographic apostrophes in "I’ve" and "It’s" included); the titles are `Release of eQalb & The introduction of OpenHealth! — OpenHealth` and the `h1` is the title; the "← All posts" link points at `/blog`; the article contains no heading, list, quote or link elements, which is what the content asks for. **Navigation:** index → post and the back link both changed the page in place (a `window` marker survived), Back returned to the index and Forward re-rendered the post with all nine paragraphs. **Presentation:** the article was read at 1280×800 and 390×844 in both themes — dark `rgb(9, 9, 9)` on `rgb(236, 231, 223)`, light `rgb(244, 240, 232)` on `rgb(39, 35, 31)` — with no horizontal overflow at either width (`scrollWidth` 1270/1270 and 380/380), paragraphs left-aligned at ~17px/1.78 with no clipping of the long lines, and both the header links and the theme control visible at 390px. **Untouched surfaces:** a direct load and a reload of the post address both render it; `/blog/nope` still answers with the not-found state; the landing page still shows its three panels with the footer "Blog" link; `/app` still loads its Home screen with no landing attribute — and no console error or warning was logged at any point. Not claimed: the checks are DOM, computed-style and History measurements rather than a look at the rendered page, and the production bundle was built but not previewed |
+| 2026-10-14 | Focused navigation correction to the blog, before publishing: following the blog's wordmark — an explicit link to `/` — now opens the landing page **at its top**, instead of leaving the reader at whatever scroll position the blog put the document in. Two files of code plus documentation: `frontend/src/composables/useAppView.ts` gains a third link handler beside the existing two, `followLandingLink(event)`, which pushes the landing page and then scrolls to the top **in the same turn** as the address — the shape `followPostLink` already used, and deliberately so: the landing page is taller than anything the blog shows, so the position the reader arrives at is already the top and the page that replaces the blog keeps it, whereas deferring the scroll past the turn let the browser record the leaving page as having been at its top and cost that entry its Back position (found by A/B testing the two shapes against each other). The scroll is explicitly `behavior: 'instant'`, so the landing palette's smooth `scroll-behavior` cannot animate it — and `frontend/src/components/blog/BlogLayout.vue`'s wordmark calls the handler instead of `followLink`. Nothing global changed: the store still forces no navigation to the top, `popstate` still only resolves the page and the slug, the blog shell's own mount reset is untouched, and the landing page's section anchors were not touched. Back and Forward are deliberately left to the browser's restoration, which was the point of putting the rule at the link rather than on the landing page; `/about` was left unchanged with no new entry point, and no theme, design, content format, app animation or unrelated file was touched | Repository-local: `npm run typecheck`, `npm run lint` and `npm run build` all exit 0 (the pre-existing >500 kB chunk notice unchanged). Verified in the browser on the dev server (127.0.0.1:5174), with a temporary post used only for this and deleted afterwards. **Explicit Home navigation, on its own:** with the blog index scrolled to 191 of a 411px document and the post scrolled to 120 — both times at a viewport where the header is off-screen above, so the page really is scrolled — following the wordmark put `/` at `scrollY` 0 with the landing page's first panel at the top of the viewport (`.landing` top 0), the document 1708px tall, the landing title set and `data-landing-theme` intact; repeated twice, identical. **Browser Back/Forward, separately, over repeated runs:** Back returned the blog index to **191** and the post to **120**, i.e. exactly where each had been, so the correction costs no history position; `/` scrolled to 1200, then the footer `Blog` link, then Back returned to `/` at 1208 with `#about-me` still in the address and the section still at the top of the viewport; Forward returned to the entry's own recorded position (0) rather than being forced anywhere; Back and Forward across `/`, `/blog`, `/blog/<slug>` and `/app` all left the document in one piece with no reload (a `window` marker set before each navigation survived it); and the post link's own path through the index was checked the same way (index 191 → post at 0 → Back → 191). A Control-click on the wordmark did **not** navigate in place (still `/blog`, same marker), so modified and middle clicks remain the browser's. **Measurement caveat, recorded because the first pass mistook it for a defect:** driving the wordmark with the harness's own click appeared to lose the blog's Back position (index returned to 0 instead of 191). Instrumenting `history.pushState` and `window.scrollTo` showed the scroll to 0 happened *before* the app's handler ran, because an automated click scrolls its target into view first — the header is at the top of the document, so bringing it into view scrolls the page there. Dispatching the click without that scroll-into-view, which is the state a real reader is in, keeps the position; the first pass's A/B comparison was therefore invalid and nothing about the page is at fault. **Landing-page section links:** `About me` scrolled the section to the top of the viewport and set `#about-me` with its `aria-current` marker, `Back to top` returned to `#eqalb` at 0, and a section position then survived the footer `Blog` link and a Back. **Untouched surfaces:** `/about` still resolves to the same page and title, `/app` loads its Home screen with no landing attribute and its four actions, and no console error or warning was logged across any of these steps. Not claimed: the checks are DOM, computed-style and History measurements on the dev server rather than a look at the rendered page, and the production bundle was built but not previewed |
+| 2026-10-14 | The OpenHealth blog was added as a frontend-only surface at `/blog` and `/blog/<slug>`, and the landing page's bottom-right footer link is now "Blog" (it was "About OpenHealth"). Frontend only: no R, API, server-configuration, model, `package.json`, dependency or workflow file was touched, and nothing was committed. New files: `frontend/src/views/BlogIndexView.vue` (reverse-chronological list — title, date, optional summary, a quiet rule between entries), `frontend/src/views/BlogPostView.vue` (a link back to the index, the title and date, then the post's blocks in a narrow reading column, or a readable "Post not found" state naming the address), `frontend/src/components/blog/BlogLayout.vue` (the shell: wordmark to `/`, the `Blog` link, the landing page's own light/dark control, the same footer note, the blog's landing theme and the start-at-top rule for a followed page), `frontend/src/components/blog/date.ts`, `frontend/src/blog.css` (scoped under `.blog`, declaring no palette of its own and reading the landing tokens), and `frontend/src/content/blog/` — `types.ts` (the closed block set: paragraph, heading, list, quote, with link segments inside a paragraph), the registry `posts.ts` (a post is published by being listed there; an unlisted file is a draft) and `README.md` (the format and the add / preview / publish workflow). Changed: `useAppView.ts` (a `blog` page value, the `postSlug` ref, `/blog` in the title table, `blogPostPath()` and `followPostLink()`, `cameFromHistory()`, and `/blog/<anything>` recognised as an address instead of being rewritten to `/`), `App.vue` (two named branches, plus `app--landing` for the blog's full-bleed layout), `main.ts` (`blog.css`), `styles.css` (one comment), `useLandingTheme.ts` (a mounted-page count — see the fix below) and the three documents. Posts are typed data rendered block by block: no Markdown renderer and no HTML, so nothing is sanitised and no dependency was added. The registry is empty, so `/blog` shows a restrained empty state rather than a placeholder article, with a dev-server-only note pointing at the content README. **Defect found and fixed during verification:** `useLandingTheme` removed `<html data-landing-theme>` from every unmounting component, but Vue runs an unmounted hook at the end of the flush — after the arriving page's setup has set the attribute — so the landing page ↔ blog hand-overs stripped it from the page that had just arrived (the landing page's `.landing` background fell through to the app's `rgb(16, 26, 31)`). It now counts the mounted landing-themed pages and removes the attribute only when the last of them unmounts; the landing page alone behaves exactly as before | Repository-local: `npm run typecheck`, `npm run lint` and `npm run build` all exit 0 (the pre-existing >500 kB chunk notice is unchanged). Verified in the browser on the dev server (127.0.0.1:5174 — 5173 was already in use by another process, which was left alone and untouched). **Addresses:** a direct load and a reload of `/blog` give the title `Blog — OpenHealth`, the `Blog` heading and the empty state; `/blog/` resolves to the index; `/blog/does-not-exist` and `/blog/a/b` both render `Post not found — OpenHealth` at the address asked for, with `← All posts` back to the index; the landing page's footer link reads `Blog` with `href="/blog"`; `/about` still resolves directly and `/app` is unchanged. **Article path**, verified with two temporary posts (dated 2026-02-28 and 2025-01-01, deleted afterwards so no content is published): the index listed them newest first with `28 February 2026` and `1 January 2025`; the article rendered the heading, `<time datetime="2026-02-28">`, the summary, a section heading, paragraphs, a list and a quote with its source, an external link with `target="_blank" rel="noopener noreferrer"` and an internal link with neither, and the title `<title> — OpenHealth`. **Navigation:** the landing ↔ blog and index ↔ post links navigate in place (a `window` marker survived every step), Back and Forward moved between `/`, `/blog`, `/blog/<slug>` and `/app`, and a scrolled index (155px) opened the followed post at 0 while Back restored 155 and Forward reopened the post at 0. **Theme:** `data-landing-theme` is present as light and as dark on `/blog` and on a post, the blog's body renders `rgb(244, 240, 232)` / `rgb(9, 9, 9)` with the clay accent `#8c503b`, the landing page's own toggle still switches and stores the choice, and `/app` carries no landing attribute at all — its body stays on the app palette (`rgb(16, 26, 31)`) and `eqalb.theme` / `data-theme` stay `dark` whatever the blog is set to. The five hand-overs (landing→blog, blog→landing, index→post, post→index, blog→landing) all keep the attribute, and leaving for `/app` still removes it. **Layout:** no horizontal overflow at 390×844 and at 1280×800 (`scrollWidth === clientWidth`, no element past the viewport edge), paragraphs left-aligned (`text-align: start`) at ~17px with a 1.78 line-height, headings in the landing serif, and the navigation and theme control still visible at 390px. **No regression:** "Download results" still names itself and renders with no tablist, tabpanel or sidebar beneath it, and no console error or warning was logged across the blog, a post, a not-found address, the landing page, `/app` and `/about`. Not claimed: the checks are DOM, computed-style and History measurements against a source-checkout dev server, not a look at the rendered pages (no screenshot could be inspected in this environment) and not the production bundle or a deployed host; the About entry point on the landing page is gone by design, so `/about` is now reachable only by its address until that is decided |
 | 2026-10-14 | The "Download results" view no longer appears under the analysis dashboard, and is now reachable only from Home. Frontend only, one file: `frontend/src/App.vue`. Root cause: the eQalb page chain in the shell ended with a bare `<DownloadResultsView v-else />`, so the view was the fall-through for every page the five named branches did not match — and `page === 'dashboard'` matches none of them, so the whole download panel (heading, "Available now" / "Not yet run" lists, its buttons) was rendered into the dashboard's own document directly below the dashboard body. The chain now names the page (`v-else-if="page === 'export'"`), so each page names itself and the download view exists only on its own page; how it is reached and what it does are unchanged (still only Home's "Download results", with Back and Escape returning Home). Because the page value is what mounts a view, entering the dashboard or the tutorial unmounts the panel and takes its controls out of the document instead of hiding them, and a history Back/Forward that resolves `/app` to `home` leaves no download state visible. No CSS, overflow, height or positioning change was made — the defect was the rendering boundary, not visibility — and no export, model, R, API, landing-page, transition or deployment file was touched. The view's own header comment now records that a page must not be the chain's leftover branch | Repository-local validation: `npm run typecheck`, `npm run lint` and `npm run build` all exit 0 (the build's pre-existing >500 kB chunk notice is unchanged). Reproduced and re-checked in the browser on the dev server (127.0.0.1:5173) and again on `vite preview` of the production build (127.0.0.1:4173). **Before:** on the dashboard, `#export-title`, both lists and the download button were in the DOM as siblings after `.app__body` (dashboard 104–933, export 933–1784, document bottom 1784) and the download button was at tabIndex 0. **After:** all nine analysis tabs, each scrolled to the document bottom with tab switching in between, report no export markup at all (`#export-title` absent, no "Download results package" button, zero focusable export controls) and the page bottom coincides with the tab panel (e.g. DHT readiness 1460 of a 1500 document). Home -> Download results shows the view and nothing else; Back returns to Home; Home -> dashboard shows no export markup; the tutorial's entry and exit never render it; 140 Tab presses on the dashboard reached no export control; dark (`rgb(16, 26, 31)`) and light (`rgb(244, 247, 249)`) themes and 390x844 plus desktop widths checked; landing page -> "Open the app" -> Download results -> browser Back (landing page, no export) -> Forward (`/app` resolves to Home, no export). **Export behaviour unchanged:** with the base case run the view listed 1 included and 8 pending and the download reported "Downloaded eqalb_results_2026-10-14_2035.zip with 3 files."; after a reload with nothing run it showed "Nothing has been run yet, so the package would contain only the README that lists what is missing." with all 8 analyses listed as not yet run. **Not claimed:** the automation harness captured no browser download event, so the ZIP's bytes were not inspected — the success sentence, which is written only after `buildZip` and `downloadBytes` return, is the evidence, and the export code itself is untouched. Published to `main` (fast-forward `f0b82b4` -> `9d3c7e8`) from the branch `fix/download-results-view-visibility`, and released by the existing `Deploy frontend` workflow: run [#5 / 38617581685](https://github.com/MoodyAlawi/eQALB-HTA/actions/runs/38617581685) succeeded in 2m43s on that commit, so production now serves `/assets/index-D3kOreHs.js` in place of the previous `index-DRJJWZjb.js`. Live re-check on `https://openhealth.ngo/app` against the deployed bundle: the defect was captured there **before** the release (the dashboard's document ran to 1763px and ended in "Download results package Back What the package contains, and what it does not") and is absent after it, on all nine tabs, at the document bottom, under both themes, at 390x844 and on desktop, in the tutorial, and across a browser Back/Forward round trip; Home's "Download results" still opens the view, Back still returns Home, the base case's per-tab CSV button and the package download ("Downloaded eqalb_results_2026-10-14_2048.zip with 3 files.") still work, and 60 Tab presses reached no export control. No deployment configuration, server permission, backend service, API code or R model changed |
 | 2026-10-14 | The landing page's scroll fade is now reversible and repeats, replacing the one-time reveal that latched each group visible. Frontend only, left uncommitted on `feature/openhealth-landing`; alignment, copy, portrait, palette, themes, favicon, navigation and the app-launch transition are untouched. `frontend/src/views/OpenHealthHomeView.vue` drops the `settled` set and `settleTarget()` entirely, so nothing latches: `revealProgress()` becomes `enterProgress()` plus `exitProgress()` and a `revealFor()` that returns `min(entry, exit)`. Entry reads the wrapper's top edge (transparent at 90% of the viewport, fully opaque at 55%, linear between); exit reads the wrapper's **bottom** edge (1 until only the top 22% of the screen holds the group, 0 at the top), which is what stops a tall block being faded while it is still being read and what leaves the last section - which the document ends beneath - fully visible with no space added to force a fade. The lift moved to its own `--reveal-lift`, written from the entry alone, so content does not drift downwards as it leaves; `frontend/src/landing.css` reads `translateY(calc((1 - var(--reveal-lift, 1)) * 16px))` with the visible state still the `var(..., 1)` fallback. Focus outranks the scroll and is painted in the same turn rather than through a frame: `paintFocusChange()` cancels any pending frame and repaints, `paintReveal()` accepts either `:focus-within` or containment of `document.activeElement`, and `focusout` joins `focusin` so the scroll value returns when focus leaves. The `?debugReveal=1` panel now reports top, top/vh, bottom/vh, Entry, Exit and Opacity instead of a "Latched" column. `frontend/README.md` and this file were updated to match, including correcting a stale claim that the page still used proximity scroll snapping | Repository-local validation only: `npm run typecheck`, `npm run lint` and `npm run build` all exit 0, with the built CSS carrying the new `--reveal-lift` rule and no `latched` string anywhere in the JS. Verified with **real wheel input** (22 notches down, 20 up) at 1440x900, reading the painted opacity each step: OpenHealth 0.000 through y=260, then 0.041, 0.317, 0.594, 0.867, 1.000 (fade in), a 606px plateau of solid 1.000 from y=693 to y=1299, then 0.990, 0.555, 0.116, 0.000 as its bottom edge rose past 0.22vh (fade out) - all three phases in one traversal. Scrolling back up reversed it exactly (0.000 -> 0.212 -> 0.646 -> 1.000, plateau, 1.000 -> 0.810 -> 0.533 -> 0.257 -> 0.000) and a third downward pass faded it out again, so there is no latch. Stopping inside the exit ramp held 0.555 unchanged at 0ms, 600ms, 1200ms and 2400ms, and inside the entry ramp held 0.435 at 0ms, 1500ms and 3000ms, then completed on further scrolling - it is position, not a timer. About Me fades in the same way but never fades out: at the document's end its bottom sits at 0.706vh, above the 0.22vh exit threshold, so it stays at 1.000 - the required "keep it readable" case. Mobile checked at 390x844 (no horizontal overflow, About Me solid from 0.591 at entry through 1.000 to the end) and at 390x600 where the group is 1.33x the viewport: it passes 0.540, then holds 1.000 from 49% screen coverage to the document bottom, while OpenHealth on the same viewport runs the full fade in / 600px plateau / fade out. Reduced motion verified by emulating the real setting: everything at opacity 1 with `transform: none`, at the top and after scrolling to 1400, where the normal page reads 0.919 and 0.664. Print verified by emulating print media at a scrolled position where the screen shows 0.555 and 0.892: both read 1 with no transform. Keyboard verified with real Tab presses (focus reached "Email" after 3 presses, painted at opacity 1 and no transform) and with `focus({ preventScroll: true })` so the page did not move: 0 before focus, 1 while focused, 0 again after blur. The app-launch transition still runs end to end (overlay with `launch-veil-in`, `.landing.is-leaving`, then `/app` with the overlay and landing gone and the title changed), two full mount/unmount cycles logged no console or page errors and re-armed the reveal correctly, the OpenHealth label, heading and body all still centre on the same axis (centre 715 at 1440x900) with the heading still two lines, About Me still `text-align: start` in its grid, the portrait still borderless, and no horizontal overflow at either width. **Not claimed:** the screenshots are of the page content only, so the fade was judged from captured mid-fade stills plus the per-step opacity readings, not from a recording. No R, API, deployment, app-theme, dependency, copy, portrait, alignment or transition file was touched; nothing was committed, staged, pushed or deployed |
 | 2026-10-14 | Corrected one attribute of the favicon markup: the `.ico` declaration's `sizes="any"` became `sizes="16x16 32x32 48x48"`, the sizes the file actually holds - `any` claims a scalable icon, which a raster `.ico` is not. `frontend/index.html` only, one line; the two PNG declarations and every generated image file are unchanged and were not regenerated. `frontend/README.md` and this file were updated to quote the new value | Repository-local validation only: `npm run typecheck`, `npm run lint` and `npm run build` all exit 0, and the built `dist/index.html` and the served HTML from both the dev server and `vite preview` carry `sizes="16x16 32x32 48x48"` on the `.ico` with the two PNG declarations unchanged. No image file, no other markup and no other work in the tree was touched; nothing was committed, staged, pushed or deployed |

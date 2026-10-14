@@ -21,12 +21,12 @@ npm install
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173> for the OpenHealth landing page, or go straight to
-`/app` for eQalb and `/about` for About OpenHealth: the dev server resolves all
-three from the same `index.html`, so any of them can be loaded or reloaded
-directly. The dev server proxies `/api` to the API, so the browser stays on a
-single origin and no CORS work is needed. Point it elsewhere with `EQALB_API_URL`
-(for example when the API runs on another port):
+Open <http://127.0.0.1:5173> for the OpenHealth landing page, `/blog` for the
+blog, or go straight to `/app` for eQalb and `/about` for About OpenHealth: the
+dev server resolves all of them from the same `index.html`, so any of them can be
+loaded or reloaded directly. The dev server proxies `/api` to the API, so the
+browser stays on a single origin and no CORS work is needed. Point it elsewhere
+with `EQALB_API_URL` (for example when the API runs on another port):
 
 ```powershell
 $env:EQALB_API_URL = 'http://127.0.0.1:8799'; npm run dev
@@ -66,12 +66,12 @@ src/
   composables/
     useModel.ts         # shared store: inputs, results, busy/error state, runs
     useTheme.ts         # the app's light/dark state and the chart palette (eqalb.theme / data-theme)
-    useLandingTheme.ts  # the landing page's own light/dark choice (openhealth.landing.theme /
-                        # data-landing-theme), alive only while that page is mounted
+    useLandingTheme.ts  # the landing page's and the blog's own light/dark choice (openhealth.landing.theme /
+                        # data-landing-theme), alive only while one of those pages is mounted
     useAppLaunch.ts     # the landing page's transition into the app: the sequence, its timings and
                         # its safety clears; the look is in landing.css/styles.css
     useEcharts.ts       # ECharts instance lifecycle for a Vue ref
-    useAppView.ts       # which page is shown, plus the /, /app and /about addresses, the history entries and the document title
+    useAppView.ts       # which page is shown, plus the /, /blog, /blog/<slug>, /app and /about addresses, the history entries and the document title
     useDisclosure.ts    # Escape closes the disclosure the focus is inside, app-wide
     useAppBusy.ts       # the app-wide busy state the loading indicator shows: ref-counted start/finish, label, isActive
     useTutorialSession.ts  # Guided Tutorial: Part 1's inputs/results/step and Part 2's case, price, coverage, readiness answers and section; never touches useModel
@@ -83,6 +83,10 @@ src/
                                 # hands over to the app through LaunchTransition rather than swapping
                                 # the page straight away
     AboutView.vue               # About OpenHealth at /about : the founder, the motivation, and how to get involved
+    BlogIndexView.vue           # the blog at /blog : every published post, newest first, as text with a rule
+                                # between the entries - no cards, no thumbnails
+    BlogPostView.vue            # one post at /blog/<slug> : the title, its date and the post's own blocks in a
+                                # narrow reading column, or a readable not-found state when the slug names no post
     HomeView.vue                # eQalb's own start screen at /app : eQalb wordmark with ECG pulse, credit, actions, links
     TutorialView.vue            # Guided Tutorial: Part 1 (four steps, completion) and the Part 2 shell
     ProjectDescriptionView.vue  # what the model is, what it covers, contact
@@ -92,6 +96,10 @@ src/
     csv.ts              # CSV quoting/joining and text download (shared)
     resultsPackage.ts   # results-package files built from the store
     tabExports.ts       # per-tab CSV builders (base case, OWSA, KM summary)
+  content/
+    blog/               # the blog's posts: one module per post, the registry that publishes them
+                        # (posts.ts) and the content model they are built from (types.ts); README.md
+                        # documents the format and how to add, preview and publish a post
   components/
     AppLoadingIndicator.vue # the only loader: a thin teal top bar after 350 ms and a small eQalb/ECG card after 2.5 s, its trace pulse crossing the line once per cycle
     LaunchTransition.vue    # the landing page's arrival into the app: a still copy of the Home screen's
@@ -111,10 +119,14 @@ src/
                         # budget-impact, readiness and recommendation sections
     charts/             # one component per chart, options only
     DataTable.vue, MetricCard.vue, InfoTip.vue, StaleNotice.vue, table.ts
+    BlogLayout.vue, date.ts     # in components/blog/: the blog's header, footer and reading column shell
+                                # (the one place its landing theme is owned), and a post date as text
   format.ts             # EUR/QALY/percent formatting; `null` becomes a dash
   styles.css            # tokens reproducing the Shiny app's teal palette
   landing.css           # the landing page only: its own palette, typography, panels and motion, all
                         # scoped under .landing and html[data-landing-theme]
+  blog.css              # the blog only: its layout and reading column, scoped under .blog; it declares
+                        # no palette of its own and reads landing.css's tokens
   assets/
     mahmood-portrait.png # the About me portrait the app ships (640 x 591, 346 kB), derived from the
                          # author's original; keeps the cut-out's alpha, imported so the build
@@ -352,9 +364,62 @@ src/
   which would claim a scalable icon it is not — and then the two PNGs, and no
   longer declares an SVG icon: the stock Vite
   lightning-bolt `favicon.svg` was deleted along with its declaration, so nothing
-  can take precedence over the mark. A single `index.html` serves `/`, `/app` and
-  `/about`, so all three addresses carry the same icon. There is no web manifest
+  can take precedence over the mark. A single `index.html` serves `/`, `/blog`,
+  `/app` and `/about`, so all of them carry the same icon. There is no web manifest
   and no PWA setup.
+
+## Blog
+
+`/blog` is a reverse-chronological list of the posts and `/blog/<slug>` is one post
+at its own address. The blog is the landing page's sibling rather than an eQalb
+screen: it uses the landing palette, typography and stored theme preference, but
+its own layout — its rules live in [`blog.css`](./src/blog.css), scoped under
+`.blog`, and it declares no palette of its own, reading the landing tokens
+instead. The theme choice is shared with the landing page through
+[`useLandingTheme.ts`](./src/composables/useLandingTheme.ts); the app's
+`eqalb.theme` and `<html data-theme>` are neither read nor written, and
+`<html data-landing-theme>` is removed as soon as the last landing-themed page
+unmounts, so nothing leaks into `/app`. An address that names no post shows a
+readable "Post not found" state at that address rather than redirecting.
+
+Navigation keeps two separate things intact. A page reached by **following a
+link** is read from its top: the blog's shell does that for its own pages, and
+the wordmark that leaves for `/` asks the view store for the same thing at the
+link ([`followLandingLink`](./src/composables/useAppView.ts)), because the
+landing page has no scroll reset of its own and would otherwise keep the position
+the reader had in the blog. A page reached by **Back or Forward** is left exactly
+where the browser restores it — `cameFromHistory()` distinguishes the two, and
+nothing forces a history navigation to the top. The landing page's own section
+links (`eQalb`, `OpenHealth`, `About me`, `Back to top`) are anchors inside that
+page and are untouched by any of this.
+
+Posts are content with no pipeline of their own: each one is a module in
+[`src/content/blog/`](./src/content/blog) — typed data, rendered block by block,
+with no Markdown parser, no HTML and no CMS — and it is published by being listed
+in [`posts.ts`](./src/content/blog/posts.ts). One post is published — the release
+of eQalb and the introduction of OpenHealth, 14 October 2026 — and the index shows
+a restrained empty state whenever the list is empty rather than a placeholder
+article.
+[`src/content/blog/README.md`](./src/content/blog/README.md) documents the format
+and the whole workflow:
+
+- **Add a post.** Write `src/content/blog/<slug>.ts` with one `BlogPost` (slug,
+  date, title, optional summary, and a body of paragraphs, headings, lists and
+  quotes), then import it and add it to `POSTS` in
+  [`posts.ts`](./src/content/blog/posts.ts). A file that is not listed is a draft:
+  it is type-checked, linted and built with the rest of the sources, but no address
+  shows it and the index does not mention it.
+- **Preview it.** `npm run dev`, then `/blog` and `/blog/<slug>` on
+  127.0.0.1:5173. Run `npm run typecheck`, `npm run lint` and `npm run build`
+  before publishing, since there is no automated test suite.
+- **Publish it.** The blog is part of the frontend bundle, so a post ships with
+  the next frontend release: merge to `main` and the existing
+  [`deploy-frontend.yml`](../.github/workflows/deploy-frontend.yml) workflow
+  type-checks, lints, builds and publishes it behind the same `dist` symlink. Its
+  `on.push.paths` already lists `frontend/**`, which contains the content
+  directory, so **no workflow change is needed**, and Caddy's
+  `try_files {path} /index.html` already serves `/blog` and `/blog/<slug>`
+  directly, so no server change is needed either.
 
 ## Deployment
 
@@ -385,6 +450,25 @@ palette, its portrait or its scroll reveal. Review it on the dev server
 
 - No automated test suite yet; the app was verified by hand against a running
   API.
+- The blog has one post, *Release of eQalb & The introduction of OpenHealth!*
+  (2026-10-14), which is the author's own text published as written. The article
+  path was verified against it; the empty state and the not-found state were
+  verified with temporary posts that were deleted afterwards. There is no Markdown
+  renderer — a post is typed data in [`src/content/blog/`](./src/content/blog) —
+  so if Markdown is wanted later it needs one small dependency and its approval.
+- The landing page's footer link is now "Blog"; it used to be "About OpenHealth".
+  `/about` is unchanged, still resolves directly and still offers "Back to
+  OpenHealth", but the landing page no longer links to it. That was the requested
+  change rather than an oversight, and it needs a decision before `/about` gains
+  an entry point again.
+- The blog's shell starts a followed page at the top, and the wordmark that leaves
+  the blog for `/` does the same for the landing page; a Back or Forward entry is
+  left where the browser restores it (`cameFromHistory()` in
+  [`useAppView.ts`](./src/composables/useAppView.ts) distinguishes the two).
+  The landing page is still not reset when it is reached some other way from a
+  scrolled public page — `/about`'s "Back to OpenHealth" link inherits the
+  position, as it did before the blog existed. Pre-existing behaviour, out of
+  scope here.
 - The parity audit is complete for P0, P1 and the P2 triage. The P0 finding and
   all six P1 findings are implemented, and the 15 P2 polish findings are triaged:
   the two approved pre-1.0 fixes are implemented (the one-way sensitivity

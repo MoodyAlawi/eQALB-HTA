@@ -1,13 +1,14 @@
 <script setup lang="ts">
 /**
- * Application shell: the public OpenHealth landing page and About page, then
- * eQalb itself - its Home screen and subviews, and the analysis dashboard with
- * service status, theme switch, the assumptions panel and the analysis tabs.
+ * Application shell: the public OpenHealth pages (the landing page, About, and
+ * the blog), then eQalb itself - its Home screen and subviews, and the analysis
+ * dashboard with service status, theme switch, the assumptions panel and the
+ * analysis tabs.
  *
- * The three public addresses (/ , /app and /about) are resolved by useAppView,
- * which owns the pathname, the history entries and the document title. Every
- * eQalb screen shares /app, so nothing below the dashboard branch is aware of the
- * URL at all.
+ * The public addresses (/ , /blog, /blog/<slug>, /app and /about) are resolved by
+ * useAppView, which owns the pathname, the history entries and the document
+ * title. Every eQalb screen shares /app, so nothing below the dashboard branch is
+ * aware of the URL at all.
  *
  * Exactly one page renders at a time, and each one is named by its own v-if /
  * v-else-if: the analysis dashboard is the first branch below, and the public
@@ -46,6 +47,8 @@ import DownloadResultsView from './views/DownloadResultsView.vue'
 import TutorialView from './views/TutorialView.vue'
 import OpenHealthHomeView from './views/OpenHealthHomeView.vue'
 import AboutView from './views/AboutView.vue'
+import BlogIndexView from './views/BlogIndexView.vue'
+import BlogPostView from './views/BlogPostView.vue'
 import AppLoadingIndicator from './components/AppLoadingIndicator.vue'
 import LaunchTransition from './components/LaunchTransition.vue'
 
@@ -84,7 +87,7 @@ const TABS: readonly Tab[] = [
 
 const model = useModel()
 const { theme, toggle } = useTheme()
-const { page, show } = useAppView()
+const { page, show, postSlug } = useAppView()
 
 /**
  * The welcome overlay.
@@ -239,11 +242,15 @@ watch(page, (next) => {
 </script>
 
 <template>
+  <!-- The eQalb screens - Home, the tutorial, the project description - are a
+       centred column inside the app's own padding. The landing page and the blog
+       are full-bleed pages laid out by their own stylesheets, so the shell steps
+       aside for both: no column of its own, no padding of its own. -->
   <div
     class="app"
     :class="{
-      'app--solo': page !== 'dashboard' && page !== 'openhealth',
-      'app--landing': page === 'openhealth',
+      'app--solo': page !== 'dashboard' && page !== 'openhealth' && page !== 'blog',
+      'app--landing': page === 'openhealth' || page === 'blog',
     }"
   >
     <template v-if="page === 'dashboard'">
@@ -372,6 +379,12 @@ watch(page, (next) => {
          leaving one unmounts its view. -->
     <OpenHealthHomeView v-if="page === 'openhealth'" />
     <AboutView v-else-if="page === 'about'" />
+    <!-- The blog is one page with two states rather than two pages: the index
+         when no post is open, and one post when the address names one. Both
+         branches are named, and a post address that names no post is still the
+         post's branch, which answers it with its own not-found state. -->
+    <BlogIndexView v-else-if="page === 'blog' && !postSlug" />
+    <BlogPostView v-else-if="page === 'blog'" />
     <HomeView v-else-if="page === 'home'" />
     <TutorialView v-else-if="page === 'tutorial'" />
     <ProjectDescriptionView v-else-if="page === 'description'" />

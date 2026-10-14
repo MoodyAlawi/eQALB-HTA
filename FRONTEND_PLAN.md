@@ -361,14 +361,19 @@ frontend/
     api/types.ts       # response contracts mirroring the R return shapes
     composables/       # useModel (state), useTutorialSession (isolated tutorial state),
                        # useTheme (palette), useEcharts (charts), useAppView (which page is shown, and the
-                       # /, /app and /about addresses with the history entries and document title),
+                       # /, /blog, /blog/<slug>, /app and /about addresses with the history entries and document
+                       # title), useLandingTheme (the landing page's and the blog's own light/dark choice),
                        # useAppBusy (the app-wide loading state)
-    components/        # presentation only; charts/ holds the chart options; tutorial/ the four Part 1 steps and Part 2's five sections; InfoTip is the help control; AppLoadingIndicator is the loading indicator
-    views/             # OpenHealth landing (/), the eQalb Home screen (/app, with the Guided tutorial,
-                       # Project description and Download results subviews) and About OpenHealth (/about)
+    components/        # presentation only; charts/ holds the chart options; tutorial/ the four Part 1 steps and Part 2's five sections; blog/ the blog's shell and its date formatting; InfoTip is the help control; AppLoadingIndicator is the loading indicator
+    views/             # OpenHealth landing (/), the blog (/blog and /blog/<slug>), the eQalb Home screen (/app,
+                       # with the Guided tutorial, Project description and Download results subviews) and About
+                       # OpenHealth (/about)
+    content/blog/      # the blog's posts: one module per post, the registry that publishes them, the content
+                       # model, and the format and workflow documentation
     export/            # results package + per-tab exports: ZIP writer, CSV builders
     format.ts          # EUR/QALY formatting; null becomes a dash
     styles.css         # teal palette + light/dark tokens
+    landing.css        # the landing page's palette and layout; blog.css the blog's
   README.md
 ```
 
@@ -433,7 +438,9 @@ set `EQALB_API_PORT` and start the dev server with `EQALB_API_URL`.
 
 Frontend (inside `frontend/`, and irrelevant to the Shiny app): `vue`, `vite`,
 `@vitejs/plugin-vue`, `typescript`, `vue-tsc`, `echarts`, `oxlint`,
-`@types/node`.
+`@types/node` — unchanged by the blog, which adds no dependency: a post is typed
+data rendered block by block rather than Markdown, so there is no renderer to add
+and no HTML to sanitise.
 
 Python: `fastapi` and `uvicorn` in `api/.venv` (see `api/requirements.txt`). No
 Python package computes model output.
@@ -447,6 +454,12 @@ project owner.
 
 - The API is unauthenticated and binds to localhost only; it is a development and
   teaching service, not a deployed product.
+- The blog (`/blog` and `/blog/<slug>`) is published with one post — the release of
+  eQalb and the introduction of OpenHealth (14 October 2026), the author's own text
+  as written. Its posts are typed data in `frontend/src/content/blog/`, rendered
+  block by block — no Markdown renderer was added, which would be one dependency
+  plus its approval. The landing page's footer links to the blog instead of to
+  `/about`, which remains reachable at its address until that is decided.
 - The HTA Decision Summary tab renders the rule text `POST /api/hta-summary`
   returns (`rules`, `evidence_note` and `rule_note` from `eqalb_ui_copy.R`); no
   rule wording is written in TypeScript. The numeric thresholds themselves are not

@@ -278,9 +278,10 @@ code {
   max-width: 1000px;
 }
 
-/* The landing page is a full-bleed scrolling page of its own, so the shell's
-   centred column and its padding step aside for it and its own stylesheet
-   (landing.css) lays the page out. No eQalb screen carries this class. */
+/* The landing page and the blog are full-bleed scrolling pages of their own, so
+   the shell's centred column and its padding step aside for them and their own
+   stylesheets (landing.css, blog.css) lay the page out. No eQalb screen carries
+   this class. */
 .app--landing {
   max-width: none;
   padding: 0;
