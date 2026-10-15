@@ -19,10 +19,15 @@ import { computed } from 'vue'
 import type { ReadinessChoiceSet, ReadinessParameterSpec } from '../api/types'
 import { NOT_INTERPRETABLE, formatCount, formatNumber, isNum } from '../format'
 import { useModel } from '../composables/useModel'
+import { useResultEntrance } from '../composables/useResultEntrance'
 import InfoTip from './InfoTip.vue'
+import ButtonLabel from './ButtonLabel.vue'
+import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
 
 const model = useModel()
+// The entrance this tab's result plays when it is committed; see the composable.
+const { revealClass } = useResultEntrance('readiness')
 
 const result = computed(() => model.readiness)
 
@@ -152,6 +157,7 @@ const countsLabel = computed(() => {
     <header class="panel__header">
       <div>
         <h2>DHT readiness and implementation</h2>
+        <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
           An illustrative readiness and implementation assessment of the digital therapeutic under
           the current assumptions. The assessment runs in R when you ask for it, using the seven
@@ -165,7 +171,7 @@ const countsLabel = computed(() => {
           :disabled="model.busy.readiness"
           @click="model.runReadiness()"
         >
-          {{ model.busy.readiness ? 'Assessing…' : 'Assess readiness' }}
+          <ButtonLabel :busy="model.busy.readiness" idle="Assess readiness" pending="Assessing…" />
         </button>
         <button
           type="button"
@@ -254,7 +260,7 @@ const countsLabel = computed(() => {
       below.
     </p>
 
-    <template v-if="result">
+    <div v-if="result" class="result-reveal" :class="revealClass">
       <figure class="table-figure">
         <figcaption class="table-figure__caption">Quantitative outputs, simulated</figcaption>
         <div class="table-scroll">
@@ -317,6 +323,6 @@ const countsLabel = computed(() => {
           <li>Red = major barrier needing resolution before broad deployment</li>
         </ul>
       </details>
-    </template>
+    </div>
   </section>
 </template>

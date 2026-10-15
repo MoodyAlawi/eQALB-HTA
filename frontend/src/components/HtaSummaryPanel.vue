@@ -19,11 +19,16 @@ import { computed } from 'vue'
 import type { HtaSummaryStatus } from '../api/types'
 import type { Tone } from '../format'
 import MetricCard from './MetricCard.vue'
+import ButtonLabel from './ButtonLabel.vue'
+import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
 import { useModel } from '../composables/useModel'
+import { useResultEntrance } from '../composables/useResultEntrance'
 import { formatEuro, isNum } from '../format'
 
 const model = useModel()
+// The entrance this tab's result plays when it is committed; see the composable.
+const { revealClass } = useResultEntrance('htaSummary')
 
 const result = computed(() => model.htaSummary)
 const summary = computed(() => result.value?.summary ?? null)
@@ -150,6 +155,7 @@ const priceInsight = computed(() => {
     <header class="panel__header">
       <div>
         <h2>HTA decision summary</h2>
+        <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
           Traffic-light decision dashboard and evidence-generation plan, built in R from the
           analyses already run in this session. Nothing is recalculated here, and anything not yet
@@ -162,7 +168,7 @@ const priceInsight = computed(() => {
         :disabled="model.busy.htaSummary"
         @click="model.runHtaSummary()"
       >
-        {{ model.busy.htaSummary ? 'Assessing…' : 'Assess HTA summary' }}
+        <ButtonLabel :busy="model.busy.htaSummary" idle="Assess HTA summary" pending="Assessing…" />
       </button>
     </header>
 
@@ -176,7 +182,7 @@ const priceInsight = computed(() => {
       use “Assess HTA summary”. Each run is a snapshot of the analyses that existed when it ran.
     </p>
 
-    <template v-if="result && summary">
+    <div v-if="result && summary" class="result-reveal" :class="revealClass">
       <div class="metrics">
         <MetricCard
           label="Overall HTA decision position"
@@ -332,6 +338,6 @@ const priceInsight = computed(() => {
           </p>
         </template>
       </details>
-    </template>
+    </div>
   </section>
 </template>

@@ -42,6 +42,15 @@
   --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 14px rgba(15, 23, 42, 0.05);
   --shadow-pop: 0 12px 32px rgba(15, 23, 42, 0.18);
   --transition: 150ms ease;
+  /* Interaction motion. One pair of durations and one easing for the routine
+     transitions the interface polish adds — the tab underline, a disclosure
+     expanding, a dialog arriving, a notice appearing — so they read as one
+     system rather than as several. They are deliberately short: nothing here is
+     decorative. The two effects that are decorative keep their own, longer
+     timings beside their own rules (the result trace and the tutorial stage). */
+  --motion-fast: 150ms;
+  --motion-base: 190ms;
+  --ease-move: cubic-bezier(0.22, 0.61, 0.36, 1);
   --chart-height: 320px;
   --chart-height-tall: 420px;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -285,6 +294,61 @@ code {
 .app--landing {
   max-width: none;
   padding: 0;
+}
+
+/* --- Page entries ----------------------------------------------------------
+
+   The short fade a page plays when an internal link or button moves the visitor
+   to it: opacity only, over 160ms, on the wrapper the shell puts around the page
+   content — not on the shell itself, which holds the loading indicator, the
+   download notice and the launch overlay, and is where anything fixed to the
+   window lives. Nothing moves, nothing is delayed, and the page is interactive
+   from the moment it is mounted: this is paint, not a gate.
+
+   The class is applied by `usePageEntrance` in the same microtask as the DOM
+   update, so the arriving page is never first painted at full strength and then
+   faded, and its own end state is full opacity — a fade that stalls cannot leave
+   a page invisible, and one that never runs leaves the element with no animation
+   at all. The composable owns when it plays: not on a first paint, not on Back
+   and Forward, not during the landing page's crossing into the app, not while a
+   dialog is open, and not for an arrival the document is already scrolled into.
+
+   Two identical keyframes, because an animation only replays when its name
+   changes: a second move during a fade needs a name of its own. */
+
+.page-entry.is-entering-a {
+  animation: page-entry-a 160ms var(--ease-move) both;
+}
+
+.page-entry.is-entering-b {
+  animation: page-entry-b 160ms var(--ease-move) both;
+}
+
+@keyframes page-entry-a {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes page-entry-b {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media print {
+  /* Paper never waits for a fade. */
+  .page-entry {
+    animation: none !important;
+  }
 }
 
 .home {
@@ -620,6 +684,7 @@ code {
 /* --- Tabs ------------------------------------------------------------------ */
 
 .tabs {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 0.15rem;
@@ -635,6 +700,8 @@ code {
   font: inherit;
   font-weight: 500;
   padding: 0.5rem 0.85rem;
+  /* Transparent rather than absent, so every tab keeps the same height whether
+     or not it is selected; the visible underline is the one indicator element. */
   border-bottom: 3px solid transparent;
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   cursor: pointer;
@@ -651,8 +718,33 @@ code {
 
 .tabs__tab.is-active {
   color: var(--heading);
-  border-bottom-color: var(--accent);
   font-weight: 600;
+}
+
+/* The selected tab's underline is one element that slides from the tab it was on
+   to the tab it is on, so the labels themselves never move. useTabUnderline puts
+   it on the selected tab's own box and keeps it the same width as that label; it
+   only animates when the two tabs sit on the same row, and a wrap, a resize or a
+   font change repositions it without a transition. Decorative, so it is
+   aria-hidden and takes no pointer events. */
+.tabs__indicator {
+  position: absolute;
+  height: 3px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tabs__indicator.is-placed {
+  opacity: 1;
+}
+
+.tabs__indicator.is-moving {
+  transition:
+    left var(--motion-fast) var(--ease-move),
+    top var(--motion-fast) var(--ease-move),
+    width var(--motion-fast) var(--ease-move);
 }
 
 /* The final integrated decision tab is pushed to the end of the strip and
@@ -798,6 +890,232 @@ code {
   font-weight: 700;
   text-transform: none;
   cursor: help;
+}
+
+/* --- Result entrance and heading trace --------------------------------------
+
+   The entrance an analysis result plays when it is committed: the summary fades
+   in, and a short ECG trace draws itself in a slim strip under the panel heading
+   with a soft teal highlight travelling along it. Both are decoration, driven by
+   one class from useResultEntrance (see the composable); nothing about a result,
+   an input or a request depends on either.
+
+   Two identical animations exist for each effect because a CSS animation only
+   replays when its name changes: the pair is alternated per run, so a second run
+   fades the summary and passes the trace again even when its numbers are the
+   same. A run that arrives while the previous sequence is still playing simply
+   swaps to the other name, which restarts it on the same element — nothing
+   stacks, and no element is duplicated.
+
+   Nothing moves or re-flows. The summary fades in place, and the strip reserves
+   its own height in the heading block at every state — hidden it is only
+   transparent — so neither a run nor the decoration ending can shift the
+   heading, its text or the actions beside them. The heading's own bottom margin
+   is removed inside a panel header so the reserved strip adds about 19px of air
+   between the heading and its description rather than 24px. */
+
+.result-reveal.is-entering-a {
+  animation: result-summary-a 240ms ease-out both;
+}
+
+.result-reveal.is-entering-b {
+  animation: result-summary-b 240ms ease-out both;
+}
+
+@keyframes result-summary-a {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes result-summary-b {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* The space the trace passes through. It is part of the heading block at all
+   times; the trace is simply invisible outside its own second. */
+.panel__header h2 {
+  margin-bottom: 0;
+}
+
+.result-trace {
+  width: 14rem;
+  max-width: 100%;
+  height: 1.2rem;
+  margin: 0.1rem 0 0.2rem;
+  opacity: 0;
+}
+
+.result-trace__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* The highlight's glow reaches a little past the stroke at the beat's extremes
+     (the R spike and the S dip), so the box must not clip it. Nothing else is
+     affected: the drawing itself stays inside the strip. */
+  overflow: visible;
+}
+
+.result-trace__line,
+.result-trace__highlight {
+  fill: none;
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* The strip stretches with the heading's own block, so the strokes must not:
+     without this the line would thicken and thin with the viewport. */
+  vector-effect: non-scaling-stroke;
+}
+
+/* At rest the line is un-drawn: the dash is parked just before the path's first
+   point (offset past the whole normalised length, so even its round cap stays
+   off the trace), which leaves the strip empty between runs. */
+.result-trace__line {
+  stroke-width: 1.4px;
+  opacity: 0.62;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 101;
+}
+
+/* The highlight is a short dash on the same path, so it is part of the trace
+   rather than a shape moving over it. Its glow is a two-pixel drop shadow on the
+   dash itself: local to the few pixels it passes, with no blurred overlay and no
+   box shadow. */
+.result-trace__highlight {
+  stroke-width: 2.4px;
+  stroke-dasharray: 14 200;
+  stroke-dashoffset: 15;
+  filter: drop-shadow(0 0 2px var(--heading-glow));
+}
+
+/* One pass: the line is drawn over the same 780ms as the highlight's travel and
+   with the same linear timing, so the drawn tip and the highlight's leading edge
+   are the same point — the trace appears exactly where the highlight has been.
+   The strip holds at full strength until the pass ends and then fades over
+   180ms, taking both the trace and the highlight with it. */
+.result-trace.is-entering-a {
+  animation: result-trace-a 960ms linear both;
+}
+
+.result-trace.is-entering-b {
+  animation: result-trace-b 960ms linear both;
+}
+
+.result-trace.is-entering-a .result-trace__line {
+  animation: result-trace-line-a 780ms linear both;
+}
+
+.result-trace.is-entering-b .result-trace__line {
+  animation: result-trace-line-b 780ms linear both;
+}
+
+.result-trace.is-entering-a .result-trace__highlight {
+  animation: result-trace-pass-a 780ms linear both;
+}
+
+.result-trace.is-entering-b .result-trace__highlight {
+  animation: result-trace-pass-b 780ms linear both;
+}
+
+/* 780 / 960 = 81.25%, so the hold ends exactly where the pass does. */
+@keyframes result-trace-a {
+  0% {
+    opacity: 0;
+  }
+
+  1.5%,
+  81.25% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes result-trace-b {
+  0% {
+    opacity: 0;
+  }
+
+  1.5%,
+  81.25% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes result-trace-line-a {
+  from {
+    stroke-dashoffset: 101;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes result-trace-line-b {
+  from {
+    stroke-dashoffset: 101;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* The dash is 14 units long, so leaving at 15 keeps it (and its round cap) clear
+   of the first point, and arriving at -86 puts its leading edge on the last one:
+   -offset is where the dash starts, so it travels the whole path. */
+@keyframes result-trace-pass-a {
+  from {
+    stroke-dashoffset: 15;
+  }
+
+  to {
+    stroke-dashoffset: -86;
+  }
+}
+
+@keyframes result-trace-pass-b {
+  from {
+    stroke-dashoffset: 15;
+  }
+
+  to {
+    stroke-dashoffset: -86;
+  }
+}
+
+@media print {
+  /* A printed page carries no decoration and no reserved strip either: with the
+     strip gone the heading keeps the spacing it had before it existed, so a
+     printed panel is laid out exactly as it always was. */
+  .result-reveal {
+    animation: none !important;
+  }
+
+  .result-trace {
+    display: none;
+  }
+
+  .panel__header h2 {
+    margin-bottom: 0.35rem;
+  }
 }
 
 /* --- On-demand explanations ------------------------------------------------ */
@@ -1085,6 +1403,194 @@ code {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+/* --- Analysis button labels ------------------------------------------------
+
+   A run button's label changes while its request is pending ("Run PSA" becomes
+   "Running 1,000 iterations…"), and a button that grew or shrank under the
+   pointer would move the control the user is watching. Both labels are therefore
+   laid out in one grid cell, so the button is always as wide as its widest state
+   and its height never changes; only the label that belongs to the current state
+   is in the accessibility tree, because the other is hidden with `visibility`
+   rather than removed from the layout. The button's own name is exactly its
+   visible text, as it always was.
+
+   The pending state carries the app's ECG as a very small trace with one dash
+   running along it, in the button's own colour, so a wait reads as the same signal
+   the app uses everywhere else without the label having to say so. The mark is
+   decoration inside the label, so it is aria-hidden. */
+
+.btn-label {
+  display: inline-grid;
+  align-items: center;
+  justify-items: center;
+}
+
+.btn-label__slot {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.btn-label.is-pending .btn-label__slot--idle,
+.btn-label:not(.is-pending) .btn-label__slot--pending {
+  visibility: hidden;
+}
+
+.btn-label__trace {
+  width: 1.15rem;
+  height: 0.55rem;
+  flex: none;
+  color: currentColor;
+  overflow: visible;
+}
+
+.btn-label__trace path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.btn-label__trace-track {
+  stroke-width: 1.4px;
+  opacity: 0.3;
+}
+
+/* The same travelling-dash idea as the app's other traces, at button scale: the
+   dash is a third of the normalised path, so one beat crosses the trace per cycle
+   and waits just off the path for the rest of it. */
+.btn-label__trace-pulse {
+  stroke-width: 1.6px;
+  stroke-dasharray: 34 66;
+  stroke-dashoffset: 35;
+  animation: btn-label-trace 1600ms linear infinite;
+}
+
+@keyframes btn-label-trace {
+  0% {
+    stroke-dashoffset: 35;
+  }
+
+  60% {
+    stroke-dashoffset: -85;
+  }
+
+  100% {
+    stroke-dashoffset: -85;
+  }
+}
+
+/* --- Dialog transitions ----------------------------------------------------
+
+   The app's four modal dialogs (the welcome question, the PSA confirmation, the
+   case facts and the congratulation) are dismissed and opened through the same
+   Vue transition: the backdrop fades while the panel fades and lifts a few pixels.
+   A dialog is never delayed by its own motion — the element is what Vue shows or
+   removes, and the transition only decorates that — and a closing dialog takes no
+   pointer events, so nothing in it can be clicked through on its way out. */
+
+.dialog-enter-active,
+.dialog-leave-active {
+  transition: opacity var(--motion-base) var(--ease-move);
+}
+
+.dialog-enter-active .modal__panel,
+.dialog-leave-active .modal__panel {
+  transition:
+    opacity var(--motion-base) var(--ease-move),
+    transform var(--motion-base) var(--ease-move);
+}
+
+.dialog-enter-from,
+.dialog-leave-to {
+  opacity: 0;
+}
+
+.dialog-enter-from .modal__panel {
+  transform: translateY(6px);
+}
+
+.dialog-leave-to .modal__panel {
+  transform: translateY(4px);
+}
+
+.dialog-leave-active {
+  pointer-events: none;
+}
+
+/* --- Download notice -------------------------------------------------------
+
+   The quiet confirmation that an export has been prepared. It is one small card
+   in the corner of the window, away from the analysis controls, and it says that
+   the download was prepared and handed to the browser — never that a file was
+   saved, which this interface cannot know. The per-tab exports use it; the
+   Download results view has its own status line on the page instead, so no action
+   produces the news twice. */
+
+.download-notice {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 35;
+  width: min(22rem, calc(100vw - 2rem));
+  padding: 0.6rem 0.75rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-pop);
+  text-align: left;
+}
+
+.download-notice.is-error {
+  border-left-color: var(--danger);
+}
+
+.download-notice__title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--heading);
+}
+
+.download-notice__detail {
+  margin: 0.1rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  /* A filename is a single long token: it may break rather than widen the card. */
+  overflow-wrap: anywhere;
+}
+
+.download-notice__dismiss {
+  margin-top: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.notice-enter-active,
+.notice-leave-active {
+  transition:
+    opacity var(--motion-fast) var(--ease-move),
+    transform var(--motion-fast) var(--ease-move);
+}
+
+.notice-enter-from,
+.notice-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+@media print {
+  /* Nothing that only exists on screen belongs on paper. */
+  .download-notice {
+    display: none;
+  }
 }
 
 .group {
@@ -1626,6 +2132,97 @@ button:focus-visible {
   margin-bottom: 0.6rem;
 }
 
+/* --- Expansions -----------------------------------------------------------
+
+   The disclosures are native <details> elements and stay native: they open on a
+   click, Enter or Space, carry their own `open` state and keep a closed
+   disclosure's contents out of the tab order and the accessibility tree. All this
+   adds is motion, in two parts, and both fall back cleanly.
+
+   The chevron is drawn by the stylesheet rather than by the browser's own
+   disclosure marker (which is hidden below), so it can turn as the disclosure
+   opens. It is decoration, so it is part of the summary's own box and adds
+   nothing to the summary's accessible name. The assumptions sidebar's `details`
+   are input groups rather than disclosures, so they are given the same chevron and
+   the same motion — anything that expands in this app behaves the same way. */
+
+.details > summary,
+.group > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  /* The native marker is replaced by the chevron below; `list-style: none` and the
+     vendor pseudo-element hide it in every engine. */
+  list-style: none;
+}
+
+.details > summary::-webkit-details-marker,
+.group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.details > summary::after,
+.group > summary::after {
+  content: '';
+  flex: none;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform var(--motion-fast) var(--ease-move);
+}
+
+.details[open] > summary::after,
+.group[open] > summary::after {
+  transform: rotate(-135deg);
+}
+
+/* The expansion itself, where the engine supports animating a details'
+   contents: the content box grows from nothing to its natural height, and
+   `block-size: auto` is the resting state, so no explanation is ever clipped by a
+   guessed maximum. Where `::details-content` is unsupported — and where
+   `interpolate-size` is, which is what lets `auto` be interpolated at all — these
+   rules simply do not apply and the disclosure opens and closes exactly as it did
+   before. The animated height is the height the content really needs, so nothing
+   here has to know how long an explanation is, and Vue never re-renders the
+   contents: a chart inside a disclosure is not re-created, and only its own box
+   follows the box it is drawn in. */
+@supports selector(::details-content) {
+  details.details,
+  details.group {
+    interpolate-size: allow-keywords;
+  }
+
+  details.details::details-content,
+  details.group::details-content {
+    block-size: 0;
+    overflow: clip;
+    /* `allow-discrete` lets the closed state land on `content-visibility: hidden`
+       once the collapse has finished rather than at its start, so a collapse is
+       visible on the way out and the contents are out of layout, out of the tab
+       order and out of the accessibility tree as soon as it is closed. */
+    transition:
+      block-size var(--motion-base) var(--ease-move),
+      content-visibility var(--motion-base) allow-discrete;
+  }
+
+  details.details[open]::details-content,
+  details.group[open]::details-content {
+    block-size: auto;
+  }
+
+  /* Nothing is animated when motion is not wanted: the disclosure opens and
+     closes in one step, at its natural height. */
+  @media (prefers-reduced-motion: reduce) {
+    details.details::details-content,
+    details.group::details-content {
+      transition: none;
+    }
+  }
+}
+
 /* --- Charts --------------------------------------------------------------- */
 
 .chart {
@@ -1742,6 +2339,15 @@ button:focus-visible {
     animation: none !important;
   }
 
+  /* `*` is elements only, so the two pseudo-elements that move — a disclosure's
+     chevron, and the contents box animated in the support block below — are
+     stilled here as well. Without this the chevron would still swing and a
+     disclosure would still grow. */
+  .details > summary::after,
+  .group > summary::after {
+    transition: none !important;
+  }
+
   /* The composition is shown complete and still: the traces drawn whole and
      every letter in the full title colour, with no fill sweep or bloom. */
   .home__trace-pulse {
@@ -1810,6 +2416,90 @@ button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
   border-radius: var(--radius-sm);
+}
+
+/* The stage the current step sits on (TutorialStepStage). One step is in the
+   document at a time; the stage plays the move between two of them: the step
+   being left fades out and slides a few pixels towards the side it is heading
+   for, then the arriving step fades in from the other side, so Forward and Back
+   travel in opposite directions.
+
+   The durations are the component's own timings (LEAVE_MS / ENTER_MS), and the
+   10px of travel is well inside the shell's own page padding, so a move can
+   never add a horizontal scrollbar. Between moves the stage carries no animation
+   class at all and is transparent to layout: it adds no box, margin or padding to
+   the step it holds, and the step's own margin still collapses through it.
+
+   Under `prefers-reduced-motion: reduce` the stylesheet removes every animation
+   and the component hands the screen over without any fade, so no step ever
+   waits on an entrance to be usable. */
+
+.tut-stage.is-leaving.is-forward {
+  animation: tut-step-out-forward 180ms ease-in both;
+  /* The step being left is on its way out: a click that lands on it in the
+     moment before it is removed cannot act on a step the learner has left. */
+  pointer-events: none;
+}
+
+.tut-stage.is-entering.is-forward {
+  animation: tut-step-in-forward 220ms ease-out both;
+}
+
+.tut-stage.is-leaving.is-back {
+  animation: tut-step-out-back 180ms ease-in both;
+  pointer-events: none;
+}
+
+.tut-stage.is-entering.is-back {
+  animation: tut-step-in-back 220ms ease-out both;
+}
+
+@keyframes tut-step-out-forward {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+}
+
+@keyframes tut-step-in-forward {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tut-step-out-back {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+}
+
+@keyframes tut-step-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .tutorial__intro {
@@ -2346,10 +3036,69 @@ button:focus-visible {
   color: var(--muted);
 }
 
+/* The secondary line while a genuinely long operation runs. It sits below the
+   factual status sentence, is decorative and light, and is outside the live
+   region the sentence lives in, so a changing line can never be announced as if it
+   were progress. Its height is reserved only while it is shown, and it wraps
+   rather than widening the card on a phone.
+
+   Every message is laid in the same grid cell, so the area is as tall as the
+   longest of them at the current width: changing from one message to another
+   never resizes the card. Opacity is the whole of the change — the message being
+   replaced fades out over 150ms, and the message replacing it fades in over the
+   same 150ms after a 130ms delay, so the two are never both legible at once and
+   the swap never leaves a blank gap. Those halves add up to 280ms, which is the
+   FADE_MS the composable keeps the outgoing message on screen for. */
+.app-loading__quip {
+  display: grid;
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.app-loading__quip-line {
+  grid-area: 1 / 1;
+  opacity: 0;
+}
+
+.app-loading__quip-line.is-current {
+  opacity: 1;
+  animation: app-loading-quip-in 150ms linear 130ms both;
+}
+
+.app-loading__quip-line.is-leaving {
+  animation: app-loading-quip-out 150ms linear both;
+}
+
+@keyframes app-loading-quip-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes app-loading-quip-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* The indicator is still shown, but still: the bar is a quiet full-width line
      rather than a segment parked mid-slide, and the trace is drawn complete
-     rather than as a dash frozen part-way along the path. */
+     rather than as a dash frozen part-way along the path. The light line is one
+     static sentence at a time — nothing here rotates or fades, and it is the
+     `is-current` opacity, not its animation, that keeps it readable once the
+     global rule above has removed the animation. */
   .app-loading__bar-segment {
     animation: none;
     width: 100%;

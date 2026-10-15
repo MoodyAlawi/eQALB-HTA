@@ -18,17 +18,24 @@
  * session so the learner returns to the same step with the same values, and
  * "Restart tutorial" or a page reload is what resets it to R's defaults.
  *
- * Focus: moving to another step moves focus to that step's heading, so a
- * keyboard or screen-reader user is told which step they are on. Disclosures
- * close on Escape and return focus to their summary, which the shared disclosure
- * behaviour and the information control already implement.
+ * Move rule: the step itself is rendered on TutorialStepStage, which owns the
+ * transition between two steps and the hand-over between them. This view only
+ * says which step is current — the step number, or one past the last step for the
+ * completion card — so a move, however fast it is repeated, always ends on the
+ * step the learner is on.
+ *
+ * Focus: the stage moves focus to the arriving step's heading once that step is
+ * on screen, so a keyboard or screen-reader user is told which step they are on.
+ * Disclosures close on Escape and return focus to their summary, which the shared
+ * disclosure behaviour and the information control already implement.
  */
 
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useAppView } from '../composables/useAppView'
 import { useTheme } from '../composables/useTheme'
 import { useTutorialSession } from '../composables/useTutorialSession'
 import TutorialStepper from '../components/tutorial/TutorialStepper.vue'
+import TutorialStepStage from '../components/tutorial/TutorialStepStage.vue'
 import TutorialStep1 from '../components/tutorial/TutorialStep1.vue'
 import TutorialStep2 from '../components/tutorial/TutorialStep2.vue'
 import TutorialStep3 from '../components/tutorial/TutorialStep3.vue'
@@ -39,8 +46,6 @@ import Part2View from '../components/tutorial/Part2View.vue'
 const { show } = useAppView()
 const { theme, toggle } = useTheme()
 const session = useTutorialSession()
-
-const body = ref<HTMLElement | null>(null)
 
 onMounted(async () => {
   await session.loadContract()
@@ -83,13 +88,15 @@ const resultsStatus = computed(() => {
   return ''
 })
 
-// Moving to another step moves focus to its heading.
-watch(
-  () => [session.stepNumber, session.completed] as const,
-  async () => {
-    await nextTick()
-    body.value?.querySelector<HTMLElement>('.tutorial__step-title')?.focus()
-  },
+/**
+ * The step the stage shows: the current step, or the completion card, which is
+ * the step after the last one so that arriving at it and leaving it again read as
+ * one more move in the same sequence. The stage keeps the step it is fading out;
+ * it is told only where the move ends, and it moves focus to the arriving step's
+ * own heading once that step is on screen.
+ */
+const stageStep = computed(() =>
+  session.completed ? session.stepCount + 1 : session.stepNumber,
 )
 
 function exit(): void {
@@ -133,7 +140,7 @@ function startPart2(): void {
       <button type="button" class="btn btn--ghost" @click="show('home')">Back to start</button>
     </main>
 
-    <div v-else-if="session.contract" ref="body" class="tutorial__body">
+    <div v-else-if="session.contract" class="tutorial__body">
       <header class="tutorial__header">
         <div>
           <h1 id="tutorial-title" class="page__title">{{ session.contract.title }}</h1>
@@ -173,9 +180,16 @@ function startPart2(): void {
         Loading the tutorial results…
       </p>
 
-      <template v-if="session.result">
-        <template v-if="session.completed">
+      <!-- One step at a time: the stage shows the step it has settled on and
+           plays the move when the step changes. Only a step whose copy R sent is
+           ever staged, so the fallthrough branch is Step 4 as it always was. -->
+      <TutorialStepStage
+        v-if="session.result && (session.completed || stepCopy(session.stepNumber))"
+        :step="stageStep"
+      >
+        <template #default="{ shown }">
           <TutorialCompletion
+            v-if="shown === session.stepCount + 1"
             :completion="session.contract.completion"
             :part2="session.part2Contract"
             :part2-busy="session.part2Busy"
@@ -183,10 +197,8 @@ function startPart2(): void {
             @restart="session.restart()"
             @start-part2="startPart2"
           />
-        </template>
-        <template v-else-if="stepCopy(session.stepNumber)">
           <TutorialStep1
-            v-if="session.stepNumber === 1"
+            v-else-if="shown === 1"
             :copy="stepCopy(1)!"
             :contract="session.contract"
             :controls="controlsFor(1)"
@@ -195,7 +207,7 @@ function startPart2(): void {
             @change="session.setInput"
           />
           <TutorialStep2
-            v-else-if="session.stepNumber === 2"
+            v-else-if="shown === 2"
             :copy="stepCopy(2)!"
             :contract="session.contract"
             :controls="controlsFor(2)"
@@ -205,7 +217,7 @@ function startPart2(): void {
             @adjust-price="session.goToStep(1)"
           />
           <TutorialStep3
-            v-else-if="session.stepNumber === 3"
+            v-else-if="shown === 3"
             :copy="stepCopy(3)!"
             :contract="session.contract"
             :controls="controlsFor(3)"
@@ -221,7 +233,7 @@ function startPart2(): void {
             @finish="session.finish()"
           />
         </template>
-      </template>
+      </TutorialStepStage>
 
       <nav class="tutorial__nav" aria-label="Tutorial navigation">
         <button v-if="showBack" type="button" class="btn btn--ghost" @click="session.back()">

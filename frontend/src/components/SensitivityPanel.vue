@@ -20,16 +20,21 @@ import {
 } from '../api/types'
 import { formatEuro, formatQaly, isNum } from '../format'
 import { useModel } from '../composables/useModel'
-import { downloadText } from '../export/csv'
+import { useResultEntrance } from '../composables/useResultEntrance'
+import { prepareCsvDownload } from '../composables/useDownloadNotice'
 import { EXPORT_FILENAMES, owsaCsv } from '../export/tabExports'
 import TornadoChart from './charts/TornadoChart.vue'
+import ButtonLabel from './ButtonLabel.vue'
 import DataTable from './DataTable.vue'
 import InfoTip from './InfoTip.vue'
 import MetricCard from './MetricCard.vue'
+import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
 import type { Column } from './table'
 
 const model = useModel()
+// The entrance this tab's result plays when it is committed; see the composable.
+const { revealClass } = useResultEntrance('owsa')
 
 const editingBounds = ref(false)
 
@@ -317,7 +322,7 @@ const warnings = computed(() => {
 function downloadCsv(): void {
   const current = result.value
   if (!current) return
-  downloadText(owsaCsv(current), EXPORT_FILENAMES.owsa)
+  prepareCsvDownload(owsaCsv(current), EXPORT_FILENAMES.owsa)
 }
 </script>
 
@@ -326,6 +331,7 @@ function downloadCsv(): void {
     <header class="panel__header">
       <div>
         <h2>Deterministic sensitivity analysis</h2>
+        <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
           One parameter at a time, moved to its low and high bound with all others held at the
           scenario values, ranked by how much the outcome moves.
@@ -338,7 +344,7 @@ function downloadCsv(): void {
           :disabled="model.busy.owsa"
           @click="model.runOwsa()"
         >
-          {{ model.busy.owsa ? 'Running…' : 'Run sensitivity analysis' }}
+        <ButtonLabel :busy="model.busy.owsa" idle="Run sensitivity analysis" pending="Running…" />
         </button>
         <button
           type="button"
@@ -485,7 +491,7 @@ function downloadCsv(): void {
       The analysis needs two model runs per parameter, so it takes a few seconds.
     </p>
 
-    <template v-if="result">
+    <div v-if="result" class="result-reveal" :class="revealClass">
       <div class="metrics">
         <MetricCard
           label="Base case outcome"
@@ -536,6 +542,6 @@ function downloadCsv(): void {
           <li v-for="(warning, index) in warnings" :key="index">{{ warning }}</li>
         </ul>
       </details>
-    </template>
+    </div>
   </section>
 </template>

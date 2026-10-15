@@ -196,6 +196,21 @@ const htaSummary = shallowRef<HtaSummaryResponse | null>(null)
 const valueBasedPrice = shallowRef<ValueBasedPriceResponse | null>(null)
 
 /**
+ * How many times each analysis has committed a new result in this session.
+ *
+ * It is the one signal the presentation layer needs to tell a *new* result from a
+ * result it has already shown: the result objects themselves cannot say it,
+ * because a second run can return exactly the same numbers, and a tab switch, a
+ * theme change or an input edit must not read as a run. Only a successful run
+ * bumps a revision — a failed or cancelled one reports its error and leaves the
+ * counter alone — and it is bumped after the result has been assigned, so nothing
+ * animates ahead of the value it belongs to.
+ */
+const resultRevisions = reactive<Record<AnalysisKey, number>>(
+  Object.fromEntries(ANALYSIS_KEYS.map((key) => [key, 0])) as Record<AnalysisKey, number>,
+)
+
+/**
  * The request bodies that produced the stored results, serialised. Comparing
  * them with what the same request would be now is how a tab reports "computed
  * from earlier inputs", the same idea as the threshold-based staleness checks for
@@ -590,6 +605,9 @@ async function run(key: AnalysisKey, action: () => Promise<void>): Promise<void>
   const done = appBusy.start(ANALYSIS_BUSY_LABELS[key])
   try {
     await action()
+    // The action resolved, so its result is the new stored one: this is the only
+    // place a revision moves, and it moves after the assignment inside `action`.
+    resultRevisions[key] += 1
   } catch (error) {
     errors[key] = describeError(error)
   } finally {
@@ -946,6 +964,7 @@ const model = reactive({
   readiness,
   htaSummary,
   valueBasedPrice,
+  resultRevisions,
   probabilityCostEffective,
   owsaOutcomeLabel,
   psaStale,

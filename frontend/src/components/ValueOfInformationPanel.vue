@@ -12,15 +12,20 @@ import { computed } from 'vue'
 import type { EvppiRow } from '../api/types'
 import { formatEuro, formatNumber, formatQaly, formatThreshold } from '../format'
 import { useModel } from '../composables/useModel'
+import { useResultEntrance } from '../composables/useResultEntrance'
 import InfoTip from './InfoTip.vue'
+import ButtonLabel from './ButtonLabel.vue'
 import DataTable from './DataTable.vue'
 import MetricCard from './MetricCard.vue'
+import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
 import VoiEvpiChart from './charts/VoiEvpiChart.vue'
 import EvppiChart from './charts/EvppiChart.vue'
 import type { Column } from './table'
 
 const model = useModel()
+// The entrance this tab's result plays when it is committed; see the composable.
+const { revealClass } = useResultEntrance('voi')
 
 /** The EVPI and EVPPI explanations from CC_INFO_TEXT. */
 const evpiInfo = computed(() => model.defaults?.info_text?.evpi ?? '')
@@ -80,6 +85,7 @@ const columns: Column<EvppiRow>[] = [
     <header class="panel__header">
       <div>
         <h2>Value of information</h2>
+        <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
           EVPI is the expected value of removing all parameter uncertainty; EVPPI attributes it to
           one parameter at a time. Both are per patient and depend on the threshold.
@@ -91,7 +97,7 @@ const columns: Column<EvppiRow>[] = [
         :disabled="model.busy.voi || !model.psa"
         @click="model.runVoi()"
       >
-        {{ model.busy.voi ? 'Calculating…' : 'Calculate value of information' }}
+        <ButtonLabel :busy="model.busy.voi" idle="Calculate value of information" pending="Calculating…" />
       </button>
     </header>
 
@@ -125,7 +131,7 @@ const columns: Column<EvppiRow>[] = [
         registered with seed {{ model.psa.seed }}.
       </p>
 
-      <template v-if="result">
+      <div v-if="result" class="result-reveal" :class="revealClass">
         <div class="metrics">
           <MetricCard
             label="EVPI per patient"
@@ -194,7 +200,7 @@ const columns: Column<EvppiRow>[] = [
             <EvppiChart :rows="evppiTable" :evpi="result.evpi.evpi" />
           </figure>
         </details>
-      </template>
+      </div>
     </template>
   </section>
 </template>
