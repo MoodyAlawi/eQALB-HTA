@@ -80,6 +80,7 @@ src/
     useLoadingMessages.ts  # the lighthearted line under a long operation's factual status: one list of 24 sentences, a 1 s grace, a 7 s interval, a 280 ms opacity-only crossfade, and a static line under reduced motion
     useDownloadNotice.ts   # the prepared-download notice: one module-level notice, prepared/failed wording, a 7 s auto-dismiss only for successes
     useDialogTransition.ts # the shared dialog transition's name and its leave hook, which makes the outgoing dialog inert
+    useModalFocus.ts       # a dialog's keyboard containment: focus moved in on open, a Tab loop inside, the page behind it inert (through the dialog's relatives, each element's prior state restored), focus returned to the opener when it closes
     usePageEntrance.ts    # the page-entry fade: one 160 ms opacity animation on the page wrapper, once per entry (page + post slug), skipped on a first paint, on Back/Forward, during the launch, while a dialog is open and on a scrolled arrival
   views/
     OpenHealthHomeView.vue      # the landing page at / : one scrolling page in three panels - eQalb
@@ -300,7 +301,10 @@ src/
   while fading through
   [`useDialogTransition.ts`](./src/composables/useDialogTransition.ts), which also
   marks the leaving dialog `inert` so an outgoing dialog cannot keep the focus or
-  block the page. Under a long wait, the loading indicator adds one lighthearted
+  block the page; [`useModalFocus.ts`](./src/composables/useModalFocus.ts) is their
+  keyboard half, moving the focus to the dialog's own first action, looping Tab and
+  Shift+Tab inside it, making everything outside it inert, and returning the focus
+  to whatever opened it. Under a long wait, the loading indicator adds one lighthearted
   sentence beneath its factual line
   ([`useLoadingMessages.ts`](./src/composables/useLoadingMessages.ts)): 24
   sentences in one list, the first shown after a 1 s grace and the next every 7 s
@@ -757,21 +761,22 @@ palette, its portrait or its scroll reveal. Review it on the dev server
   them, so all three can be loaded or reloaded directly; a production static host
   must be given the same fallback (serve `index.html` for an unmatched path), or a
   direct load of `/app` or `/about` would return a 404.
-- No dialog traps focus, and only the tutorial's case-facts overlay returns focus
-  to the control that opened it (the Welcome, PSA-confirm and congratulation
-  dialogs leave focus on the document). That is the existing behaviour — the
-  facts overlay documents itself as trapping nothing — and the interaction-polish
-  pass changed none of it; it only made a leaving dialog `inert`, so an outgoing
-  dialog cannot keep the focus. **A release blocker, measured 2026-10-15:** on the
-  PSA confirmation (Continue and Cancel, 57 tabbable controls behind it) one Tab
-  reaches Cancel and the next leaves the dialog for the dashboard behind it, and a
-  control back there can be focused and activated — doing so dismissed the dialog
-  and navigated away mid-confirmation. The dialogs announce themselves as
-  `aria-modal="true"` while nothing contains the focus and nothing behind them is
-  `inert`, so a keyboard or screen-reader user is not held in the modal it claims
-  to be. The fix is small and local (contain the focus in the four dialogs and
-  return it to the control that opened each one) but it is a separate change to
-  approve, not part of the animation work.
+- Every dialog contains its own focus and returns it on close
+  (`src/composables/useModalFocus.ts`). Until 2026-10-15 the four modals announced
+  themselves as `aria-modal="true"` while nothing contained the focus and nothing
+  behind them was `inert`; measured on the PSA confirmation (Continue and Cancel, 57
+  tabbable controls behind it) one Tab reached Cancel and the next left the dialog
+  for the dashboard, where a control could be focused and activated — doing so
+  dismissed the dialog and navigated away mid-confirmation. That is fixed: the focus
+  moves to the dialog's own first action, Tab and Shift+Tab wrap inside it, the page
+  behind it is inert (through the dialog's relatives, never an ancestor, with each
+  element's prior state remembered and restored), and the focus returns to the
+  opener — or, for the welcome question, to the selected analysis tab, since it is
+  asked on arrival rather than opened from a button. An opener that is present but
+  disabled (Continue, which disables the run button as it starts the run) leaves the
+  focus where the dialog left it, and nothing is returned into a page that has been
+  left. A dialog whose leave is cancelled by a quick reopen clears its own `inert`
+  on the way back in.
 - The disclosure expansion is conditional by design: it animates only where the
   engine supports `::details-content` (with `interpolate-size` and
   `transition-behavior: allow-discrete`), and where it does not, a disclosure

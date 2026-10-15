@@ -27,7 +27,7 @@
  * and no run is started by looking around the app.
  */
 
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useModel } from './composables/useModel'
 import { useTheme } from './composables/useTheme'
 import { useAppView } from './composables/useAppView'
@@ -55,6 +55,7 @@ import LaunchTransition from './components/LaunchTransition.vue'
 import { useTabUnderline } from './composables/useTabUnderline'
 import { usePageEntrance } from './composables/usePageEntrance'
 import { DIALOG_TRANSITION_NAME, onDialogLeave } from './composables/useDialogTransition'
+import { useModalFocus } from './composables/useModalFocus'
 
 type TabId =
   | 'baseCase'
@@ -126,6 +127,7 @@ function markWelcomeSeen(): void {
 }
 
 const welcomeOpen = ref(false)
+const welcomeModal = ref<HTMLElement | null>(null)
 const welcomeTutorial = ref<HTMLButtonElement | null>(null)
 /** True once the question has been settled, one way or another, this session. */
 let welcomeSettled = welcomeAlreadySeen()
@@ -146,7 +148,20 @@ watch(page, (next) => {
   welcomeSettled = true
   markWelcomeSeen()
   welcomeOpen.value = true
-  void nextTick(() => welcomeTutorial.value?.focus())
+})
+
+/**
+ * The question is a real modal dialog: the focus moves to its first action, Tab
+ * stays inside it, the dashboard behind it cannot be reached until it is
+ * answered, and the focus goes back to what the learner was using. The question
+ * is asked without a click — the dashboard is arrived at, not opened from a
+ * button here — so the element that opened it is usually gone by the time it
+ * closes; the selected analysis tab is then the sensible place to land, since it
+ * is the way into the dashboard the question was standing in front of.
+ */
+useModalFocus(welcomeOpen, welcomeModal, {
+  initialFocus: () => welcomeTutorial.value,
+  fallbackFocus: () => document.getElementById(tabId(activeTab.value)),
 })
 
 function dismissWelcome(): void {
@@ -486,6 +501,7 @@ watch(page, (next) => {
     <Transition :name="DIALOG_TRANSITION_NAME" @leave="onDialogLeave">
       <div
         v-if="welcomeOpen"
+        ref="welcomeModal"
         class="modal"
         role="dialog"
         aria-modal="true"

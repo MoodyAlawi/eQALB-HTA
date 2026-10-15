@@ -10,10 +10,11 @@
  * and the CEAC read the same single PSA response.
  */
 
-import { computed, nextTick, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { formatEuro, formatNumber, formatPercent, formatQaly, formatThreshold, isNum } from '../format'
 import { useModel } from '../composables/useModel'
 import { useResultEntrance } from '../composables/useResultEntrance'
+import { useModalFocus } from '../composables/useModalFocus'
 import { DIALOG_TRANSITION_NAME, onDialogLeave } from '../composables/useDialogTransition'
 import ButtonLabel from './ButtonLabel.vue'
 import InfoTip from './InfoTip.vue'
@@ -65,7 +66,19 @@ const ceacInfo = computed(() => {
 const PSA_CONFIRM_MIN = 1000
 
 const confirmingPsa = ref(false)
+const psaModal = ref<HTMLElement | null>(null)
 const psaContinue = ref<HTMLButtonElement | null>(null)
+
+/**
+ * The confirmation is a real modal dialog: the focus moves to Continue, Tab stays
+ * inside it, and the dashboard behind it — the iteration field, the tab strip, the
+ * app header — cannot be reached until it is answered. Cancel puts the focus back
+ * on the run button; Continue hands it back to the button it disables, which is
+ * running by then, so the focus simply stays where the dialog left it.
+ */
+useModalFocus(confirmingPsa, psaModal, {
+  initialFocus: () => psaContinue.value,
+})
 
 /**
  * The button's label while a run is in flight. It states the operation and the
@@ -77,7 +90,6 @@ const psaPendingLabel = computed(() => `Running ${formatNumber(model.psaSims)} i
 function requestPsa(): void {
   if (model.psaSims >= PSA_CONFIRM_MIN) {
     confirmingPsa.value = true
-    void nextTick(() => psaContinue.value?.focus())
     return
   }
   model.runPsa()
@@ -303,6 +315,7 @@ const meanQalysInfo = computed(() => info.value.psa_mean_qalys ?? '')
     <Transition :name="DIALOG_TRANSITION_NAME" @leave="onDialogLeave">
       <div
         v-if="confirmingPsa"
+        ref="psaModal"
         class="modal"
         role="dialog"
         aria-modal="true"

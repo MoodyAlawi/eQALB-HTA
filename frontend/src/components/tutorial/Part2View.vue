@@ -17,11 +17,11 @@
  * Focus: the stage moves focus to the arriving section's heading, so a keyboard or
  * screen-reader user is told where they are — except while the congratulation is
  * open, which takes the focus itself and keeps it. The case facts overlay is a
- * modal dialog: it traps nothing, closes on Escape or its button and returns focus
- * to the trigger that opened it.
+ * modal dialog: it keeps the keyboard to itself while it is open, closes on Escape
+ * or its button, and returns focus to the trigger that opened it.
  */
 
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAppView } from '../../composables/useAppView'
 import { useTheme } from '../../composables/useTheme'
 import { useTutorialSession } from '../../composables/useTutorialSession'
@@ -29,6 +29,7 @@ import {
   DIALOG_TRANSITION_NAME,
   onDialogLeave,
 } from '../../composables/useDialogTransition'
+import { useModalFocus } from '../../composables/useModalFocus'
 import TutorialStepStage from './TutorialStepStage.vue'
 import Part2Brief from './Part2Brief.vue'
 import Part2Value from './Part2Value.vue'
@@ -41,7 +42,20 @@ const { theme, toggle } = useTheme()
 const session = useTutorialSession()
 
 const factsOpen = ref(false)
+const factsModal = ref<HTMLElement | null>(null)
+const factsClose = ref<HTMLButtonElement | null>(null)
 const factsTrigger = ref<HTMLButtonElement | null>(null)
+
+/**
+ * The Case facts overlay is a real modal dialog: its Close button takes the focus
+ * when it opens, the keyboard stays inside it while it is up — it has one control,
+ * so Tab simply stays on that control — and the tutorial behind it cannot be
+ * reached until it is closed. Its Close button, Escape and the backdrop all put
+ * the focus back on the button in the header that opened it.
+ */
+useModalFocus(factsOpen, factsModal, {
+  initialFocus: () => factsClose.value,
+})
 
 /**
  * The section on screen as its position in R's own section list — the order the
@@ -78,7 +92,19 @@ const sectionKeys = computed(() => session.part2Contract?.sections.map((entry) =
  * works with. Escape and the backdrop do the same thing.
  */
 const congratulationsOpen = ref(false)
+const congratulationsModal = ref<HTMLElement | null>(null)
 const congratulationsOpenAnalysis = ref<HTMLButtonElement | null>(null)
+
+/**
+ * The congratulation is a real modal dialog too: the focus moves to "Open
+ * analysis", Tab stays inside it, and the tutorial behind it cannot be reached
+ * while it is up. "Back to the recommendation", Escape and the backdrop return the
+ * focus to the recommendation the learner was on; "Open analysis" leaves the
+ * tutorial altogether, so the focus is left to the page that arrives.
+ */
+useModalFocus(congratulationsOpen, congratulationsModal, {
+  initialFocus: () => congratulationsOpenAnalysis.value,
+})
 
 watch(
   [() => session.part2Section, () => session.part2ExercisesDone],
@@ -86,7 +112,6 @@ watch(
     if (section !== 'recommend' || !exercisesDone || session.part2Congratulated) return
     session.part2Congratulated = true
     congratulationsOpen.value = true
-    void nextTick(() => congratulationsOpenAnalysis.value?.focus())
   },
   { immediate: true },
 )
@@ -154,9 +179,6 @@ const caseFacts = computed(() => ({
 
 function openFacts(): void {
   factsOpen.value = true
-  void nextTick(() => {
-    document.querySelector<HTMLElement>('[data-part2-facts-close]')?.focus()
-  })
 }
 
 function closeFacts(): void {
@@ -382,6 +404,7 @@ function exit(): void {
     <Transition :name="DIALOG_TRANSITION_NAME" @leave="onDialogLeave">
       <div
         v-if="factsOpen"
+        ref="factsModal"
         class="modal"
         role="dialog"
         aria-modal="true"
@@ -412,6 +435,7 @@ function exit(): void {
         <p class="field__hint">{{ factsLabels.hint }}</p>
         <div class="tutorial__nav">
           <button
+            ref="factsClose"
             type="button"
             class="btn btn--primary"
             data-part2-facts-close
@@ -430,6 +454,7 @@ function exit(): void {
     <Transition :name="DIALOG_TRANSITION_NAME" @leave="onDialogLeave">
       <div
         v-if="congratulationsOpen"
+        ref="congratulationsModal"
         class="modal"
         role="dialog"
         aria-modal="true"

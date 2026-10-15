@@ -93,7 +93,10 @@ the pending label stating the operation (and the PSA's iteration count) beside a
 small ECG; a prepared export reports once through `components/DownloadNotice.vue`
 (a corner card that is never a claim that a file was saved, with failures waiting
 to be dismissed); and the four dialogs fade and move a few pixels through
-`composables/useDialogTransition.ts`, which also makes the leaving dialog `inert`.
+`composables/useDialogTransition.ts`, which also makes the leaving dialog `inert`,
+while `composables/useModalFocus.ts` keeps the keyboard inside whichever dialog is
+open: focus moved in, Tab and Shift+Tab wrapped, the rest of the page `inert` and
+the focus returned to the opener.
 The loading line is `composables/useLoadingMessages.ts`: 24 sentences in one list,
 one shown after a 1 s grace and a different one every 7 s, each change a 280 ms
 opacity-only crossfade, in an area sized by the longest sentence so the card keeps
@@ -408,7 +411,9 @@ frontend/
                        # useAppBusy (the app-wide loading state), useResultEntrance and useTabUnderline
                        # (which element a one-shot entrance and the tab strip's indicator are placed on),
                        # useDownloadNotice (the prepared-download notice), useDialogTransition (the dialog
-                       # fade and the leaving dialog's inert state), useLoadingMessages (the lighthearted
+                       # fade and the leaving dialog's inert state), useModalFocus (the dialog's keyboard
+                       # containment: focus in, a Tab loop, the page behind it inert, focus returned),
+                       # useLoadingMessages (the lighthearted
                        # line under a long wait: the sentence list, the 7 s interval, the crossfade),
                        # usePageEntrance (the page-entry fade: which entries fade and which are shown
                        # immediately)
@@ -542,12 +547,16 @@ project owner.
 - The frontend has no automated test suite yet; it has been verified manually
   against the R API. Its type check (`vue-tsc -b`) and lint (`oxlint`) pass, and
   the production build succeeds.
-- No dialog traps focus, and no dialog returns focus to the control that opened it
-  except the tutorial's case-facts overlay, which returns focus to its own trigger.
-  This is the existing behaviour (`Part2View.vue` documents the facts overlay as
-  trapping nothing) and the interaction-polish pass did not change it: it only made
-  a leaving dialog `inert` so the outgoing dialog cannot keep the focus. Adding a
-  trap and focus return is a small, separate change to approve.
+- Every dialog contains its own focus. The four real modals (the welcome question,
+  the PSA confirmation, the case facts and the congratulation) move the focus to
+  their own first action when they open, wrap Tab and Shift+Tab inside themselves,
+  make everything outside them `inert` while they are up — through their relatives,
+  never through an ancestor, and restoring each element's prior state — and return
+  the focus to the control that opened them, with the welcome question falling back
+  to the selected analysis tab (it is asked on arrival, so it has no button to
+  return to) and a dialog whose opener is disabled (Continue, which disables the run
+  button as it starts the run) leaving the focus where the dialog left it. That is
+  `frontend/src/composables/useModalFocus.ts`, wired once per dialog.
 - The disclosure expansion is conditional: it animates only where `::details-content`
   and `interpolate-size` are both supported (the engines the app is developed and
   reviewed in), and where they are not, a disclosure opens and closes instantly

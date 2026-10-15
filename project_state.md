@@ -1746,35 +1746,33 @@ explicitly documented otherwise.
   280 ms crossfade, the card's height across messages, the frame in which a
   completion removes it — while the messages' own wording, and how the crossfade
   reads at full speed, are still the author's to judge.
-- No dialog in the application has a focus trap, and the interaction-polish pass
-  did not add one: `Part2View.vue` documents the case-facts overlay as trapping
-  nothing, and Tab from the last control of a dialog reaches the page behind the
-  backdrop. Losing focus before a dialog is closed also leaves focus on the
-  document body, because Escape and the backdrop close without returning focus to
-  the invoking button — except for the case-facts overlay, which returns focus to
-  its trigger. This is the existing behaviour, unchanged by the pass, and it is
-  recorded here because the request named focus trapping and focus return as things
-  that must stay correct: they are unchanged, not newly correct.
-- **The missing dialog focus containment is a release blocker, measured on
-  2026-10-15.** The `.modal` pattern carries `role="dialog"` and
-  `aria-modal="true"`, but nothing inside a dialog contains the focus and nothing
-  outside it is `inert`. Measured on the PSA confirmation ("Run the PSA with 1,000
-  iterations?", controls Continue and Cancel, 57 tabbable controls behind it): focus
-  starts on Continue, one Tab reaches Cancel, and the next Tab leaves the dialog for
-  the dashboard header, then the status chip, the theme button and the assumptions
-  panel — the pointer cannot follow it (the backdrop covers the page, verified with
-  `elementFromPoint`), but the keyboard can, and a control behind the dialog can be
-  focused and activated. Doing so dismissed the dialog and navigated the app away
-  mid-confirmation, so a keyboard or screen-reader user is not actually held in a
-  modal that announces itself as one. It is not a new defect and not the fault of
-  the animation work — the dialogs never had containment — but it is a genuine
-  modal focus-management problem, so the release stops before deployment for a
-  decision rather than shipping with it recorded only as a footnote. The fix is
-  small and local: contain the focus in the four dialogs (a Tab handler or `inert`
-  on the shell while a dialog is open, exactly as the leaving dialog already gets)
-  and return focus to the control that opened each one; the four are the welcome
-  question (`App.vue`), the PSA confirmation (`CostEffectivenessPanel.vue`) and the
-  case-facts and congratulation overlays (`Part2View.vue`).
+- **Every dialog now contains its own focus, and the defect that stopped the
+  previous release is fixed (2026-10-15).** Until this fix the four `.modal`
+  dialogs carried `role="dialog"` and `aria-modal="true"` without containing the
+  focus or blocking the page behind them: on the PSA confirmation ("Run the PSA
+  with 1,000 iterations?", controls Continue and Cancel, 57 tabbable controls
+  behind it) focus started on Continue, one Tab reached Cancel, and the next Tab
+  left the dialog for the dashboard header, the status chip, the theme button and
+  the assumptions panel. The pointer could not follow it (the backdrop covers the
+  page, verified with `elementFromPoint`), but the keyboard could, and activating a
+  control behind the dialog dismissed it and navigated the app away
+  mid-confirmation. `frontend/src/composables/useModalFocus.ts` now supplies the
+  keyboard half of the same modal pattern the dialogs already had for motion: the
+  focus moves in on open, Tab and Shift+Tab wrap inside, every element outside the
+  dialog is `inert` (through the dialog's relatives, never through an ancestor, so
+  a dialog can never inert itself), and the focus returns to whatever opened it —
+  with the welcome question's fallback being the selected analysis tab, since it is
+  asked on arrival rather than opened from a button, and with a disabled opener
+  (Continue, which disables the run button as it starts the run) leaving the focus
+  where the dialog left it rather than on a control that cannot take it. The
+  elements made inert remember their own prior state, so an element that was
+  already inert stays inert, and a dialog that closes, unmounts or has its page
+  taken away underneath it cannot leave the app inert. Measured in the running app
+  on all four dialogs: opener → contained Tab/Shift+Tab → every close path
+  (Confirm, Cancel, Close, Escape, backdrop) → focus returned, and the background
+  unusable by keyboard while open. Continue's own disabled-opener case and the
+  unmount-while-open case were measured with the button pre-disabled and with a
+  Back navigation respectively, so no 1,000-draw PSA was run for a focus check.
 - The download notice reports preparation, never a saved file, because a browser
   cannot tell the interface whether a download completed; and the loading messages
   are decoration by design — they are `aria-hidden`, so a screen-reader user hears
@@ -2718,10 +2716,27 @@ unstaged. Five approved additions, plus the lighthearted loading messages:
   confirm, case facts and congratulation dialogs). The backdrop fades and the panel
   moves 4 px while fading, over 190 ms; the leaving dialog is marked `inert` and its
   backdrop gets `pointer-events: none`, so an outgoing dialog cannot keep the focus
-  or block the page. Escape, initial focus (`Continue`, the facts close button, the
-  congratulation action) and the facts overlay's focus return are unchanged; no focus
-  trap exists in any dialog and none was added, which is the existing, documented
-  behaviour.
+  or block the page.
+- **Dialog focus containment** (`composables/useModalFocus.ts`, the same four
+  dialogs). The keyboard half of `role="dialog"` + `aria-modal="true"`: on open the
+  focus moves to the dialog's own first action (`Continue`, the facts close button,
+  the congratulation's "Open analysis", "Start tutorial" for the welcome question),
+  Tab and Shift+Tab wrap inside the dialog (a dialog with no control keeps the focus
+  on its own panel), and every element outside it is `inert` while it is up, so the
+  page behind it takes no click, no key press and no focus. The background is
+  inerted through the dialog's *relatives* — each ancestor's other children, from the
+  dialog up to the body — so an ancestor of the dialog is never switched off and the
+  dialog can never inert itself; each element remembers whether it was already inert
+  and is left exactly as it was found, so a dialog that closes, unmounts or has its
+  page taken away underneath it cannot leave the app inert. On close the focus goes
+  back to whatever opened it; the welcome question's fallback is the selected
+  analysis tab, because it is asked on arrival rather than opened from a button; and
+  an opener that is present but unusable — the PSA run button that `Continue` has
+  just disabled — leaves the focus where the dialog left it instead of sending it to
+  a control that cannot take it. Nothing is restored into a page that has been left,
+  which is a page whose controls went with it. A dialog whose leave was cancelled by
+  a quick reopen clears its own `inert` on the way back in, so the reopened dialog is
+  never left switched off.
 - **Loading messages** (`composables/useLoadingMessages.ts`). The approved
   sentences — 24 of them (the original six plus eighteen more), in one list — shown
   as a second line under the factual status once the wait has outlived a 1 s grace,
@@ -2762,7 +2777,17 @@ pending, success, failure and cancellation, including a real pointer click on a
 pending button starting no second request; the download notice's life cycle, its
 failure path (a forced blob failure) and the package view's own status; the four
 dialogs' enter, leave, rapid open/close/reopen, Escape, `inert` and post-close
-usability; the loading messages' grace, a change every 7 s over four changes in one
+usability, and then, after the containment fix, all four dialogs' keyboard
+behaviour: the focus arriving on the dialog's own first action, Tab and Shift+Tab
+wrapping at both ends, the background header, tab strip, assumptions panel and
+tutorial controls refusing the focus while a dialog is up (and a real pointer click
+over a background control reaching only the backdrop), every close path — Confirm,
+Cancel, Close, Escape, the backdrop — returning the focus to the opener or to the
+welcome question's tab fallback, a disabled opener leaving it alone instead, a Back
+navigation while a dialog is open unmounting the page and leaving no `inert` behind,
+the same dialog usable again after a reopen inside its own leave fade, and the whole
+set repeating correctly under reduced motion (where the dialog element is removed
+24 ms after closing rather than waiting on a fade it does not have); the loading messages' grace, a change every 7 s over four changes in one
 controlled 40 s wait, no consecutive repeat, `aria-hidden`, a completion landing
 mid-crossfade removing the card in the same frame, one rotation interval per wait
 created and cleared, and the single static message under reduced motion — including
@@ -4722,9 +4747,12 @@ page's header and the Home screen's pinned theme button exactly where they are.
 
 ## Next planned task
 
-The animation work and the interaction-polish pass are implemented and verified
-locally but deliberately uncommitted, so they are ready for the author's own review
-of how they feel: `http://127.0.0.1:5173/app`. The things to look at are the result
+The animation work, the interaction-polish pass, the page-entry fade and the dialog
+focus containment are implemented, verified locally and committed on
+`feature/frontend-interaction-polish` (`fe0ebd0` plus the containment commit), ready
+to be integrated and deployed through the `Deploy frontend` workflow. The author's
+review copy for how it all feels is the dev server, `http://127.0.0.1:5173/app`. The
+things to look at are the result
 entrance ("Start analysis" then "Run base case": the summary fades in while the ECG
 trace draws under the heading and its teal highlight passes — run it twice to see it
 replay), the tutorial step transitions (Home then "Guided tutorial", which are
@@ -4745,9 +4773,10 @@ mirrored in `LEAVE_MS` / `ENTER_MS` in
 `frontend/src/components/tutorial/TutorialStepStage.vue`, the reserved strip's
 height in `.result-trace`, and the grace, the 7 s interval, the 280 ms crossfade and
 the message list in
-`frontend/src/composables/useLoadingMessages.ts`). If the missing focus trap and the
-missing focus return named under Known limitations should be fixed, that is a
-further change to approve before it starts.
+`frontend/src/composables/useLoadingMessages.ts`). The dialog focus containment that
+was the previous release blocker is now implemented in
+`frontend/src/composables/useModalFocus.ts` and verified in the running app, so
+nothing named under Known limitations is waiting on a decision.
 
 The landing page's scroll fade is reversible and scroll-linked - it fades in as a
 group arrives, holds at full strength through a wide central band, fades out as the
@@ -4889,6 +4918,7 @@ another post beyond writing it and listing it in `posts.ts`.
 
 | Date | Change | Verified? |
 |---|---|---|
+| 2026-10-15 | The dialog focus containment the previous release stopped for, frontend only: the four real modals (the welcome question, the PSA confirmation, the case facts and the congratulation) now keep the keyboard to themselves. One new composable, `composables/useModalFocus.ts`, and one wiring line plus a `ref` per dialog in `App.vue`, `CostEffectivenessPanel.vue` and `Part2View.vue`; the dialogs' existing motion, Escape, Cancel, Confirm, close-button and backdrop behaviour, wording and requests are untouched, and the focus moves that used to sit in each dialog's open path (four `nextTick` calls) now belong to the composable. On open the focus moves to the dialog's own first action; Tab and Shift+Tab wrap inside; every element outside the dialog becomes `inert` — through the dialog's relatives, never through an ancestor, so a dialog can never inert itself — with each element's prior state remembered and restored; on close the focus returns to the opener, or to the selected analysis tab for the welcome question (which is asked on arrival and has no button to return to), or stays where it is when the opener is the run button `Continue` has just disabled. Nothing is restored into a page that was left. A dialog whose leave is cancelled by a quick reopen clears its own `inert` on the way back in, so a reopened dialog can never be left switched off | `npm run typecheck`, `npm run lint` and `npm run build` pass and `git diff --check` is clean. Measured in the running app on all four dialogs: opener → contained Tab and Shift+Tab (PSA: Continue → Cancel → Continue wraps; facts: Tab stays on Close) → background controls refused the focus (the app header's Home button, a tab, the assumptions panel, the stepper, the tutorial's Exit) → every close path (Confirm, Cancel, Close, Escape, the backdrop) returned the focus (the PSA run button, the Case facts trigger, the stepper's Recommendation button, the welcome question's fallback tab) with zero `[inert]` left → a real pointer click over the header's Home button reached only the backdrop and did not navigate → a disabled opener left the focus on the body instead of on a disabled button → a Back navigation while the facts overlay was open unmounted the page with zero `[inert]` left and the app usable again → the facts overlay reopened inside its own leave fade was not inert, focused, tab-trapped and closable → under reduced motion the same containment held and the dialog element was removed 24 ms after closing, behind no fade. No console or page errors during two full dialog cycles. No 1,000-draw PSA was run for a focus check |
 | 2026-10-15 | The page-entry fade, frontend only: a page now fades in when an internal link or button moves the visitor to it, over 160 ms and opacity only, and the accumulated frontend polish work — the result ECG trace and its summary entrance, the tutorial step transitions, the sliding tab indicator, the disclosure expansion, the analysis-button pending states, the download feedback, the dialog transitions, the 24-message loading line with its 7 s rotation and crossfade — is released with it. Three files carry the fade: `composables/usePageEntrance.ts` (new: which entries fade, and the five that do not), the `.page-entry` wrapper and the composable wiring in `App.vue` (the wrapper holds the page content only; every fixed overlay stays outside it), and the `.page-entry` rules in `styles.css`. Two identical keyframes are alternated, because an animation only replays when its name changes. Nothing about navigation, history, scroll restoration, inputs, results or the address was touched | `npm run typecheck`, `npm run lint`, `npm run build` and `git diff --check` all pass. In the browser, per frame: the class lands with the DOM update and the animation's own duration measured `160ms` with opacity 0 → 1 (`page-entry-b`, currentTime 0→122 ms of 160 ms, full at 144 ms), then the class clears at 480 ms — the safety window, not the animation. The moves verified with the fade: blog index → post, post → index, blog → landing, landing → blog, Home → dashboard, Home → tutorial, Home → download results (`is-entering-a`/`-b` alternating, opacity 0 → 1). The moves verified *without* it, each by design: a first paint (0 animations on load), a same-entry click ("Blog" while on the index), Back/Forward (landing scrolled to 1500 → blog → Back restored 1500 with 0 animations), the landing page's crossing into the app (the wrapper stayed class-less through the whole launch, which ran its own `launch--looping`/`launch--leaving` and handed over at 831 ms), the Home screen (dashboard → Home: no fade) and a scrolled arrival (About at 260 → landing: no fade, scroll preserved, header still at top 0). Rapid navigation (three moves inside one fade) ended on the last page at opacity 1 with one wrapper and no leftover class. Reduced motion: 0 animations, `animationDuration: 0s`, opacity 1 immediately; print: `animation: none`. Fixed chrome: on blog → landing the landing page's header measured top 0, left 0, width 890 on every frame of the fade; the download notice is outside the wrapper and still sat in the window corner after a CSV export. No regression found: the result trace is still one 224 × 19.2 px strip with its three animations and the same values, a tutorial Next still ran `is-leaving is-forward` → `is-entering is-forward` with one step in the document and focus on the arriving heading (the wrapper stayed class-less), the tab indicator stayed aligned with no page fade, the CSV export notice still reported `Download prepared.` with `role="status"`, the download results view still renders only on its own page (absent from the dashboard), and 390 px had no horizontal overflow. Not claimed: no second published post exists, so post → post could not be exercised in the app — the slug is the only thing that differs in the entry key, and the index → post move is the same path; and the earlier finding that a dialog does not contain the focus is unchanged and is now recorded as a release blocker (see Known limitations) |
 | 2026-10-15 | The rotating loading messages refined, frontend only and left unstaged; nothing else of the approved polish pass was touched (the only three files written were `composables/useLoadingMessages.ts`, `components/AppLoadingIndicator.vue` and the `.app-loading__quip` block of `styles.css`). The pool grew from six sentences to 24 — the original six plus the eighteen the author supplied, in one list, with the playful lines kept away from anything clinical, validated or resembling progress. The interval became **7 s**, measured between the starts of two changes, with the 1 s grace unchanged, and a change is now a **crossfade**: the composable hands the component the message on screen plus, for the length of the swap, the one it is replacing, and the two fade over each other — the outgoing over 150 ms and the incoming over the same 150 ms after a 130 ms delay, 280 ms in all (`FADE_MS`) — so the two are never both legible and the swap never leaves a blank gap. Every message is rendered in one grid cell, so the line's area is as tall as the longest of them at the current width and neither the first message arriving nor a change of message resizes the card; a new `matchMedia` listener on the motion preference stops the rotation and cancels a crossfade in flight when reduce is turned on during a wait, and resumes it when the preference is turned off again | `npm run typecheck`, `npm run lint` and `npm run build` all exit 0 (the pre-existing >500 kB chunk notice unchanged). Verified in the browser on the dev server, with the wait held open by the page's own `fetch` wrapper answering from a payload captured in a genuine run — a deferred response on the test side never reaches the page here, which is itself recorded in Known limitations. **Cadence:** the card at 2.53 s, the first message visible at 3.81 s (1 s grace + the fade), then changes at 10.84 s and 17.83 s — gaps of 7024 ms and 6993 ms — and a 40 s wait produced four changes in all, each 7 s after the last. **Crossfade:** sampled every 10 ms around each change, the outgoing line runs 1 → 0 over 150 ms while the incoming runs 0 → 1 from 130 ms to 280 ms; across every sample the two never exceeded **0.06 opacity together** (no legible overlap) and no frame in the whole 40 s had the card up with nothing readable on it (`blankFramesAfterFirst: 0`, over 3200 sampled frames). **Lifecycle:** 1 rotation interval created for a whole wait and 1 cleared when it ended (`activeLeft: 0`), no interval restarted by a render or by navigating Home mid-wait, the card and its messages carried on across that navigation (200 ms of them still visible after the click), and a response landing **inside** a crossfade removed the card in the same frame the result committed (`resultCommittedAt` 10684 ms, `cardGoneAt` 10684 ms, 0 ms apart). **Rest of the requirements:** a request that finished before the grace showed no bar, no card and no message at all (151 samples, card 0); the pool showed no consecutive repeat in any run; a 360 px viewport had zero frames of horizontal overflow, the card held one height (146.3 px) for the whole wait and the line's area equalled its tallest line (37.4 px), and the same held at 1280 px; under `prefers-reduced-motion` one static message appeared after the grace with 0 animations and opacity exactly 1 for 54 samples, and turning reduce **on** during a wait cleared the interval at 7044 ms with the crossfade cancelled and no message change for 8 s, while turning it **off** re-created the interval and produced the next message 7 s later. Not claimed: the crossfade was measured frame by frame, not watched at speed |
 | 2026-10-15 | The approved interaction-polish pass, frontend only and left unstaged: a sliding active-tab indicator, smooth expansion of the existing disclosures, pending states for the nine analysis buttons, quiet feedback after a download is prepared, and refined dialog entrances and exits, plus the lighthearted loading messages. New: `composables/useTabUnderline.ts`, `composables/useLoadingMessages.ts`, `composables/useDownloadNotice.ts`, `composables/useDialogTransition.ts`, `components/ButtonLabel.vue`, `components/DownloadNotice.vue`; `styles.css` gains the `--motion-fast` / `--motion-base` / `--ease-move` tokens and the `.tabs__indicator`, `.btn-label`, `.dialog-*`, `.notice-*`, `.download-notice` and `@supports selector(::details-content)` disclosure blocks; the nine panels swap their run buttons to `ButtonLabel` and the three CSV buttons report through `prepareCsvDownload`; `App.vue`, `CostEffectivenessPanel.vue` and `Part2View.vue` put their four dialogs behind the shared transition; `DownloadResultsView.vue` reports preparation honestly (`role="status"` on success, `role="alert"` on failure). One defect found and fixed while verifying: the global `* { transition: none; animation: none }` reduced-motion rule does not reach pseudo-elements, so the new chevron and the animated `::details-content` box were still animating under `prefers-reduced-motion`; both are now stilled, the content box inside its `@supports` block | `npm run typecheck`, `npm run lint` and `npm run build` all exit 0 (the pre-existing >500 kB chunk notice unchanged). **Indicator:** placed from the selected tab's own box (left/width deltas ≈ 0 including the selected weight, measured after fonts are ready), sliding 190 ms between two tabs on the same row and jumping in one frame across a wrap, on resize (2 rows at 900 px, 5 rows at 390 px with the bar 167 px matching the active tab and no overflow) and on the first placement; `aria-hidden`, `pointer-events: none`, roving tabindex and keyboard selection unchanged, and the destination panel arrives in the same tick as the click (before the indicator moves). **Disclosures:** sampled per frame, an open grew 0 → 335 px of content box (29 distinct heights, ~205 ms) to the details' real 399 px with `scrollHeight === clientHeight` and the last child 23.4 px inside the box (nothing clipped or scrolled), the chevron rotated 45° → −135° through its own 150 ms, and a collapse ran 399 → 40.7 px with `content-visibility` landing on `hidden`; closed, the 243 px table inside is out of layout and cannot take focus. **Buttons:** idle, pending and restored sizes identical to a tenth of a pixel (208.4 × 36.5 for the PSA, 177.8 × 36.5 for survival) and the accessibility name is exactly one label at a time (`Run PSA` → `Running 100 iterations…` [disabled] → `Run PSA`; `Run survival simulation` → `Simulating…` → back), with the inactive label `visibility: hidden`; a real pointer click on a pending button produced no second request, and a failed request restored the label, showed the existing "Cannot reach the model service…" message and left the result in place. **Download notice:** "Download prepared." with the filename, `role="status"`, focus unmoved, entered through the Vue `notice-enter-*` classes with its 150 ms opacity and 4 px transforms, gone by ~7 s; a forced blob failure produced "The download could not be prepared." with `role="alert"` and no auto-dismiss; the package view reported "Results package prepared: …, with N files." (`role="status"`) and "The results package could not be prepared in this browser: …" (`role="alert"`) with no duplicate corner notice. **Dialogs:** a fade plus a few pixels over 190 ms, initial focus on `Continue`, Escape and the backdrop both closing, the leaving element `inert` with `pointer-events: none` on its backdrop and removed from the document afterwards, three rapid open/close cycles leaving no stray modal, no leftover `[inert]` and a fully usable page, and reopen working. Not claimed: no focus trap and no focus return exist in these dialogs (unchanged, documented in Known limitations); the entrance/leave were measured frame by frame rather than watched at speed. **Loading messages:** against a request held open by a test-side delay — the bar at ~450 ms, the card at 2.5 s, the first message at ~3.6 s (1 s grace), four distinct messages at ~8 s intervals, `aria-hidden="true"` on the message with `role="status"` on the factual label and none on the card, and prompt removal when the request settled; a request that finished in ~1 s showed no bar, no card and no message at all; a 100-iteration PSA run repeated 5 of the 6 sentences with no back-to-back repeat. **Reduced motion:** tabs, chevrons, the disclosure content box, the notice and the launch at `0s`/`none`, a disclosure opening in a single step at 399 px, the result trace never drawn with its summary at opacity 1 on the first frame, no bar and no card for a fast run, one static message held for the whole 14 s wait, and a tutorial Next with no `is-leaving` phase, arriving immediately with focus on the new heading. **Approved work preserved:** the result trace is still one 224 × 19.2 px element even when a run lands mid-animation, replays on each successful run and never on a theme or tab change; the tutorial still leaves in 180 ms and enters in 220 ms with opposite directions, one step in the document, the arriving heading focused, rapid Next landing on the last requested step, and inputs, results and open state kept across Back and Forward; the Download results view still renders only on its own page and the landing page, `/blog` and the favicon are untouched (no file of theirs appears in `git status`) |
