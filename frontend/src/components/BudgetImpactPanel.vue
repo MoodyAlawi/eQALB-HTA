@@ -12,14 +12,19 @@ import { computed } from 'vue'
 import type { BudgetImpactRow } from '../api/types'
 import { formatCount, formatEuro, formatPercent } from '../format'
 import { useModel } from '../composables/useModel'
+import { useResultEntrance } from '../composables/useResultEntrance'
 import InfoTip from './InfoTip.vue'
+import ButtonLabel from './ButtonLabel.vue'
 import BudgetImpactChart from './charts/BudgetImpactChart.vue'
 import DataTable from './DataTable.vue'
 import MetricCard from './MetricCard.vue'
+import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
 import type { Column } from './table'
 
 const model = useModel()
+// The entrance this tab's result plays when it is committed; see the composable.
+const { revealClass } = useResultEntrance('budget')
 
 const result = computed(() => model.budget)
 const rows = computed<BudgetImpactRow[]>(() => result.value?.table ?? [])
@@ -94,6 +99,7 @@ const uptakeInfo = computed(() => model.defaults?.info_text?.uptake ?? '')</scri
     <header class="panel__header">
       <div>
         <h2>Budget impact</h2>
+        <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
           Deterministic, undiscounted, per year. Uptake starts at the year-1 percentage and grows by
           the annual increment; engagement decides how many users are active.
@@ -105,7 +111,7 @@ const uptakeInfo = computed(() => model.defaults?.info_text?.uptake ?? '')</scri
         :disabled="model.busy.budget"
         @click="model.runBudget()"
       >
-        {{ model.busy.budget ? 'Running…' : 'Run budget impact' }}
+        <ButtonLabel :busy="model.busy.budget" idle="Run budget impact" pending="Running…" />
       </button>
     </header>
 
@@ -190,7 +196,7 @@ const uptakeInfo = computed(() => model.defaults?.info_text?.uptake ?? '')</scri
       matches these inputs.
     </p>
 
-    <template v-if="result">
+    <div v-if="result" class="result-reveal" :class="revealClass">
       <div class="metrics">
         <MetricCard
           label="Cumulative net budget impact"
@@ -225,6 +231,6 @@ const uptakeInfo = computed(() => model.defaults?.info_text?.uptake ?? '')</scri
       </figure>
 
       <DataTable :columns="columns" :rows="rows" caption="Budget impact by year (EUR)" />
-    </template>
+    </div>
   </section>
 </template>

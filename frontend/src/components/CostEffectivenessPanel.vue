@@ -13,16 +13,22 @@
 import { computed, nextTick, ref } from 'vue'
 import { formatEuro, formatNumber, formatPercent, formatQaly, formatThreshold, isNum } from '../format'
 import { useModel } from '../composables/useModel'
+import { useResultEntrance } from '../composables/useResultEntrance'
+import { DIALOG_TRANSITION_NAME, onDialogLeave } from '../composables/useDialogTransition'
+import ButtonLabel from './ButtonLabel.vue'
 import InfoTip from './InfoTip.vue'
 import CostEffectivenessPlane from './charts/CostEffectivenessPlane.vue'
 import CeacChart from './charts/CeacChart.vue'
 import { probabilityAtThreshold } from './charts/ceac'
 import DataTable from './DataTable.vue'
 import MetricCard from './MetricCard.vue'
+import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
 import type { Column } from './table'
 
 const model = useModel()
+// The entrance this tab's result plays when it is committed; see the composable.
+const { revealClass } = useResultEntrance('psa')
 
 interface ThresholdRow {
   threshold: number
@@ -60,6 +66,13 @@ const PSA_CONFIRM_MIN = 1000
 
 const confirmingPsa = ref(false)
 const psaContinue = ref<HTMLButtonElement | null>(null)
+
+/**
+ * The button's label while a run is in flight. It states the operation and the
+ * number of iterations the run is actually using — both facts, neither a
+ * percentage: how far through a PSA is is something this interface is not told.
+ */
+const psaPendingLabel = computed(() => `Running ${formatNumber(model.psaSims)} iterations…`)
 
 function requestPsa(): void {
   if (model.psaSims >= PSA_CONFIRM_MIN) {
@@ -149,13 +162,14 @@ const meanQalysInfo = computed(() => info.value.psa_mean_qalys ?? '')
     <header class="panel__header">
       <div>
         <h2>Cost-effectiveness plane and PSA</h2>
+        <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
           The probabilistic analysis of the current assumptions: the plane, the summary and the
           acceptability curve.
         </p>
       </div>
       <button type="button" class="btn btn--primary" :disabled="model.busy.psa" @click="requestPsa()">
-        {{ model.busy.psa ? `Running ${formatNumber(model.psaSims)} iterations…` : 'Run PSA' }}
+        <ButtonLabel :busy="model.busy.psa" idle="Run PSA" :pending="psaPendingLabel" />
       </button>
     </header>
 
@@ -204,7 +218,7 @@ const meanQalysInfo = computed(() => info.value.psa_mean_qalys ?? '')
       <InfoTip :text="seedInfo" topic="the random seed" />
     </div>
 
-    <template v-if="result">
+    <div v-if="result" class="result-reveal" :class="revealClass">
       <div class="metrics">
         <MetricCard
           label="Mean incremental cost"
@@ -279,36 +293,39 @@ const meanQalysInfo = computed(() => info.value.psa_mean_qalys ?? '')
         uncertainty propagates, and the acceptability curve is the share of iterations that fall
         below the threshold at each willingness to pay.
       </p>
-    </template>
+    </div>
 
     <!-- A run at 1,000 draws or more takes minutes, so it is confirmed first.
          The prompt only gates the button; the request and the iteration handling
          are unchanged. Cancel leaves the field as it is so the count can be
-         adjusted, and Escape and the backdrop both cancel. -->
-    <div
-      v-if="confirmingPsa"
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="psa-confirm-title"
-      @keydown="onPsaKeydown"
-    >
-      <div class="modal__backdrop" @click="cancelPsa()"></div>
-      <div class="modal__panel modal__panel--welcome">
-        <h2 id="psa-confirm-title" class="modal__title">
-          Run the PSA with {{ formatNumber(model.psaSims) }} iterations?
-        </h2>
-        <p class="page__prose">
-          Running 1,000 or more iterations may take a few minutes. If you want a quick PSA, change
-          the number of iterations to 100.
-        </p>
-        <div class="tutorial__nav">
-          <button ref="psaContinue" type="button" class="btn btn--primary" @click="continuePsa()">
-            Continue
-          </button>
-          <button type="button" class="btn btn--ghost" @click="cancelPsa()">Cancel</button>
+         adjusted, and Escape and the backdrop both cancel. It arrives and leaves
+         through the shared dialog transition. -->
+    <Transition :name="DIALOG_TRANSITION_NAME" @leave="onDialogLeave">
+      <div
+        v-if="confirmingPsa"
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="psa-confirm-title"
+        @keydown="onPsaKeydown"
+      >
+        <div class="modal__backdrop" @click="cancelPsa()"></div>
+        <div class="modal__panel modal__panel--welcome">
+          <h2 id="psa-confirm-title" class="modal__title">
+            Run the PSA with {{ formatNumber(model.psaSims) }} iterations?
+          </h2>
+          <p class="page__prose">
+            Running 1,000 or more iterations may take a few minutes. If you want a quick PSA, change
+            the number of iterations to 100.
+          </p>
+          <div class="tutorial__nav">
+            <button ref="psaContinue" type="button" class="btn btn--primary" @click="continuePsa()">
+              Continue
+            </button>
+            <button type="button" class="btn btn--ghost" @click="cancelPsa()">Cancel</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </section>
 </template>

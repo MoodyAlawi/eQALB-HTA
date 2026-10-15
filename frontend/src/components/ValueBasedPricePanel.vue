@@ -32,14 +32,19 @@ import type { PriceScanCell, PriceScanLevel } from '../api/types'
 import type { Tone } from '../format'
 import { formatEuro, formatNumber, formatPercent, formatThreshold, isNum } from '../format'
 import DataTable from './DataTable.vue'
+import ButtonLabel from './ButtonLabel.vue'
 import InfoTip from './InfoTip.vue'
 import MetricCard from './MetricCard.vue'
+import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
 import ValueBasedPriceComparison from './charts/ValueBasedPriceComparison.vue'
 import type { Column } from './table'
 import { useModel } from '../composables/useModel'
+import { useResultEntrance } from '../composables/useResultEntrance'
 
 const model = useModel()
+// The entrance this tab's result plays when it is committed; see the composable.
+const { revealClass } = useResultEntrance('valueBasedPrice')
 
 const result = computed(() => model.valueBasedPrice)
 const headline = computed(() => result.value?.headline ?? null)
@@ -229,6 +234,7 @@ const availabilityReasons = computed(() => {
     <header class="panel__header">
       <div>
         <h2>Value-based price</h2>
+        <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
           The highest annual price the model supports at the reference threshold, and how the
           current price compares with it.
@@ -241,9 +247,7 @@ const availabilityReasons = computed(() => {
           :disabled="model.busy.valueBasedPrice"
           @click="model.runValueBasedPrice()"
         >
-          {{
-            model.busy.valueBasedPrice ? 'Calculating…' : 'Calculate value-based price'
-          }}
+          <ButtonLabel :busy="model.busy.valueBasedPrice" idle="Calculate value-based price" pending="Calculating…" />
         </button>
       </div>
     </header>
@@ -263,7 +267,7 @@ const availabilityReasons = computed(() => {
       you use “Calculate value-based price”. A result stays on screen while the assumptions change,
       and is marked as computed from earlier inputs rather than recalculated or removed.
     </p>
-    <template v-if="result && headline">
+    <div v-if="result && headline" class="result-reveal" :class="revealClass">
       <p v-for="warning in warnings" :key="warning" class="alert alert--warning">
         {{ warning }}
       </p>
@@ -405,6 +409,6 @@ const availabilityReasons = computed(() => {
           caption="Scan detail per assumption combination, illustrative"
         />
       </details>
-    </template>
+    </div>
   </section>
 </template>

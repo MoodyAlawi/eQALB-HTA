@@ -75,6 +75,12 @@ src/
     useDisclosure.ts    # Escape closes the disclosure the focus is inside, app-wide
     useAppBusy.ts       # the app-wide busy state the loading indicator shows: ref-counted start/finish, label, isActive
     useTutorialSession.ts  # Guided Tutorial: Part 1's inputs/results/step and Part 2's case, price, coverage, readiness answers and section; never touches useModel
+    useResultEntrance.ts   # the one-shot result entrance: an analysis's committed revision becomes an alternating animation class, once per revision, remembered across a panel's unmount
+    useTabUnderline.ts     # places the analysis tab strip's indicator from the selected tab's own box: 190 ms slide between tabs on one row, a jump across a wrap, a resize or a font change, cleaned up on unmount
+    useLoadingMessages.ts  # the lighthearted line under a long operation's factual status: one list of 24 sentences, a 1 s grace, a 7 s interval, a 280 ms opacity-only crossfade, and a static line under reduced motion
+    useDownloadNotice.ts   # the prepared-download notice: one module-level notice, prepared/failed wording, a 7 s auto-dismiss only for successes
+    useDialogTransition.ts # the shared dialog transition's name and its leave hook, which makes the outgoing dialog inert
+    usePageEntrance.ts    # the page-entry fade: one 160 ms opacity animation on the page wrapper, once per entry (page + post slug), skipped on a first paint, on Back/Forward, during the launch, while a dialog is open and on a scrolled arrival
   views/
     OpenHealthHomeView.vue      # the landing page at / : one scrolling page in three panels - eQalb
                                 # (the hero, and "Open the app"), OpenHealth, About me (with the
@@ -114,9 +120,12 @@ src/
     ReadinessPanel.vue          # DHT readiness: grouped stacked inputs, numbers, domains, statuses
     HtaSummaryPanel.vue         # HTA position + interpretation, dashboard and evidence priorities on demand
     ValueBasedPricePanel.vue    # supported annual price, headroom, required effect, 3x3 scan
-    tutorial/           # Guided Tutorial: stepper, control, status card, plane, Part 1's four steps and
-                        # completion card, and Part 2's shell, case brief, price curve, value-for-money,
-                        # budget-impact, readiness and recommendation sections
+    ResultTrace.vue              # the ECG trace that passes under a panel heading: one short line whose draw follows a teal highlight, then gone
+    ButtonLabel.vue              # the two-label run button: idle and pending in one grid cell, with the small ECG on the pending label
+    DownloadNotice.vue           # the prepared-download card in the corner, role="status" / role="alert"
+    tutorial/           # Guided Tutorial: stepper, step stage (the transition between steps), control, status card,
+                        # plane, Part 1's four steps and completion card, and Part 2's shell, case brief, price
+                        # curve, value-for-money, budget-impact, readiness and recommendation sections
     charts/             # one component per chart, options only
     DataTable.vue, MetricCard.vue, InfoTip.vue, StaleNotice.vue, table.ts
     BlogLayout.vue, date.ts     # in components/blog/: the blog's header, footer and reading column shell
@@ -239,6 +248,89 @@ src/
   set with `aria-label` rather than a
   `<caption>`, so no table gains a visible extra row and the responsive
   `.table-scroll` wrapper is unchanged.
+- **A new result fades in under a passing ECG trace, and the tutorial moves
+  between steps.** Two restrained animations, both decoration and both driven by
+  state that already exists. When an analysis commits a result, its top-level
+  summary fades in over 240 ms while, in a slim strip between the panel heading
+  and its description, a short ECG trace draws itself as a soft teal highlight
+  travels along it (780 ms); the strip then fades away (180 ms) and the heading is
+  left clean. The trigger is the per-analysis revision counter in
+  [`useModel.ts`](./src/composables/useModel.ts) (bumped only when a run
+  resolves), [`useResultEntrance.ts`](./src/composables/useResultEntrance.ts)
+  turns a revision into an alternating animation class once per revision and
+  remembers at module scope what it has shown, so a second run replays the
+  entrance even when its numbers are identical, while a tab switch, a theme
+  change, an input edit and a failed request never do.
+  [`ResultTrace.vue`](./src/components/ResultTrace.vue) is the trace
+  (`aria-hidden`, so it adds nothing to a heading's accessible name), and its
+  strip is reserved in the heading block at every state — hidden it is only
+  transparent — so nothing shifts when it draws or leaves. Tutorial steps and
+  Part 2 sections cross-fade with a few pixels of horizontal travel through
+  [`TutorialStepStage.vue`](./src/components/tutorial/TutorialStepStage.vue),
+  which renders exactly one step at a time (Vue's own `out-in` transition can
+  leave the outgoing step in the document when a second move interrupts it, which
+  would duplicate the step heading's `id`), lands on the newest step however fast
+  Next and Back are repeated, moves focus to the arriving step's heading, and
+  takes no request, input or result with it. `prefers-reduced-motion: reduce`
+  removes both outright — the stage swaps in one frame — and `@media print`
+  removes the entrance.
+- **Routine interactions are refined, not reinvented.** Five small things, all
+  presentation: the analysis tab strip carries one sliding teal indicator
+  ([`useTabUnderline.ts`](./src/composables/useTabUnderline.ts)) that measures the
+  selected tab's own box, slides for 190 ms only between two tabs on the same row
+  and jumps into place across a wrap, a resize or a font change, so it is never
+  drawn in the wrong place (it is `aria-hidden` and takes no pointer events, and
+  the tab semantics, roving tabindex and keyboard selection are untouched); the
+  existing `<details>` disclosures grow to the content's real height where the
+  engine supports `::details-content` with `interpolate-size`, with the existing
+  marker becoming a chevron that rotates 150 ms, and open instantly where it does
+  not; the nine run buttons use
+  [`ButtonLabel.vue`](./src/components/ButtonLabel.vue), whose idle and pending
+  labels are two spans in one grid cell, so the button's box and its accessible
+  name are exactly one label at a time and the box does not move between states
+  (the pending label states the operation — and the PSA's iteration count — beside
+  a small `aria-hidden` ECG, and the button's own disabled state is what prevents a
+  second submission); a prepared export reports once through
+  [`DownloadNotice.vue`](./src/components/DownloadNotice.vue), a corner card that
+  is `role="status"` when the download was handed to the browser and `role="alert"`
+  when it could not be prepared, auto-dismissed only in the first case, with a
+  Dismiss button that never takes the focus and wording that never claims a file
+  was saved (`DownloadResultsView` keeps its own in-page line, so nothing is
+  reported twice); and the four dialogs fade their backdrop and move a few pixels
+  while fading through
+  [`useDialogTransition.ts`](./src/composables/useDialogTransition.ts), which also
+  marks the leaving dialog `inert` so an outgoing dialog cannot keep the focus or
+  block the page. Under a long wait, the loading indicator adds one lighthearted
+  sentence beneath its factual line
+  ([`useLoadingMessages.ts`](./src/composables/useLoadingMessages.ts)): 24
+  sentences in one list, the first shown after a 1 s grace and the next every 7 s
+  from a shuffled cycle that never repeats the sentence on screen. A change is a
+  crossfade — the outgoing sentence fades out over 150 ms and the incoming one
+  fades in over the same 150 ms after a 130 ms delay, 280 ms in all, opacity only
+  — and every sentence is rendered in the same grid cell, so the line's area is as
+  tall as the longest of them and neither the first sentence nor a change of
+  sentence moves the card. The block is `aria-hidden` so nothing changing is
+  announced, it is held still under `prefers-reduced-motion` (including when the
+  preference is turned on mid-wait, which stops the rotation and cancels the
+  crossfade in flight), and every timer is cleared when the wait ends or the
+  component unmounts.
+- **A page fades in when a link or button moves you to it.** One 160 ms opacity
+  fade, on the `.page-entry` wrapper the shell puts around the page content — not
+  on the shell, which holds the loading indicator, the download notice and the
+  launch overlay, all fixed to the window. The class is toggled in the same
+  microtask as the DOM update, so the arriving page is never painted at full
+  strength and then faded, and its end state is full opacity, with a safety clear
+  so a stalled animation cannot leave a page invisible. It plays once per entry,
+  where an entry is the page plus the post's slug on the blog, so the index, one
+  post and another post are three arrivals, while a rerender, an input, a theme
+  change, a loading message, a tutorial step and an analysis-tab switch replay
+  nothing. Five arrivals are shown as they are instead, each because a fade would
+  be wrong rather than merely unnecessary: the first paint, Back and Forward, the
+  landing page's crossing into the app (the launch sequence owns that), any move
+  made while a dialog is open, and any arrival the page is already scrolled into —
+  which, with the Home screen's own pinned theme button, is what keeps fixed
+  chrome exactly where it is. See
+  [`usePageEntrance.ts`](./src/composables/usePageEntrance.ts).
 - **The landing page is a page of its own.** `/` is one scrolling page whose three
   panels (eQalb, then OpenHealth, then About me) are reached through its floating
   navigation, which smooth-scrolls, tracks the visible panel with an
@@ -665,3 +757,35 @@ palette, its portrait or its scroll reveal. Review it on the dev server
   them, so all three can be loaded or reloaded directly; a production static host
   must be given the same fallback (serve `index.html` for an unmatched path), or a
   direct load of `/app` or `/about` would return a 404.
+- No dialog traps focus, and only the tutorial's case-facts overlay returns focus
+  to the control that opened it (the Welcome, PSA-confirm and congratulation
+  dialogs leave focus on the document). That is the existing behaviour — the
+  facts overlay documents itself as trapping nothing — and the interaction-polish
+  pass changed none of it; it only made a leaving dialog `inert`, so an outgoing
+  dialog cannot keep the focus. **A release blocker, measured 2026-10-15:** on the
+  PSA confirmation (Continue and Cancel, 57 tabbable controls behind it) one Tab
+  reaches Cancel and the next leaves the dialog for the dashboard behind it, and a
+  control back there can be focused and activated — doing so dismissed the dialog
+  and navigated away mid-confirmation. The dialogs announce themselves as
+  `aria-modal="true"` while nothing contains the focus and nothing behind them is
+  `inert`, so a keyboard or screen-reader user is not held in the modal it claims
+  to be. The fix is small and local (contain the focus in the four dialogs and
+  return it to the control that opened each one) but it is a separate change to
+  approve, not part of the animation work.
+- The disclosure expansion is conditional by design: it animates only where the
+  engine supports `::details-content` (with `interpolate-size` and
+  `transition-behavior: allow-discrete`), and where it does not, a disclosure
+  opens and closes instantly exactly as it did before. Nothing about the contents,
+  their semantics, their tab order or their accessibility depends on the
+  animation.
+- The prepared-download notice reports that the download was handed to the
+  browser, because a web page cannot confirm that a file was saved; a failure
+  notice stays until it is dismissed, and the message itself is announced politely
+  rather than taking the focus. The lighthearted loading line is decoration: it is
+  `aria-hidden`, so a screen-reader user hears only the operation's factual status,
+  and it is shown still rather than changing under `prefers-reduced-motion`.
+- The loading line's area is reserved for the card's whole life (all 24 sentences
+  are rendered in one grid cell and sized by the longest at the current width), so
+  the card keeps a single height while it is up; the reserved space is used in every
+  card, because the card only appears after 2.5 s and the first sentence follows a
+  second later.

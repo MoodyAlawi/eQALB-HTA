@@ -24,7 +24,12 @@ import {
 
 const { goHome } = useAppView()
 const heading = ref<HTMLHeadingElement | null>(null)
-const status = ref<string | null>(null)
+/**
+ * The page's own report of the last export. It is a polite live region, so the
+ * outcome is announced once, and it is the only place this page reports a
+ * download — the app-wide notice is not used here, so no action is reported twice.
+ */
+const status = ref<{ tone: 'ok' | 'error'; text: string } | null>(null)
 
 // Read straight off the store, so the list always matches what the tabs show.
 const availability = computed(() => analysisAvailability())
@@ -43,16 +48,32 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 function download(): void {
   const now = new Date()
-  const results = buildResultsPackage(now)
-  const archive = buildZip(
-    results.files.map((file) => ({ name: file.name, text: file.text })),
-    now,
-  )
-  const filename = packageFilename(now)
-  downloadBytes(archive, filename, 'application/zip')
-  status.value = `Downloaded ${filename} with ${results.files.length} file${
-    results.files.length === 1 ? '' : 's'
-  }.`
+  // Preparation is what this page can report on: it builds the package and hands
+  // it to the browser. Whether the browser saved it is not something the interface
+  // is told, so the wording below says exactly what happened. A package that could
+  // not be built says so and never reports a download.
+  try {
+    const results = buildResultsPackage(now)
+    const archive = buildZip(
+      results.files.map((file) => ({ name: file.name, text: file.text })),
+      now,
+    )
+    const filename = packageFilename(now)
+    downloadBytes(archive, filename, 'application/zip')
+    status.value = {
+      tone: 'ok',
+      text: `Results package prepared: ${filename}, with ${results.files.length} file${
+        results.files.length === 1 ? '' : 's'
+      }.`,
+    }
+  } catch (error) {
+    status.value = {
+      tone: 'error',
+      text: `The results package could not be prepared in this browser: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    }
+  }
 }
 
 const gap = backendGap()
@@ -98,7 +119,14 @@ const gap = backendGap()
         <button type="button" class="btn btn--ghost" @click="goHome()">Back</button>
       </div>
 
-      <p v-if="status" class="alert alert--info" role="status">{{ status }}</p>
+      <p
+        v-if="status"
+        class="alert"
+        :class="status.tone === 'error' ? 'alert--danger' : 'alert--info'"
+        :role="status.tone === 'error' ? 'alert' : 'status'"
+      >
+        {{ status.text }}
+      </p>
 
       <details class="details">
         <summary>What the package contains, and what it does not</summary>

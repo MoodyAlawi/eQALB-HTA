@@ -19,16 +19,21 @@ import {
   isNum,
 } from '../format'
 import { useModel } from '../composables/useModel'
-import { downloadText } from '../export/csv'
+import { useResultEntrance } from '../composables/useResultEntrance'
+import { prepareCsvDownload } from '../composables/useDownloadNotice'
 import { EXPORT_FILENAMES, baseCaseCsv } from '../export/tabExports'
 import DataTable from './DataTable.vue'
+import ButtonLabel from './ButtonLabel.vue'
 import InfoTip from './InfoTip.vue'
 import MetricCard from './MetricCard.vue'
+import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
 import BaseCasePlane from './charts/BaseCasePlane.vue'
 import type { Column } from './table'
 
 const model = useModel()
+// The entrance this tab's result plays when it is committed; see the composable.
+const { revealClass } = useResultEntrance('baseCase')
 
 interface ComponentRow {
   component: string
@@ -120,7 +125,7 @@ const planeInfo = computed(() => {
 function downloadCsv(): void {
   const current = result.value
   if (!current) return
-  downloadText(baseCaseCsv(current), EXPORT_FILENAMES.baseCase)
+  prepareCsvDownload(baseCaseCsv(current), EXPORT_FILENAMES.baseCase)
 }
 </script>
 
@@ -129,6 +134,7 @@ function downloadCsv(): void {
     <header class="panel__header">
       <div>
         <h2>Base-case cost-effectiveness</h2>
+        <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
           The deterministic base case at the current assumptions: incremental cost, incremental
           QALYs and the ICER.
@@ -141,7 +147,7 @@ function downloadCsv(): void {
           :disabled="model.busy.baseCase"
           @click="model.runBaseCase()"
         >
-          {{ model.busy.baseCase ? 'Running…' : 'Run base case' }}
+        <ButtonLabel :busy="model.busy.baseCase" idle="Run base case" pending="Running…" />
         </button>
         <button
           type="button"
@@ -169,7 +175,7 @@ function downloadCsv(): void {
       that produced it.
     </p>
 
-    <template v-if="result">
+    <div v-if="result" class="result-reveal" :class="revealClass">
       <div class="metrics">
         <MetricCard
           label="Incremental cost"
@@ -249,6 +255,6 @@ function downloadCsv(): void {
           usual care.
         </p>
       </details>
-    </template>
+    </div>
   </section>
 </template>

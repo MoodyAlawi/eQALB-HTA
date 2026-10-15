@@ -50,7 +50,11 @@ import AboutView from './views/AboutView.vue'
 import BlogIndexView from './views/BlogIndexView.vue'
 import BlogPostView from './views/BlogPostView.vue'
 import AppLoadingIndicator from './components/AppLoadingIndicator.vue'
+import DownloadNotice from './components/DownloadNotice.vue'
 import LaunchTransition from './components/LaunchTransition.vue'
+import { useTabUnderline } from './composables/useTabUnderline'
+import { usePageEntrance } from './composables/usePageEntrance'
+import { DIALOG_TRANSITION_NAME, onDialogLeave } from './composables/useDialogTransition'
 
 type TabId =
   | 'baseCase'
@@ -193,6 +197,57 @@ function activateTab(id: TabId): void {
 }
 
 /**
+ * The sliding underline under the selected tab. The strip's own layout decides
+ * where a tab is — it wraps, and the final tab is pushed to the end of its row — so
+ * the indicator is placed from the selected tab's box rather than from a
+ * calculation of its own; see the composable for the two rules it follows. It is
+ * decoration, and the tab it draws under is selected before it moves, so nothing
+ * waits for it.
+ */
+const tabsNav = ref<HTMLElement | null>(null)
+const activeTabIndex = computed(() =>
+  Math.max(
+    0,
+    TABS.findIndex((tab) => tab.id === activeTab.value),
+  ),
+)
+const { position: indicatorPosition, moving: indicatorMoving } = useTabUnderline(
+  tabsNav,
+  activeTabIndex,
+)
+const indicatorStyle = computed(() =>
+  indicatorPosition.value
+    ? {
+        left: `${indicatorPosition.value.left}px`,
+        top: `${indicatorPosition.value.top}px`,
+        width: `${indicatorPosition.value.width}px`,
+      }
+    : {},
+)
+
+/**
+ * The page-entry fade.
+ *
+ * The key is the page, plus the post's slug on the blog, so the index, one post
+ * and another post are three separate arrivals and a post-to-post move replays
+ * the fade. Nothing else about the shell is in it, so a rerender, an input, a
+ * theme change, a loading message, a tutorial step or an analysis-tab switch
+ * replays nothing.
+ *
+ * The Home screen is listed to be skipped: it has its own entrance already (the
+ * launch sequence's `home-rise`), and it pins its theme button to the window's
+ * corner while the eQalb column is narrower than the window — a fade there would
+ * carry that button with it. See the composable for the rest of the rules, which
+ * it owns: no fade on a first paint, on Back and Forward, during the landing
+ * page's crossing into the app, while a dialog is open, or when the arriving page
+ * is one the document is already scrolled into.
+ */
+const pageEntryKey = computed(() =>
+  page.value === 'blog' ? `blog:${postSlug.value ?? ''}` : page.value,
+)
+const { enterClass: pageEnterClass } = usePageEntrance(pageEntryKey, { skip: ['home'] })
+
+/**
  * Arrow keys move between tabs and select as they go; Home and End jump to the
  * ends. Enter and Space are deliberately not handled: every tab is a real
  * <button>, so the browser activates it natively, exactly as before.
@@ -253,146 +308,171 @@ watch(page, (next) => {
       'app--landing': page === 'openhealth' || page === 'blog',
     }"
   >
-    <template v-if="page === 'dashboard'">
-      <header class="app__header">
-        <div class="app__brand">
-          <h1>eQalb</h1>
-          <p class="muted">
-            Illustrative HTA model for a fictional hypertension digital therapeutic.
-          </p>
-        </div>
-
-        <div class="app__actions">
-          <button
-            type="button"
-            class="btn btn--ghost"
-            title="Back to the start screen"
-            @click="show('home')"
-          >
-            Home
-          </button>
-
-          <button
-            type="button"
-            class="btn btn--ghost sidebar-toggle"
-            :aria-expanded="showAssumptions"
-            @click="showAssumptions = !showAssumptions"
-          >
-            Assumptions
-          </button>
-
-          <button
-            type="button"
-            class="badge status-chip"
-            :class="status === 'ok' ? 'badge--good' : 'badge--warning'"
-            title="Check the model service again"
-            @click="model.refreshHealth()"
-          >
-            <span class="dot" :class="status === 'ok' ? 'dot--good' : 'dot--warning'"></span>
-            {{ statusLabel }}
-          </button>
-
-          <button
-            type="button"
-            class="btn btn--icon"
-            :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
-            :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
-            @click="toggle()"
-          >
-            <span aria-hidden="true">{{ theme === 'dark' ? '☀' : '☾' }}</span>
-          </button>
-        </div>
-      </header>
-
-      <main v-if="model.loading" class="state">
-        <p>Loading the model service…</p>
-      </main>
-
-      <main v-else-if="model.loadError" class="state">
-        <h2>The model service is not reachable</h2>
-        <p class="alert alert--danger">{{ model.loadError }}</p>
-        <p class="muted">
-          The interface presents results computed by the model service, so it needs that service to
-          be running. Start it, then try again.
-        </p>
-        <button type="button" class="btn btn--primary" @click="model.loadService()">Retry</button>
-        <button type="button" class="btn btn--ghost" @click="show('home')">Back to start</button>
-      </main>
-
-      <div v-else class="app__body">
-        <aside class="sidebar" :class="{ 'sidebar--hidden': !showAssumptions }">
-          <AssumptionsForm />
-        </aside>
-
-        <section class="content">
-          <nav
-            class="tabs"
-            role="tablist"
-            aria-label="Analysis"
-            aria-orientation="horizontal"
-            @keydown="onTabsKeydown"
-          >
-            <button
-              v-for="tab in TABS"
-              :id="tabId(tab.id)"
-              :key="tab.id"
-              ref="tabButtons"
-              type="button"
-              role="tab"
-              class="tabs__tab"
-              :class="[
-                { 'is-active': activeTab === tab.id, 'tabs__tab--final': tab.id === 'hta' },
-                tab.id === 'hta' ? htaAccent : null,
-              ]"
-              :title="tab.hint"
-              :aria-selected="activeTab === tab.id"
-              :aria-current="activeTab === tab.id ? 'true' : undefined"
-              :aria-controls="panelId(tab.id)"
-              :tabindex="activeTab === tab.id ? 0 : -1"
-              @click="activateTab(tab.id)"
-            >
-              {{ tab.label }}
-            </button>
-          </nav>
-          <p class="content__hint muted">{{ activeHint }}</p>
-
-          <!-- One panel, named by the tab that controls it. The panels stay behind
-               v-if so a chart is never created inside a hidden container. -->
-          <div :id="panelId(activeTab)" role="tabpanel" :aria-labelledby="tabId(activeTab)">
-            <BaseCasePanel v-if="activeTab === 'baseCase'" />
-            <CostEffectivenessPanel v-else-if="activeTab === 'ce'" />
-            <SensitivityPanel v-else-if="activeTab === 'sensitivity'" />
-            <BudgetImpactPanel v-else-if="activeTab === 'budget'" />
-            <SurvivalPanel v-else-if="activeTab === 'survival'" />
-            <ValueOfInformationPanel v-else-if="activeTab === 'voi'" />
-            <ReadinessPanel v-else-if="activeTab === 'readiness'" />
-            <ValueBasedPricePanel v-else-if="activeTab === 'valueBasedPrice'" />
-            <HtaSummaryPanel v-else-if="activeTab === 'hta'" />
+    <!-- The page content, and the wrapper the page-entry fade is played on. The
+         overlays below (the loading indicator, the download notice, the launch
+         overlay, the welcome question) are deliberately outside it: they are
+         fixed to the window, and anything that is below full opacity becomes the
+         containing block for a fixed descendant, so animating a wrapper that held
+         them would move them. Only the content fades, and only for a move the
+         composable approves. -->
+    <div class="page-entry" :class="pageEnterClass">
+      <template v-if="page === 'dashboard'">
+        <header class="app__header">
+          <div class="app__brand">
+            <h1>eQalb</h1>
+            <p class="muted">
+              Illustrative HTA model for a fictional hypertension digital therapeutic.
+            </p>
           </div>
-        </section>
-      </div>
-    </template>
 
-    <!-- The download view is named, not the leftover branch: as a bare v-else it
-         also rendered under the dashboard, so every analysis tab had the panel
-         below it and scrolling down reached it. Each page names itself here, and
-         leaving one unmounts its view. -->
-    <OpenHealthHomeView v-if="page === 'openhealth'" />
-    <AboutView v-else-if="page === 'about'" />
-    <!-- The blog is one page with two states rather than two pages: the index
-         when no post is open, and one post when the address names one. Both
-         branches are named, and a post address that names no post is still the
-         post's branch, which answers it with its own not-found state. -->
-    <BlogIndexView v-else-if="page === 'blog' && !postSlug" />
-    <BlogPostView v-else-if="page === 'blog'" />
-    <HomeView v-else-if="page === 'home'" />
-    <TutorialView v-else-if="page === 'tutorial'" />
-    <ProjectDescriptionView v-else-if="page === 'description'" />
-    <DownloadResultsView v-else-if="page === 'export'" />
+          <div class="app__actions">
+            <button
+              type="button"
+              class="btn btn--ghost"
+              title="Back to the start screen"
+              @click="show('home')"
+            >
+              Home
+            </button>
+
+            <button
+              type="button"
+              class="btn btn--ghost sidebar-toggle"
+              :aria-expanded="showAssumptions"
+              @click="showAssumptions = !showAssumptions"
+            >
+              Assumptions
+            </button>
+
+            <button
+              type="button"
+              class="badge status-chip"
+              :class="status === 'ok' ? 'badge--good' : 'badge--warning'"
+              title="Check the model service again"
+              @click="model.refreshHealth()"
+            >
+              <span class="dot" :class="status === 'ok' ? 'dot--good' : 'dot--warning'"></span>
+              {{ statusLabel }}
+            </button>
+
+            <button
+              type="button"
+              class="btn btn--icon"
+              :title="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+              :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+              @click="toggle()"
+            >
+              <span aria-hidden="true">{{ theme === 'dark' ? '☀' : '☾' }}</span>
+            </button>
+          </div>
+        </header>
+
+        <main v-if="model.loading" class="state">
+          <p>Loading the model service…</p>
+        </main>
+
+        <main v-else-if="model.loadError" class="state">
+          <h2>The model service is not reachable</h2>
+          <p class="alert alert--danger">{{ model.loadError }}</p>
+          <p class="muted">
+            The interface presents results computed by the model service, so it needs that service to
+            be running. Start it, then try again.
+          </p>
+          <button type="button" class="btn btn--primary" @click="model.loadService()">Retry</button>
+          <button type="button" class="btn btn--ghost" @click="show('home')">Back to start</button>
+        </main>
+
+        <div v-else class="app__body">
+          <aside class="sidebar" :class="{ 'sidebar--hidden': !showAssumptions }">
+            <AssumptionsForm />
+          </aside>
+
+          <section class="content">
+            <nav
+              ref="tabsNav"
+              class="tabs"
+              role="tablist"
+              aria-label="Analysis"
+              aria-orientation="horizontal"
+              @keydown="onTabsKeydown"
+            >
+              <button
+                v-for="tab in TABS"
+                :id="tabId(tab.id)"
+                :key="tab.id"
+                ref="tabButtons"
+                type="button"
+                role="tab"
+                class="tabs__tab"
+                :class="[
+                  { 'is-active': activeTab === tab.id, 'tabs__tab--final': tab.id === 'hta' },
+                  tab.id === 'hta' ? htaAccent : null,
+                ]"
+                :title="tab.hint"
+                :aria-selected="activeTab === tab.id"
+                :aria-current="activeTab === tab.id ? 'true' : undefined"
+                :aria-controls="panelId(tab.id)"
+                :tabindex="activeTab === tab.id ? 0 : -1"
+                @click="activateTab(tab.id)"
+              >
+                {{ tab.label }}
+              </button>
+
+              <!-- The selected tab's underline: one element that slides between
+                   tabs, placed on the selected label's own box. Decorative, so it
+                   is hidden from assistive technology and takes no pointer events. -->
+              <span
+                class="tabs__indicator"
+                :class="{ 'is-placed': indicatorPosition, 'is-moving': indicatorMoving }"
+                :style="indicatorStyle"
+                aria-hidden="true"
+              ></span>
+            </nav>
+            <p class="content__hint muted">{{ activeHint }}</p>
+
+            <!-- One panel, named by the tab that controls it. The panels stay behind
+                 v-if so a chart is never created inside a hidden container. -->
+            <div :id="panelId(activeTab)" role="tabpanel" :aria-labelledby="tabId(activeTab)">
+              <BaseCasePanel v-if="activeTab === 'baseCase'" />
+              <CostEffectivenessPanel v-else-if="activeTab === 'ce'" />
+              <SensitivityPanel v-else-if="activeTab === 'sensitivity'" />
+              <BudgetImpactPanel v-else-if="activeTab === 'budget'" />
+              <SurvivalPanel v-else-if="activeTab === 'survival'" />
+              <ValueOfInformationPanel v-else-if="activeTab === 'voi'" />
+              <ReadinessPanel v-else-if="activeTab === 'readiness'" />
+              <ValueBasedPricePanel v-else-if="activeTab === 'valueBasedPrice'" />
+              <HtaSummaryPanel v-else-if="activeTab === 'hta'" />
+            </div>
+          </section>
+        </div>
+      </template>
+
+      <!-- The download view is named, not the leftover branch: as a bare v-else it
+           also rendered under the dashboard, so every analysis tab had the panel
+           below it and scrolling down reached it. Each page names itself here, and
+           leaving one unmounts its view. -->
+      <OpenHealthHomeView v-if="page === 'openhealth'" />
+      <AboutView v-else-if="page === 'about'" />
+      <!-- The blog is one page with two states rather than two pages: the index
+           when no post is open, and one post when the address names one. Both
+           branches are named, and a post address that names no post is still the
+           post's branch, which answers it with its own not-found state. -->
+      <BlogIndexView v-else-if="page === 'blog' && !postSlug" />
+      <BlogPostView v-else-if="page === 'blog'" />
+      <HomeView v-else-if="page === 'home'" />
+      <TutorialView v-else-if="page === 'tutorial'" />
+      <ProjectDescriptionView v-else-if="page === 'description'" />
+      <DownloadResultsView v-else-if="page === 'export'" />
+    </div>
 
     <!-- One app-wide loading indicator, above every page. It shows itself only
          when an operation outlives its grace period; see the component. -->
     <AppLoadingIndicator />
+
+    <!-- One app-wide download notice, above every page: the per-tab CSV exports
+         report themselves here, and the Download results view has its own status
+         line on its page instead, so no export is reported twice. -->
+    <DownloadNotice />
 
     <!-- The landing page's arrival into the app, above everything while it runs.
          It is decoration only - aria-hidden, nothing focusable, no pointer
@@ -401,36 +481,39 @@ watch(page, (next) => {
 
     <!-- The once-per-session welcome question. It reuses the app's existing
          modal pattern, and closing it never blocks the app: the page underneath
-         is already the Home screen. -->
-    <div
-      v-if="welcomeOpen"
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="welcome-title"
-      @keydown="onWelcomeKeydown"
-    >
-      <div class="modal__backdrop" @click="dismissWelcome()"></div>
-      <div class="modal__panel modal__panel--welcome">
-        <h2 id="welcome-title" class="modal__title">New to health economics?</h2>
-        <p class="page__prose">
-          Take the short guided tutorial to learn the main ideas before using the full
-          analysis.
-        </p>
-        <div class="tutorial__nav">
-          <button
-            ref="welcomeTutorial"
-            type="button"
-            class="btn btn--success"
-            @click="welcomeStartTutorial()"
-          >
-            Start tutorial
-          </button>
-          <button type="button" class="btn btn--primary" @click="welcomeOpenAnalysis()">
-            Open analysis
-          </button>
+         is already the Home screen. It arrives and leaves through the shared
+         dialog transition. -->
+    <Transition :name="DIALOG_TRANSITION_NAME" @leave="onDialogLeave">
+      <div
+        v-if="welcomeOpen"
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="welcome-title"
+        @keydown="onWelcomeKeydown"
+      >
+        <div class="modal__backdrop" @click="dismissWelcome()"></div>
+        <div class="modal__panel modal__panel--welcome">
+          <h2 id="welcome-title" class="modal__title">New to health economics?</h2>
+          <p class="page__prose">
+            Take the short guided tutorial to learn the main ideas before using the full
+            analysis.
+          </p>
+          <div class="tutorial__nav">
+            <button
+              ref="welcomeTutorial"
+              type="button"
+              class="btn btn--success"
+              @click="welcomeStartTutorial()"
+            >
+              Start tutorial
+            </button>
+            <button type="button" class="btn btn--primary" @click="welcomeOpenAnalysis()">
+              Open analysis
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>

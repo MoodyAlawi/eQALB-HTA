@@ -67,6 +67,48 @@ same isolated session. It reuses
 `run_eqalb_model()`, `calculate_budget_impact()`, `calculate_readiness()` and
 `assess_hta_decision_summary()`, and no tutorial rule, wording or number is
 reproduced in TypeScript. It is documented in `api/api_contract.md`.
+A later frontend-only pass added two restrained animations, both decoration and
+both uncommitted for local review: an analysis result fades in under a one-shot ECG
+trace when it is committed — the trace draws itself beneath the panel heading as a
+soft teal highlight runs along it, then the whole strip fades away and the heading
+is left clean (never on a tab switch, a theme change, an input edit or a failed
+request, and again on each new run even when the numbers match) — and tutorial
+steps and Part 2 sections cross-fade with a
+few pixels of horizontal travel through `components/tutorial/TutorialStepStage.vue`,
+which renders one step at a time and moves focus to the arriving step's heading.
+`prefers-reduced-motion` removes both. See `project_state.md` for the details and
+the verification.
+
+A further frontend-only pass, also uncommitted, polished five routine interactions
+and added a lighthearted second line under long waits. The analysis tab strip now
+carries one sliding teal indicator (`composables/useTabUnderline.ts`) that slides
+between tabs on the same row and jumps into place across a wrap, on resize or on a
+font change, so it can never be drawn in the wrong place; the existing `<details>`
+disclosures animate to the content's real height where the engine supports
+`::details-content` with `interpolate-size`, and fall back to an instant open and
+close where it does not, with the existing marker becoming a rotating chevron; the
+nine run buttons use `components/ButtonLabel.vue`, whose two labels occupy one grid
+cell so the button's box and accessible name are exactly one label at a time, with
+the pending label stating the operation (and the PSA's iteration count) beside a
+small ECG; a prepared export reports once through `components/DownloadNotice.vue`
+(a corner card that is never a claim that a file was saved, with failures waiting
+to be dismissed); and the four dialogs fade and move a few pixels through
+`composables/useDialogTransition.ts`, which also makes the leaving dialog `inert`.
+The loading line is `composables/useLoadingMessages.ts`: 24 sentences in one list,
+one shown after a 1 s grace and a different one every 7 s, each change a 280 ms
+opacity-only crossfade, in an area sized by the longest sentence so the card keeps
+one height. `prefers-reduced-motion` removes every one of these animations and holds
+the loading line still.
+
+The last of these, also released with the same commit, is the page-entry fade: a page
+fades in, opacity only over 160 ms, when an internal link or button moves the visitor
+to it, on the `.page-entry` wrapper `App.vue` puts around the page content rather than
+on the shell (the shell holds the fixed loading indicator, download notice and launch
+overlay). `composables/usePageEntrance.ts` decides when it plays — once per entry,
+where an entry is the page plus the post's slug, and never on a first paint, on Back
+or Forward, during the landing page's crossing into the app, while a dialog is open,
+or on a scrolled arrival — and the app's Home screen is listed to skip because it has
+its own entrance and pins its theme button to the window corner.
 
 ## 1. Goal
 
@@ -363,8 +405,14 @@ frontend/
                        # useTheme (palette), useEcharts (charts), useAppView (which page is shown, and the
                        # /, /blog, /blog/<slug>, /app and /about addresses with the history entries and document
                        # title), useLandingTheme (the landing page's and the blog's own light/dark choice),
-                       # useAppBusy (the app-wide loading state)
-    components/        # presentation only; charts/ holds the chart options; tutorial/ the four Part 1 steps and Part 2's five sections; blog/ the blog's shell and its date formatting; InfoTip is the help control; AppLoadingIndicator is the loading indicator
+                       # useAppBusy (the app-wide loading state), useResultEntrance and useTabUnderline
+                       # (which element a one-shot entrance and the tab strip's indicator are placed on),
+                       # useDownloadNotice (the prepared-download notice), useDialogTransition (the dialog
+                       # fade and the leaving dialog's inert state), useLoadingMessages (the lighthearted
+                       # line under a long wait: the sentence list, the 7 s interval, the crossfade),
+                       # usePageEntrance (the page-entry fade: which entries fade and which are shown
+                       # immediately)
+    components/        # presentation only; charts/ holds the chart options; tutorial/ the four Part 1 steps, Part 2's five sections and the step stage that transitions between them; blog/ the blog's shell and its date formatting; ResultTrace is the trace that passes under a panel heading; ButtonLabel is the two-label run button (idle / pending); DownloadNotice is the prepared-download card; InfoTip is the help control; AppLoadingIndicator is the loading indicator
     views/             # OpenHealth landing (/), the blog (/blog and /blog/<slug>), the eQalb Home screen (/app,
                        # with the Guided tutorial, Project description and Download results subviews) and About
                        # OpenHealth (/about)
@@ -494,6 +542,17 @@ project owner.
 - The frontend has no automated test suite yet; it has been verified manually
   against the R API. Its type check (`vue-tsc -b`) and lint (`oxlint`) pass, and
   the production build succeeds.
+- No dialog traps focus, and no dialog returns focus to the control that opened it
+  except the tutorial's case-facts overlay, which returns focus to its own trigger.
+  This is the existing behaviour (`Part2View.vue` documents the facts overlay as
+  trapping nothing) and the interaction-polish pass did not change it: it only made
+  a leaving dialog `inert` so the outgoing dialog cannot keep the focus. Adding a
+  trap and focus return is a small, separate change to approve.
+- The disclosure expansion is conditional: it animates only where `::details-content`
+  and `interpolate-size` are both supported (the engines the app is developed and
+  reviewed in), and where they are not, a disclosure opens and closes instantly
+  exactly as it did before. Nothing about the contents, their semantics or the tab
+  order depends on the animation.
 - Requests are serialised through a small worker pool (two R workers by default),
   so a third simultaneous analysis waits for a free worker.
 - The value-based price module is complete: its R logic (`eqalb_price.R`), its

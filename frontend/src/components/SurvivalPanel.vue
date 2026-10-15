@@ -18,16 +18,21 @@ import { computed } from 'vue'
 import type { KmInterpretationCounts, KmRiskRow, KmStatus, KmStep, KmSummaryRow } from '../api/types'
 import { formatCount, formatNumber, formatPercent, isNum, type Tone } from '../format'
 import { useModel } from '../composables/useModel'
-import { downloadText } from '../export/csv'
+import { useResultEntrance } from '../composables/useResultEntrance'
+import { prepareCsvDownload } from '../composables/useDownloadNotice'
 import { EXPORT_FILENAMES, kmSummaryCsv } from '../export/tabExports'
 import SurvivalCurveChart from './charts/SurvivalCurveChart.vue'
+import ButtonLabel from './ButtonLabel.vue'
 import DataTable from './DataTable.vue'
 import InfoTip from './InfoTip.vue'
 import MetricCard from './MetricCard.vue'
+import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
 import type { Column } from './table'
 
 const model = useModel()
+// The entrance this tab's result plays when it is committed; see the composable.
+const { revealClass } = useResultEntrance('survival')
 
 const result = computed(() => model.survival)
 const steps = computed<KmStep[]>(() => result.value?.steps ?? [])
@@ -112,7 +117,7 @@ const expectedEvents = computed(() => Object.entries(result.value?.expected_even
 function downloadCsv(): void {
   const current = result.value
   if (!current) return
-  downloadText(kmSummaryCsv(current), EXPORT_FILENAMES.km)
+  prepareCsvDownload(kmSummaryCsv(current), EXPORT_FILENAMES.km)
 }
 
 /** R's interpretation object, shown as returned. */
@@ -198,6 +203,7 @@ const eventRateDifference = computed(() => {
     <header class="panel__header">
       <div>
         <h2>Simulated Kaplan-Meier analysis</h2>
+        <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
           Individual patients are simulated from the annual event risks and the engagement-adjusted
           treatment effect of the current scenario. The curves are the model's, drawn from the same
@@ -211,7 +217,7 @@ const eventRateDifference = computed(() => {
           :disabled="model.busy.survival"
           @click="model.runSurvival()"
         >
-          {{ model.busy.survival ? 'Simulating…' : 'Run survival simulation' }}
+        <ButtonLabel :busy="model.busy.survival" idle="Run survival simulation" pending="Simulating…" />
         </button>
         <button
           type="button"
@@ -256,7 +262,7 @@ const eventRateDifference = computed(() => {
       a time and compare.
     </p>
 
-    <template v-if="result">
+    <div v-if="result" class="result-reveal" :class="revealClass">
       <p v-if="eventRateDifference && contrast" class="alert alert--info">
         {{ contrast.verdict }}
       </p>
@@ -365,6 +371,6 @@ const eventRateDifference = computed(() => {
           </ul>
         </details>
       </section>
-    </template>
+    </div>
   </section>
 </template>

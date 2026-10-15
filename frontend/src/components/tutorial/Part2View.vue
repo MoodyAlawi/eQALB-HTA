@@ -9,16 +9,27 @@
  * it — the readiness traffic lights and the deliverability verdict live in the
  * recommendation, not in the exercise that asks the questions.
  *
- * Focus: entering the shell and switching sections moves focus to that section's
- * heading, so a keyboard or screen-reader user is told where they are. The case
- * facts overlay is a modal dialog: it traps nothing, closes on Escape or its
- * button and returns focus to the trigger that opened it.
+ * Move rule: the section itself is rendered on TutorialStepStage, which owns the
+ * transition between two sections and the hand-over between them. This view only
+ * says which section is current, as its position in R's own section list, so a
+ * move, however fast it is repeated, always ends on the section the learner is on.
+ *
+ * Focus: the stage moves focus to the arriving section's heading, so a keyboard or
+ * screen-reader user is told where they are — except while the congratulation is
+ * open, which takes the focus itself and keeps it. The case facts overlay is a
+ * modal dialog: it traps nothing, closes on Escape or its button and returns focus
+ * to the trigger that opened it.
  */
 
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAppView } from '../../composables/useAppView'
 import { useTheme } from '../../composables/useTheme'
 import { useTutorialSession } from '../../composables/useTutorialSession'
+import {
+  DIALOG_TRANSITION_NAME,
+  onDialogLeave,
+} from '../../composables/useDialogTransition'
+import TutorialStepStage from './TutorialStepStage.vue'
 import Part2Brief from './Part2Brief.vue'
 import Part2Value from './Part2Value.vue'
 import Part2Budget from './Part2Budget.vue'
@@ -31,7 +42,26 @@ const session = useTutorialSession()
 
 const factsOpen = ref(false)
 const factsTrigger = ref<HTMLButtonElement | null>(null)
-const body = ref<HTMLElement | null>(null)
+
+/**
+ * The section on screen as its position in R's own section list — the order the
+ * step strip shows them in — which is what the stage orders its moves by. A
+ * section the contract does not list reads as the first one rather than as a
+ * position that does not exist.
+ */
+const sectionPosition = computed(() => {
+  const sections = session.part2Contract?.sections ?? []
+  const index = sections.findIndex((entry) => entry.key === session.part2Section)
+  return index < 0 ? 0 : index
+})
+
+/**
+ * R's section keys in R's own order. The stage identifies a step by its position,
+ * so the section a position means is read back from R's list rather than assumed:
+ * if R ever reorders or renames its sections, the stage follows it instead of
+ * rendering a different section than the step strip highlights.
+ */
+const sectionKeys = computed(() => session.part2Contract?.sections.map((entry) => entry.key) ?? [])
 
 /**
  * The congratulation. It waits until the learner has genuinely worked through
@@ -145,17 +175,11 @@ onBeforeUnmount(() => {
   factsOpen.value = false
 })
 
-// Moving to another section moves focus to its heading — unless the
-// congratulation has just opened, which takes the focus itself.
-watch(
-  () => session.part2Section,
-  async () => {
-    await nextTick()
-    if (congratulationsOpen.value) return
-    body.value?.querySelector<HTMLElement>('.tutorial__step-title')?.focus()
-  },
-)
-
+// The stage moves focus to the arriving section's heading once that section is
+// on screen — unless the congratulation has opened, which takes the focus itself
+// and must keep it. The congratulation is the stage's only exception, and it is
+// read when the section arrives rather than when the move starts, so a
+// congratulation that opens during the move still keeps the focus.
 function exit(): void {
   show('home')
 }
@@ -176,7 +200,7 @@ function exit(): void {
       <button type="button" class="btn btn--ghost" @click="exit()">Back to start</button>
     </main>
 
-    <div v-else-if="session.part2Contract" ref="body" class="tutorial__body">
+    <div v-else-if="session.part2Contract" class="tutorial__body">
       <header class="tutorial__header">
         <div>
           <h1 id="part2-title" class="page__title">{{ session.part2Contract.title }}</h1>
@@ -254,71 +278,80 @@ function exit(): void {
       </p>
 
       <template v-if="session.part2Case">
-        <Part2Brief
-          v-if="session.part2Section === 'brief'"
-          :contract="session.part2Contract"
-          :case-title="session.part2Case.case.title"
-          :facts="session.part2Facts"
-          @start="session.goToPart2Section('value')"
-        />
+        <!-- One section at a time, with the step strip and the navigation left
+             outside the stage so they stay put while the section moves. -->
+        <TutorialStepStage
+          :step="sectionPosition"
+          :focus-heading="!congratulationsOpen"
+        >
+          <template #default="{ shown }">
+            <Part2Brief
+              v-if="sectionKeys[shown] === 'brief'"
+              :contract="session.part2Contract"
+              :case-title="session.part2Case.case.title"
+              :facts="session.part2Facts"
+              @start="session.goToPart2Section('value')"
+            />
 
-        <template v-else-if="session.part2Section === 'value'">
-          <p v-if="!session.part2Evaluation" class="hint">
-            Evaluating the negotiated price…
-          </p>
-          <Part2Value
-            v-else
-            :contract="session.part2Contract"
-            :evaluation="session.part2Evaluation"
-            :price="session.part2Price ?? session.part2Contract.price_control.default"
-            :busy="session.part2Busy"
-            @update:price="session.setPart2Price"
-          />
-        </template>
+            <template v-else-if="sectionKeys[shown] === 'value'">
+              <p v-if="!session.part2Evaluation" class="hint">
+                Evaluating the negotiated price…
+              </p>
+              <Part2Value
+                v-else
+                :contract="session.part2Contract"
+                :evaluation="session.part2Evaluation"
+                :price="session.part2Price ?? session.part2Contract.price_control.default"
+                :busy="session.part2Busy"
+                @update:price="session.setPart2Price"
+              />
+            </template>
 
-        <template v-else-if="session.part2Section === 'budget'">
-          <p v-if="!session.part2Evaluation" class="hint">
-            Evaluating the coverage cap…
-          </p>
-          <Part2Budget
-            v-else
-            :contract="session.part2Contract"
-            :budget="session.part2Evaluation.budget"
-            :coverage="
-              session.part2Coverage ?? session.part2Contract.budget.coverage_control.default
-            "
-            @update:coverage="session.setPart2Coverage"
-            @change-price="session.goToPart2Section('value')"
-          />
-        </template>
+            <template v-else-if="sectionKeys[shown] === 'budget'">
+              <p v-if="!session.part2Evaluation" class="hint">
+                Evaluating the coverage cap…
+              </p>
+              <Part2Budget
+                v-else
+                :contract="session.part2Contract"
+                :budget="session.part2Evaluation.budget"
+                :coverage="
+                  session.part2Coverage ?? session.part2Contract.budget.coverage_control.default
+                "
+                @update:coverage="session.setPart2Coverage"
+                @change-price="session.goToPart2Section('value')"
+              />
+            </template>
 
-        <template v-else-if="session.part2Section === 'readiness'">
-          <p v-if="!session.part2Evaluation" class="hint">
-            Evaluating the readiness answers…
-          </p>
-          <Part2Readiness
-            v-else
-            :readiness="session.part2Evaluation.readiness"
-            :choices="session.part2Readiness"
-            :busy="session.part2Busy"
-            @change="session.setPart2Readiness"
-          />
-        </template>
+            <template v-else-if="sectionKeys[shown] === 'readiness'">
+              <p v-if="!session.part2Evaluation" class="hint">
+                Evaluating the readiness answers…
+              </p>
+              <Part2Readiness
+                v-else
+                :readiness="session.part2Evaluation.readiness"
+                :choices="session.part2Readiness"
+                :busy="session.part2Busy"
+                @change="session.setPart2Readiness"
+              />
+            </template>
 
-        <template v-else-if="session.part2Section === 'recommend'">
-          <p v-if="!session.part2Evaluation" class="hint">
-            Working out the recommendation…
-          </p>
-          <Part2Recommendation
-            v-else
-            :recommendation="session.part2Evaluation.recommendation"
-            :evaluation="session.part2Evaluation"
-            :threshold="session.part2Contract.fixed.threshold"
-            :ceiling="session.part2Contract.fixed.budget_ceiling"
-            @open-full="show('dashboard')"
-            @retry="session.retryPart2()"
-          />
-        </template>
+            <template v-else>
+              <p v-if="!session.part2Evaluation" class="hint">
+                Working out the recommendation…
+              </p>
+              <Part2Recommendation
+                v-else
+                :recommendation="session.part2Evaluation.recommendation"
+                :evaluation="session.part2Evaluation"
+                :threshold="session.part2Contract.fixed.threshold"
+                :ceiling="session.part2Contract.fixed.budget_ceiling"
+                @open-full="show('dashboard')"
+                @retry="session.retryPart2()"
+              />
+            </template>
+          </template>
+        </TutorialStepStage>
 
         <nav class="tutorial__nav" aria-label="Commissioning navigation">
           <button
@@ -344,15 +377,17 @@ function exit(): void {
       </template>
     </div>
 
-    <!-- The read-only case facts. Every row is R's; nothing is computed. -->
-    <div
-      v-if="factsOpen"
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="factsTitle"
-      @keydown="onOverlayKeydown"
-    >
+    <!-- The read-only case facts. Every row is R's; nothing is computed. It
+         arrives and leaves through the shared dialog transition. -->
+    <Transition :name="DIALOG_TRANSITION_NAME" @leave="onDialogLeave">
+      <div
+        v-if="factsOpen"
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="factsTitle"
+        @keydown="onOverlayKeydown"
+      >
       <div class="modal__backdrop" @click="closeFacts()"></div>
       <div class="modal__panel">
         <h2 class="modal__title">{{ factsTitle }}</h2>
@@ -386,41 +421,45 @@ function exit(): void {
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </Transition>
     <!-- The congratulation, once the three exercises before the recommendation
          have been worked through. It reuses the app's modal pattern and closes
-         on Escape, on the backdrop or through its own action. -->
-    <div
-      v-if="congratulationsOpen"
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="part2-congratulations-title"
-      @keydown="onCongratulationsKeydown"
-    >
-      <div class="modal__backdrop" @click="dismissCongratulations()"></div>
-      <div class="modal__panel modal__panel--welcome">
-        <h2 id="part2-congratulations-title" class="modal__title">
-          Congratulations — you've finished the tutorial
-        </h2>
-        <p class="page__prose">
-          You've completed the guided introduction to health technology assessment. Major
-          expansions are planned for the tutorial section — stay tuned for the next blog post!
-        </p>
-        <div class="tutorial__nav">
-          <button
-            ref="congratulationsOpenAnalysis"
-            type="button"
-            class="btn btn--primary"
-            @click="finishTutorial()"
-          >
-            Open analysis
-          </button>
-          <button type="button" class="btn btn--ghost" @click="dismissCongratulations()">
-            Back to the recommendation
-          </button>
+         on Escape, on the backdrop or through its own action, and it arrives and
+         leaves through the shared dialog transition. -->
+    <Transition :name="DIALOG_TRANSITION_NAME" @leave="onDialogLeave">
+      <div
+        v-if="congratulationsOpen"
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="part2-congratulations-title"
+        @keydown="onCongratulationsKeydown"
+      >
+        <div class="modal__backdrop" @click="dismissCongratulations()"></div>
+        <div class="modal__panel modal__panel--welcome">
+          <h2 id="part2-congratulations-title" class="modal__title">
+            Congratulations — you've finished the tutorial
+          </h2>
+          <p class="page__prose">
+            You've completed the guided introduction to health technology assessment. Major
+            expansions are planned for the tutorial section — stay tuned for the next blog post!
+          </p>
+          <div class="tutorial__nav">
+            <button
+              ref="congratulationsOpenAnalysis"
+              type="button"
+              class="btn btn--primary"
+              @click="finishTutorial()"
+            >
+              Open analysis
+            </button>
+            <button type="button" class="btn btn--ghost" @click="dismissCongratulations()">
+              Back to the recommendation
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </section>
 </template>
