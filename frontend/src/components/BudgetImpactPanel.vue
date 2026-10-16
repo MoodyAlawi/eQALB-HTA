@@ -8,18 +8,24 @@
  * control in the app.
  */
 
-import { computed } from 'vue'
-import type { BudgetImpactRow } from '../api/types'
+import { computed, ref, shallowRef } from 'vue'
+import type { BudgetImpactResponse, BudgetImpactRow } from '../api/types'
 import { formatCount, formatEuro, formatPercent } from '../format'
 import { useModel } from '../composables/useModel'
 import { useResultEntrance } from '../composables/useResultEntrance'
 import InfoTip from './InfoTip.vue'
 import ButtonLabel from './ButtonLabel.vue'
+import ChartDownload from './ChartDownload.vue'
 import BudgetImpactChart from './charts/BudgetImpactChart.vue'
 import DataTable from './DataTable.vue'
 import MetricCard from './MetricCard.vue'
 import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
+import PresentationOverlay from './presentation/PresentationOverlay.vue'
+import PresentationSettings, {
+  type PresentationSetting,
+} from './presentation/PresentationSettings.vue'
+import { movedSentence, supersededSentence, settingRow } from './presentation/settings'
 import type { Column } from './table'
 
 const model = useModel()
@@ -28,6 +34,16 @@ const { revealClass } = useResultEntrance('budget')
 
 const result = computed(() => model.budget)
 const rows = computed<BudgetImpactRow[]>(() => result.value?.table ?? [])
+
+/**
+ * The one line the result area carries while there is no result yet: the wait,
+ * while the request is in flight, and the guidance to start otherwise.
+ */
+const stateLine = computed(() =>
+  model.busy.budget
+    ? 'Running the budget impact with these inputs.'
+    : 'Start with the default inputs, then select Run budget impact.',
+)
 
 const columns: Column<BudgetImpactRow>[] = [
   { key: 'year', label: 'Year', value: (row) => String(row.year) },
@@ -92,7 +108,108 @@ const columns: Column<BudgetImpactRow>[] = [
 
 /** The explanations for the two controls that are not model parameters. */
 const populationInfo = computed(() => model.defaults?.info_text?.population_size ?? '')
-const uptakeInfo = computed(() => model.defaults?.info_text?.uptake ?? '')</script>
+const uptakeInfo = computed(() => model.defaults?.info_text?.uptake ?? '')
+
+// --- Presentation mode -------------------------------------------------------
+
+/**
+ * The budget-impact run being presented, held as the response itself. The horizon,
+ * the population, the five settings R was sent and the whole yearly table are in
+ * that response, so the overlay stays a view of the run whatever the panel's
+ * controls do afterwards.
+ */
+const presented = shallowRef<BudgetImpactResponse | null>(null)
+const presentButton = ref<HTMLButtonElement | null>(null)
+const presentedRows = computed<BudgetImpactRow[]>(() => presented.value?.table ?? [])
+
+/** The revision of this tab's stored result when the overlay was opened. */
+const presentedRevision = ref(0)
+
+function openPresentation(): void {
+  presented.value = result.value
+  presentedRevision.value = model.resultRevisions.budget
+}
+
+/** The line shown when a later run has replaced this result while it is open. */
+const presentedSuperseded = computed(() =>
+  presented.value !== null && model.resultRevisions.budget !== presentedRevision.value
+    ? supersededSentence()
+    : '',
+)
+
+function closePresentation(): void {
+  presented.value = null
+}
+
+/**
+ * The run's settings. Population and horizon are the response's own; the five
+ * input values are the ones R reports for the run; the year-1 uptake is the first
+ * row of the table it returned. The annual increase and the avoided-event saving
+ * are not in the response, so they are listed only while the tab's own comparison
+ * says the stored run still matches the controls, and named as a limitation when
+ * it does not.
+ */
+const presentedSettings = computed<PresentationSetting[]>(() => {
+  const run = presented.value
+  if (!run) return []
+  const first = run.table[0]
+  const rows: PresentationSetting[] = [
+    settingRow('population', 'Clinical target population', formatCount(run.population), 'people'),
+    settingRow('horizon', 'Horizon', String(run.horizon_years), 'years'),
+    settingRow('year1', 'Year-1 uptake', formatPercent((first?.uptake_pct ?? 0) / 100), '%'),
+    settingRow(
+      'price',
+      'Annual intervention price',
+      formatEuro(run.inputs.intervention_price, 2),
+      '€',
+    ),
+    settingRow(
+      'implementation',
+      'Implementation cost (one-off)',
+      formatEuro(run.inputs.implementation_cost_per_new_user, 2),
+      '€',
+    ),
+    settingRow(
+      'savings',
+      'Annual healthcare-use savings',
+      formatEuro(run.inputs.healthcare_savings_per_active_user, 2),
+      '€',
+    ),
+    settingRow(
+      'avoided',
+      'Avoided-event savings per active user',
+      formatEuro(run.inputs.avoided_event_savings_per_active_user, 2),
+      '€',
+    ),
+    settingRow(
+      'engagement',
+      'Follow-up engagement',
+      formatPercent((run.inputs.followup_engagement_pct ?? 0) / 100),
+      '%',
+    ),
+  ]
+  if (!model.budgetStale) {
+    rows.splice(
+      3,
+      0,
+      settingRow('increase', 'Annual increase', String(model.budgetInputs.annualUptakeIncreasePp), 'pp'),
+    )
+  }
+  return rows
+})
+
+const presentedStale = computed(() =>
+  presented.value && model.budgetStale
+    ? movedSentence(['the budget inputs or the shared assumptions'])
+    : '',
+)
+
+const settingsNote = computed(() =>
+  model.budgetStale
+    ? 'Only what this run returned is listed: the inputs that produced it have been changed since, so the panel’s controls are not shown as the run’s.'
+    : 'Every figure here is this run’s own, from its response; the annual increase is listed because the panel’s inputs still match the ones this run was sent with.',
+)
+</script>
 
 <template>
   <section class="panel">
@@ -101,21 +218,34 @@ const uptakeInfo = computed(() => model.defaults?.info_text?.uptake ?? '')</scri
         <h2>Budget impact</h2>
         <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
-          Deterministic, undiscounted, per year. Uptake starts at the year-1 percentage and grows by
-          the annual increment; engagement decides how many users are active.
+          What could implementation mean for the budget — deterministic, undiscounted, per year?
         </p>
       </div>
-      <button
-        type="button"
-        class="btn btn--primary"
-        :disabled="model.busy.budget"
-        @click="model.runBudget()"
-      >
-        <ButtonLabel :busy="model.busy.budget" idle="Run budget impact" pending="Running…" />
-      </button>
+      <div class="panel__actions">
+        <button
+          type="button"
+          class="btn btn--primary"
+          :disabled="model.busy.budget"
+          @click="model.runBudget()"
+        >
+          <ButtonLabel :busy="model.busy.budget" idle="Run budget impact" pending="Running the budget impact…" />
+        </button>
+        <button
+          v-if="result"
+          ref="presentButton"
+          type="button"
+          class="btn btn--ghost"
+          title="Show this result full screen, for a screen share or discussion"
+          @click="openPresentation()"
+        >
+          Present
+        </button>
+      </div>
     </header>
 
-    <p v-if="model.errors.budget" class="alert alert--danger">{{ model.errors.budget }}</p>
+    <p v-if="model.errors.budget" class="alert alert--danger" role="alert">
+      {{ model.errors.budget }}
+    </p>
 
     <StaleNotice v-if="result && model.budgetStale" action="Run budget impact" />
 
@@ -191,9 +321,8 @@ const uptakeInfo = computed(() => model.defaults?.info_text?.uptake ?? '')</scri
       </div>
     </div>
 
-    <p v-if="!result && !model.busy.budget" class="hint">
-      Use the run button after editing the inputs; the chart and the table always show the run that
-      matches these inputs.
+    <p v-if="!result" class="hint" role="status">
+      {{ stateLine }}
     </p>
 
     <div v-if="result" class="result-reveal" :class="revealClass">
@@ -228,9 +357,74 @@ const uptakeInfo = computed(() => model.defaults?.info_text?.uptake ?? '')</scri
       <figure class="chart-figure">
         <figcaption>Net and cumulative budget impact</figcaption>
         <BudgetImpactChart :rows="rows" />
+        <ChartDownload filename="budget-impact-net-and-cumulative.png" name="budget impact" />
       </figure>
 
       <DataTable :columns="columns" :rows="rows" caption="Budget impact by year (EUR)" />
     </div>
+
+    <!-- Presentation mode: the run's own horizon, population and yearly table. -->
+    <PresentationOverlay
+      v-if="presented"
+      title="Budget impact"
+      :notice="presented.notice"
+      :stale="presentedStale"
+      :settings-note="settingsNote"
+      :superseded="presentedSuperseded"
+      :fallback-focus="() => presentButton"
+      @close="closePresentation()"
+    >
+      <div class="metrics present__metrics">
+        <MetricCard
+          label="Cumulative net budget impact"
+          :value="formatEuro(presented.cumulative_net_budget_impact)"
+          :tone="
+            presented.cumulative_net_budget_impact !== null &&
+            presented.cumulative_net_budget_impact <= 0
+              ? 'good'
+              : 'bad'
+          "
+          :sub="`over ${presented.horizon_years} years`"
+        />
+        <MetricCard
+          label="Intervention cost"
+          :value="formatEuro(presented.total_intervention_cost)"
+          sub="gross, all years"
+        />
+        <MetricCard
+          label="Implementation cost"
+          :value="formatEuro(presented.total_implementation_cost)"
+          sub="one-off per new user"
+        />
+        <MetricCard
+          label="Healthcare savings"
+          :value="formatEuro(presented.total_healthcare_savings)"
+          sub="offsetting the intervention"
+        />
+      </div>
+
+      <figure class="chart-figure present__chart">
+        <figcaption>Net and cumulative budget impact</figcaption>
+        <BudgetImpactChart :rows="presentedRows" />
+      </figure>
+
+      <p class="present__interpretation">
+        Deterministic, undiscounted, per year. Uptake starts at the year-1 percentage and grows by
+        the annual increment; engagement decides how many users are active.
+      </p>
+
+      <details class="details">
+        <summary>Budget impact by year ({{ presented.table.length }} rows)</summary>
+        <DataTable
+          :columns="columns"
+          :rows="presentedRows"
+          caption="Budget impact by year (EUR)"
+        />
+      </details>
+
+      <template #settings>
+        <PresentationSettings :rows="presentedSettings" />
+      </template>
+    </PresentationOverlay>
   </section>
 </template>

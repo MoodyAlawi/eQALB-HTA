@@ -15,13 +15,18 @@
  * request fields that were missing, and which upstream analyses were included.
  */
 
-import { computed } from 'vue'
-import type { HtaSummaryStatus } from '../api/types'
+import { computed, ref, shallowRef } from 'vue'
+import type { HtaSummaryResponse, HtaSummaryStatus } from '../api/types'
 import type { Tone } from '../format'
 import MetricCard from './MetricCard.vue'
 import ButtonLabel from './ButtonLabel.vue'
 import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
+import PresentationOverlay from './presentation/PresentationOverlay.vue'
+import PresentationSettings, {
+  type PresentationSetting,
+} from './presentation/PresentationSettings.vue'
+import { movedSentence, supersededSentence, availabilityFieldLabel, settingRow } from './presentation/settings'
 import { useModel } from '../composables/useModel'
 import { useResultEntrance } from '../composables/useResultEntrance'
 import { formatEuro, isNum } from '../format'
@@ -32,6 +37,18 @@ const { revealClass } = useResultEntrance('htaSummary')
 
 const result = computed(() => model.htaSummary)
 const summary = computed(() => result.value?.summary ?? null)
+
+/**
+ * The one line the result area carries while there is no result yet: the wait,
+ * while the request is in flight, and the guidance to start otherwise. The
+ * guidance lists what can be included, so it is the one the tab keeps; the wait
+ * only needs to say what it is reading.
+ */
+const stateLine = computed(() =>
+  model.busy.htaSummary
+    ? 'Assessing the HTA summary from the analyses run so far.'
+    : 'Run the base case, the PSA, the value of information, the budget impact and the DHT readiness analyses you want included, then select Assess HTA summary.',
+)
 const priorities = computed(() => result.value?.evidence_priorities.table ?? [])
 const availability = computed(() => result.value?.availability ?? null)
 
@@ -148,6 +165,101 @@ const priceInsight = computed(() => {
     interpretation: headline.interpretation,
   }
 })
+
+// --- Presentation mode -------------------------------------------------------
+
+/**
+ * The summary being presented, held as the response itself: R's overall position,
+ * the domain statuses, the evidence-priority table and the availability block all
+ * travel in it, so what was included and what was missing stays exactly as it was
+ * when the summary was assessed — including the older result of an analysis the
+ * panel has since re-run.
+ */
+const presented = shallowRef<HtaSummaryResponse | null>(null)
+const presentButton = ref<HTMLButtonElement | null>(null)
+
+/** The revision of this tab's stored result when the overlay was opened. */
+const presentedRevision = ref(0)
+
+function openPresentation(): void {
+  presented.value = result.value
+  presentedRevision.value = model.resultRevisions.htaSummary
+}
+
+/** The line shown when a later run has replaced this result while it is open. */
+const presentedSuperseded = computed(() =>
+  presented.value !== null && model.resultRevisions.htaSummary !== presentedRevision.value
+    ? supersededSentence()
+    : '',
+)
+
+function closePresentation(): void {
+  presented.value = null
+}
+
+/**
+ * The settings this summary was assessed from. They are the availability flags R
+ * itself reports — which upstream analyses were included and which request fields
+ * were missing — rather than the store's current results, so a re-run behind the
+ * overlay cannot make the summary claim to include it.
+ */
+const presentedSettings = computed<PresentationSetting[]>(() => {
+  const run = presented.value
+  if (!run) return []
+  const flags = run.availability
+  const rows: PresentationSetting[] = [
+    settingRow('threshold', 'Reference WTP threshold', formatEuro(run.wtp), '€/QALY'),
+    settingRow(
+      'domains',
+      'Domains assessed',
+      `${flags.assessed_domains} of ${run.summary.domains.length}`,
+      '',
+    ),
+    ...(ANALYSIS_FLAGS.map((entry) =>
+      settingRow(
+        entry.key,
+        entry.label,
+        flags[entry.key] ? 'Included' : 'Not yet available',
+        '',
+      ),
+    )),
+  ]
+  const missing = asList(flags.missing_inputs)
+  if (missing.length > 0) {
+    // The endpoint's own field names are identifiers; the overlay names each one
+    // as the workspace names that value, so a reader sees what was not available
+    // rather than what the request body called it.
+    rows.push(
+      settingRow('missing', 'Values not supplied', missing.map(availabilityFieldLabel).join(', '), ''),
+    )
+  }
+  const notAssessable = asList(flags.not_assessable_domains)
+  if (notAssessable.length > 0) {
+    rows.push(settingRow('notassessable', 'Not assessable', notAssessable.join(', '), ''))
+  }
+  return rows
+})
+
+const presentedStale = computed(() =>
+  presented.value && model.htaSummaryStale
+    ? movedSentence(['the analyses this summary was assessed with'])
+    : '',
+)
+
+/** The upstream analyses the presented summary reports as not yet included. */
+const presentedMissing = computed(() => {
+  const run = presented.value
+  if (!run) return []
+  return ANALYSIS_FLAGS.filter((entry) => !run.availability[entry.key]).map(
+    (entry) => entry.label,
+  )
+})
+
+const settingsNote = computed(() =>
+  model.htaSummaryStale
+    ? 'What this summary included is listed as it was assessed. An analysis has been re-run since, so the panel’s current results are not shown as the summary’s: its position describes the analyses that existed when it ran.'
+    : 'What this summary included is listed as R reported it for this assessment; the panel’s stored analyses still match it.',
+)
 </script>
 
 <template>
@@ -156,30 +268,38 @@ const priceInsight = computed(() => {
       <div>
         <h2>HTA decision summary</h2>
         <ResultTrace :reveal-class="revealClass" />
-        <p class="muted">
-          Traffic-light decision dashboard and evidence-generation plan, built in R from the
-          analyses already run in this session. Nothing is recalculated here, and anything not yet
-          run is reported as not yet available rather than estimated.
-        </p>
+        <p class="muted">What do the analyses run so far add up to?</p>
       </div>
-      <button
-        type="button"
-        class="btn btn--primary"
-        :disabled="model.busy.htaSummary"
-        @click="model.runHtaSummary()"
-      >
-        <ButtonLabel :busy="model.busy.htaSummary" idle="Assess HTA summary" pending="Assessing…" />
-      </button>
+      <div class="panel__actions">
+        <button
+          type="button"
+          class="btn btn--primary"
+          :disabled="model.busy.htaSummary"
+          @click="model.runHtaSummary()"
+        >
+          <ButtonLabel :busy="model.busy.htaSummary" idle="Assess HTA summary" pending="Assessing the HTA summary…" />
+        </button>
+        <button
+          v-if="result"
+          ref="presentButton"
+          type="button"
+          class="btn btn--ghost"
+          title="Show this result full screen, for a screen share or discussion"
+          @click="openPresentation()"
+        >
+          Present
+        </button>
+      </div>
     </header>
 
-    <p v-if="model.errors.htaSummary" class="alert alert--danger">{{ model.errors.htaSummary }}</p>
+    <p v-if="model.errors.htaSummary" class="alert alert--danger" role="alert">
+      {{ model.errors.htaSummary }}
+    </p>
 
     <StaleNotice v-if="result && model.htaSummaryStale" action="Assess HTA summary" />
 
-    <p v-if="!result && !model.busy.htaSummary" class="hint">
-      The summary collects what the other tabs have produced. Run the base case, the PSA, the
-      value-of-information, the budget-impact and the DHT readiness analyses you want included, then
-      use “Assess HTA summary”. Each run is a snapshot of the analyses that existed when it ran.
+    <p v-if="!result" class="hint" role="status">
+      {{ stateLine }}
     </p>
 
     <div v-if="result && summary" class="result-reveal" :class="revealClass">
@@ -202,9 +322,6 @@ const priceInsight = computed(() => {
         Not yet included: {{ missingAnalyses.join(', ') }}.
         <template v-if="notAssessableDomains.length">
           R reports these domains as not assessable: {{ notAssessableDomains.join(', ') }}.
-        </template>
-        <template v-if="missingInputs.length">
-          Request fields not supplied: {{ missingInputs.join(', ') }}.
         </template>
       </p>
 
@@ -339,5 +456,109 @@ const priceInsight = computed(() => {
         </template>
       </details>
     </div>
+
+    <!-- Presentation mode: R's own position, domains, availability and evidence
+         priorities, as they were when this summary was assessed. -->
+    <PresentationOverlay
+      v-if="presented && presented.summary"
+      title="HTA decision summary"
+      :notice="presented.notice"
+      :stale="presentedStale"
+      settings-label="What this summary included"
+      :settings-note="settingsNote"
+      :superseded="presentedSuperseded"
+      :fallback-focus="() => presentButton"
+      @close="closePresentation()"
+    >
+      <div class="metrics present__metrics">
+        <MetricCard
+          label="Overall HTA decision position"
+          :value="presented.summary.position"
+          :tone="statusTone(presented.summary.overall_status)"
+          :sub="
+            presented.summary.overall_status === 'Not available'
+              ? `${presented.availability.assessed_domains} of ${presented.summary.domains.length} domains assessed`
+              : `${presented.summary.overall_status} · ${presented.availability.assessed_domains} of ${presented.summary.domains.length} domains assessed`
+          "
+        />
+      </div>
+
+      <p class="alert alert--info">{{ presented.summary.interpretation }}</p>
+
+      <figure class="table-figure">
+        <figcaption class="table-figure__caption">
+          Decision dashboard, illustrative ({{ presented.summary.domains.length }} domains)
+        </figcaption>
+        <div class="table-scroll">
+          <table class="table table--wrap" aria-label="Decision dashboard, illustrative">
+            <thead>
+              <tr>
+                <th scope="col">Domain</th>
+                <th scope="col">Status</th>
+                <th scope="col">Current values</th>
+                <th scope="col">Plain-language interpretation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="domain in presented.summary.domains" :key="domain.Domain">
+                <td>{{ domain.Domain }}</td>
+                <td><span :class="statusClass(domain.Status)">{{ domain.Status }}</span></td>
+                <td>{{ domain.Measure }}</td>
+                <td>{{ domain.Interpretation }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </figure>
+
+      <p v-if="presentedMissing.length" class="alert alert--warning">
+        Not yet included: {{ presentedMissing.join(', ') }}.
+      </p>
+
+      <details class="details">
+        <summary>
+          Evidence priorities ({{ presented.evidence_priorities.table.length }})
+        </summary>
+        <p class="alert alert--info">{{ presented.evidence_priorities.summary }}</p>
+        <div class="table-scroll">
+          <table class="table table--wrap" aria-label="Evidence priorities, illustrative">
+            <thead>
+              <tr>
+                <th scope="col">Priority</th>
+                <th scope="col">Evidence gap</th>
+                <th scope="col">Evidence needed</th>
+                <th scope="col">Current status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in presented.evidence_priorities.table"
+                :key="row['Evidence gap']"
+              >
+                <td>
+                  <span :class="priorityClass(row.Priority)">{{ row.Priority }}</span>
+                </td>
+                <td>{{ row['Evidence gap'] }}</td>
+                <td>{{ row['Evidence needed'] }}</td>
+                <td>{{ row['Current status'] }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-if="presented.evidence_note" class="hint">{{ presented.evidence_note }}</p>
+      </details>
+
+      <details v-if="presented.rules.length > 0" class="details">
+        <summary>Traffic-light rules used</summary>
+        <ul class="list">
+          <li v-for="rule in presented.rules" :key="rule">{{ rule }}</li>
+        </ul>
+        <p v-if="presented.rule_note" class="muted">{{ presented.rule_note }}</p>
+      </details>
+
+      <template #settings>
+        <PresentationSettings :rows="presentedSettings" />
+      </template>
+    </PresentationOverlay>
   </section>
 </template>

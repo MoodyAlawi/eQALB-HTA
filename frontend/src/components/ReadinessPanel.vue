@@ -15,21 +15,42 @@
  * visible and cannot be overridden in one tab only.
  */
 
-import { computed } from 'vue'
-import type { ReadinessChoiceSet, ReadinessParameterSpec } from '../api/types'
-import { NOT_INTERPRETABLE, formatCount, formatNumber, isNum } from '../format'
+import { computed, ref, shallowRef } from 'vue'
+import type {
+  ReadinessChoiceSet,
+  ReadinessInputs,
+  ReadinessParameterSpec,
+  ReadinessResponse,
+} from '../api/types'
+import { NOT_INTERPRETABLE, formatCount, formatNumber, formatPercent, isNum } from '../format'
 import { useModel } from '../composables/useModel'
 import { useResultEntrance } from '../composables/useResultEntrance'
 import InfoTip from './InfoTip.vue'
 import ButtonLabel from './ButtonLabel.vue'
+import MetricCard from './MetricCard.vue'
 import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
+import PresentationOverlay from './presentation/PresentationOverlay.vue'
+import PresentationSettings, {
+  type PresentationSetting,
+} from './presentation/PresentationSettings.vue'
+import { movedSentence, supersededSentence, settingRow } from './presentation/settings'
 
 const model = useModel()
 // The entrance this tab's result plays when it is committed; see the composable.
 const { revealClass } = useResultEntrance('readiness')
 
 const result = computed(() => model.readiness)
+
+/**
+ * The one line the result area carries while there is no result yet: the wait,
+ * while the request is in flight, and the guidance to start otherwise.
+ */
+const stateLine = computed(() =>
+  model.busy.readiness
+    ? 'Assessing readiness with the values shown above.'
+    : 'Start with the default values, then select Assess readiness.',
+)
 
 /** The specs the tab renders, in the order the contract lists them. */
 const specs = computed(() => model.defaults?.readiness.parameters ?? [])
@@ -142,6 +163,119 @@ const countsLabel = computed(() => {
   return `${counts.Green} Green · ${counts.Amber} Amber · ${counts.Red} Red`
 })
 
+// --- Presentation mode -------------------------------------------------------
+
+/**
+ * The assessment being presented, and the request body that produced it. The
+ * quantitative numbers, the domain rows with their statuses and R's interpretation
+ * travel in the response; the readiness values themselves do not, so the store
+ * keeps the request alongside the result and the overlay lists them from that.
+ * No overall score is introduced here — R's counts are the only summary shown,
+ * exactly as the panel shows them.
+ */
+const presented = shallowRef<ReadinessResponse | null>(null)
+/** The request that produced the presented assessment, captured with it. */
+const presentedRequest = shallowRef<ReadinessInputs | null>(null)
+const presentButton = ref<HTMLButtonElement | null>(null)
+
+/** The revision of this tab's stored result when the overlay was opened. */
+const presentedRevision = ref(0)
+
+function openPresentation(): void {
+  presented.value = result.value
+  presentedRequest.value = model.readinessRun
+  presentedRevision.value = model.resultRevisions.readiness
+}
+
+/** The line shown when a later run has replaced this result while it is open. */
+const presentedSuperseded = computed(() =>
+  presented.value !== null && model.resultRevisions.readiness !== presentedRevision.value
+    ? supersededSentence()
+    : '',
+)
+
+function closePresentation(): void {
+  presented.value = null
+}
+
+const presentedCountsLabel = computed(() => {
+  const counts = presented.value?.counts
+  if (!counts) return ''
+  return `${counts.Green} Green · ${counts.Amber} Amber · ${counts.Red} Red`
+})
+
+/**
+ * The run's settings: the reach and workload figures the response reports, and the
+ * readiness values from the request the store kept beside that result. Nothing here
+ * reads a control, so the list describes the assessment it was opened on however
+ * the panel has moved since.
+ */
+const presentedSettings = computed<PresentationSetting[]>(() => {
+  const run = presented.value
+  if (!run) return []
+  const request = presentedRequest.value
+  const rows: PresentationSetting[] = [
+    settingRow('population', 'Eligible population', formatCount(run.eligible_population), 'people'),
+    settingRow('year1', 'Active users, year 1', formatCount(run.active_users_year1), 'people'),
+    settingRow(
+      'followup',
+      'Active users, follow-up',
+      formatCount(run.active_users_followup),
+      'people',
+    ),
+    settingRow(
+      'retention',
+      'Engagement retention',
+      formatPercent((run.engagement_retention_pct ?? 0) / 100),
+      '%',
+    ),
+    settingRow(
+      'hours',
+      'Clinician time',
+      formatNumber(run.annual_clinician_hours, 1),
+      'hours per year',
+    ),
+  ]
+  if (!request) return rows
+  for (const spec of specs.value) {
+    const raw = (request as Record<string, unknown>)[spec.id]
+    if (typeof raw === 'boolean') {
+      rows.push(settingRow(spec.id, spec.label, raw ? 'Yes' : 'No', ''))
+      continue
+    }
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) continue
+    rows.push(
+      settingRow(
+        spec.id,
+        spec.label,
+        spec.percent ? String(Number(raw.toFixed(6))) : formatNumber(raw, 2),
+        spec.percent ? '%' : spec.unit,
+      ),
+    )
+  }
+  for (const choice of [
+    { id: 'interoperability', set: model.defaults?.readiness.choices.interoperability },
+    { id: 'algorithm_governance', set: model.defaults?.readiness.choices.algorithm_governance },
+  ]) {
+    const value = (request as Record<string, unknown>)[choice.id]
+    if (typeof value !== 'string' || value === '') continue
+    rows.push(settingRow(choice.id, choice.set?.label ?? choice.id, value, ''))
+  }
+  return rows
+})
+
+const presentedStale = computed(() =>
+  presented.value && model.readinessStale
+    ? movedSentence(['the readiness values or the shared assumptions'])
+    : '',
+)
+
+const settingsNote = computed(() =>
+  model.readinessStale
+    ? 'Every readiness row is the request this assessment was sent, kept with its result; the panel’s controls have been changed since and are not shown as the assessment’s.'
+    : 'Every readiness row is the request this assessment was sent, kept with its result — not the controls as they stand now.',
+)
+
 /**
  * The traffic-light rules disclosure. It is a native <details>, so it opens by
  * mouse and keyboard; Escape closes it through the app-wide disclosure behaviour
@@ -159,9 +293,7 @@ const countsLabel = computed(() => {
         <h2>DHT readiness and implementation</h2>
         <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
-          An illustrative readiness and implementation assessment of the digital therapeutic under
-          the current assumptions. The assessment runs in R when you ask for it, using the seven
-          domains, thresholds and wording of the Shiny model.
+          An illustrative assessment: could this digital therapeutic be implemented in practice?
         </p>
       </div>
       <div class="panel__actions">
@@ -171,7 +303,7 @@ const countsLabel = computed(() => {
           :disabled="model.busy.readiness"
           @click="model.runReadiness()"
         >
-          <ButtonLabel :busy="model.busy.readiness" idle="Assess readiness" pending="Assessing…" />
+          <ButtonLabel :busy="model.busy.readiness" idle="Assess readiness" pending="Assessing readiness…" />
         </button>
         <button
           type="button"
@@ -181,10 +313,22 @@ const countsLabel = computed(() => {
         >
           Reset values
         </button>
+        <button
+          v-if="result"
+          ref="presentButton"
+          type="button"
+          class="btn btn--ghost"
+          title="Show this result full screen, for a screen share or discussion"
+          @click="openPresentation()"
+        >
+          Present
+        </button>
       </div>
     </header>
 
-    <p v-if="model.errors.readiness" class="alert alert--danger">{{ model.errors.readiness }}</p>
+    <p v-if="model.errors.readiness" class="alert alert--danger" role="alert">
+      {{ model.errors.readiness }}
+    </p>
 
     <StaleNotice v-if="result && model.readinessStale" action="Assess readiness" />
 
@@ -254,10 +398,8 @@ const countsLabel = computed(() => {
       </section>
     </div>
 
-    <p v-if="!result && !model.busy.readiness" class="hint">
-      The assessment is a snapshot: edit the inputs, then use “Assess readiness” to replace it. The
-      simulated quantitative outputs and the domain ratings always describe the assessment shown
-      below.
+    <p v-if="!result" class="hint" role="status">
+      {{ stateLine }}
     </p>
 
     <div v-if="result" class="result-reveal" :class="revealClass">
@@ -324,5 +466,77 @@ const countsLabel = computed(() => {
         </ul>
       </details>
     </div>
+
+    <!-- Presentation mode: the assessment's own numbers, domains and wording. No
+         overall score is introduced; R's counts are the only summary shown. -->
+    <PresentationOverlay
+      v-if="presented"
+      title="DHT readiness and implementation"
+      :notice="presented.notice"
+      :stale="presentedStale"
+      :settings-note="settingsNote"
+      :superseded="presentedSuperseded"
+      :fallback-focus="() => presentButton"
+      @close="closePresentation()"
+    >
+      <div class="metrics present__metrics">
+        <MetricCard label="Eligible population" :value="formatCount(presented.eligible_population)" />
+        <MetricCard label="Active users, year 1" :value="formatCount(presented.active_users_year1)" />
+        <MetricCard label="Active users, follow-up" :value="formatCount(presented.active_users_followup)" />
+        <MetricCard label="Domain statuses, illustrative" :value="presentedCountsLabel" />
+      </div>
+
+      <p class="alert alert--info">{{ presented.interpretation }}</p>
+
+      <figure class="table-figure">
+        <figcaption class="table-figure__caption">Domain assessment, illustrative</figcaption>
+        <div class="table-scroll">
+          <table class="table table--wrap" aria-label="Domain assessment, illustrative">
+            <thead>
+              <tr>
+                <th scope="col">Domain</th>
+                <th scope="col">Status</th>
+                <th scope="col">Current input</th>
+                <th scope="col">Plain-language interpretation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="domain in presented.domains" :key="domain.Domain">
+                <td>{{ domain.Domain }}</td>
+                <td><span :class="statusClass(domain.Status)">{{ domain.Status }}</span></td>
+                <td class="muted">{{ domain['Current input'] }}</td>
+                <td>{{ domain.Interpretation }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </figure>
+
+      <details class="details">
+        <summary>Quantitative outputs, simulated ({{ presented.numbers.length }} rows)</summary>
+        <div class="table-scroll">
+          <table class="table table--wrap" aria-label="Quantitative outputs, simulated">
+            <thead>
+              <tr>
+                <th scope="col">Measure</th>
+                <th scope="col" class="is-right">Value</th>
+                <th scope="col">Illustrative basis</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in presented.numbers" :key="row.Measure">
+                <td>{{ row.Measure }}</td>
+                <td class="is-right">{{ row.Value }}</td>
+                <td class="muted">{{ row['Illustrative basis'] }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+
+      <template #settings>
+        <PresentationSettings :rows="presentedSettings" />
+      </template>
+    </PresentationOverlay>
   </section>
 </template>

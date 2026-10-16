@@ -27,17 +27,23 @@
  * inputs is marked as such rather than recalculated or removed.
  */
 
-import { computed } from 'vue'
-import type { PriceScanCell, PriceScanLevel } from '../api/types'
+import { computed, ref, shallowRef } from 'vue'
+import type { PriceScanCell, PriceScanLevel, ValueBasedPriceResponse } from '../api/types'
 import type { Tone } from '../format'
 import { formatEuro, formatNumber, formatPercent, formatThreshold, isNum } from '../format'
 import DataTable from './DataTable.vue'
 import ButtonLabel from './ButtonLabel.vue'
+import ChartDownload from './ChartDownload.vue'
 import InfoTip from './InfoTip.vue'
 import MetricCard from './MetricCard.vue'
 import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
 import ValueBasedPriceComparison from './charts/ValueBasedPriceComparison.vue'
+import PresentationOverlay from './presentation/PresentationOverlay.vue'
+import PresentationSettings, {
+  type PresentationSetting,
+} from './presentation/PresentationSettings.vue'
+import { movedSentence, supersededSentence, scenarioSettingRows, settingRow } from './presentation/settings'
 import type { Column } from './table'
 import { useModel } from '../composables/useModel'
 import { useResultEntrance } from '../composables/useResultEntrance'
@@ -48,6 +54,18 @@ const { revealClass } = useResultEntrance('valueBasedPrice')
 
 const result = computed(() => model.valueBasedPrice)
 const headline = computed(() => result.value?.headline ?? null)
+
+/**
+ * The one line the result area carries while there is no result yet: the wait,
+ * while the request is in flight, and the guidance to start otherwise. Both name
+ * the cost of the calculation — about 40 model runs — because that is what makes
+ * the wait worth a warning before it starts and worth explaining while it runs.
+ */
+const stateLine = computed(() =>
+  model.busy.valueBasedPrice
+    ? 'Calculating the value-based price; this runs the model about 40 times and takes a few seconds.'
+    : 'Select Calculate value-based price; the analysis runs the model about 40 times, so it takes a few seconds.',
+)
 const required = computed(() => result.value?.required_effect ?? null)
 const grid = computed(() => result.value?.grid ?? null)
 const availability = computed(() => result.value?.availability ?? null)
@@ -227,6 +245,73 @@ const availabilityReasons = computed(() => {
     { label: 'Scan', reason: reasons.grid },
   ].filter((entry) => entry.reason !== '')
 })
+
+// --- Presentation mode -------------------------------------------------------
+
+/**
+ * The price analysis being presented, held as the response itself: the price R
+ * identified, the headroom, the required effect, the scan, R's interpretation and
+ * its limitation all travel in it, and its own `inputs` are the scenario it ran.
+ */
+const presented = shallowRef<ValueBasedPriceResponse | null>(null)
+const presentButton = ref<HTMLButtonElement | null>(null)
+
+/** The revision of this tab's stored result when the overlay was opened. */
+const presentedRevision = ref(0)
+
+function openPresentation(): void {
+  presented.value = result.value
+  presentedRevision.value = model.resultRevisions.valueBasedPrice
+}
+
+/** The line shown when a later run has replaced this result while it is open. */
+const presentedSuperseded = computed(() =>
+  presented.value !== null && model.resultRevisions.valueBasedPrice !== presentedRevision.value
+    ? supersededSentence()
+    : '',
+)
+
+function closePresentation(): void {
+  presented.value = null
+}
+
+const presentedHeadline = computed(() => presented.value?.headline ?? null)
+const presentedRequired = computed(() => presented.value?.required_effect ?? null)
+
+/** The run's own settings, from the response: the scenario R was sent and the threshold. */
+const presentedSettings = computed<PresentationSetting[]>(() => {
+  const run = presented.value
+  if (!run) return []
+  return [
+    settingRow('threshold', 'Reference threshold', formatThreshold(run.wtp), '€/QALY'),
+    settingRow('price', 'Price the analysis ran at', formatEuro(run.current_price, 2), '€/year'),
+    ...scenarioSettingRows(
+      run.inputs as unknown as Record<string, number | null>,
+      model.defaults?.parameters ?? [],
+    ),
+  ]
+})
+
+const presentedStale = computed(() =>
+  presented.value && model.valueBasedPriceStale
+    ? movedSentence(['the threshold or the shared assumptions'])
+    : '',
+)
+
+/**
+ * One scan cell of the presented run, found the same way the panel finds it: by
+ * the pair's own values in that response. A pair the run does not carry shows R's
+ * own "Not available" wording rather than a number.
+ */
+function presentedCellPrice(row: PriceScanLevel, column: PriceScanLevel): string {
+  const cells = presented.value?.grid.cells ?? []
+  const cell = cells.find(
+    (entry) =>
+      Math.abs(entry.row_value - row.value) < 1e-9 &&
+      Math.abs(entry.column_value - column.value) < 1e-9,
+  )
+  return cell ? priceText(cell.max_acceptable_price) : '—'
+}
 </script>
 
 <template>
@@ -236,8 +321,8 @@ const availabilityReasons = computed(() => {
         <h2>Value-based price</h2>
         <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
-          The highest annual price the model supports at the reference threshold, and how the
-          current price compares with it.
+          What annual price would the model support at the reference threshold, and how does the
+          current price compare?
         </p>
       </div>
       <div class="panel__actions">
@@ -247,12 +332,22 @@ const availabilityReasons = computed(() => {
           :disabled="model.busy.valueBasedPrice"
           @click="model.runValueBasedPrice()"
         >
-          <ButtonLabel :busy="model.busy.valueBasedPrice" idle="Calculate value-based price" pending="Calculating…" />
+          <ButtonLabel :busy="model.busy.valueBasedPrice" idle="Calculate value-based price" pending="Calculating the value-based price…" />
+        </button>
+        <button
+          v-if="result"
+          ref="presentButton"
+          type="button"
+          class="btn btn--ghost"
+          title="Show this result full screen, for a screen share or discussion"
+          @click="openPresentation()"
+        >
+          Present
         </button>
       </div>
     </header>
 
-    <p v-if="model.errors.valueBasedPrice" class="alert alert--danger">
+    <p v-if="model.errors.valueBasedPrice" class="alert alert--danger" role="alert">
       {{ model.errors.valueBasedPrice }}
     </p>
 
@@ -262,10 +357,8 @@ const availabilityReasons = computed(() => {
       :detail="`The stored result used a threshold of ${formatThreshold(result.wtp)}.`"
     />
 
-    <p v-if="!result && !model.busy.valueBasedPrice" class="hint">
-      The analysis runs the model about 40 times, so it takes a few seconds, and it runs only when
-      you use “Calculate value-based price”. A result stays on screen while the assumptions change,
-      and is marked as computed from earlier inputs rather than recalculated or removed.
+    <p v-if="!result" class="hint" role="status">
+      {{ stateLine }}
     </p>
     <div v-if="result && headline" class="result-reveal" :class="revealClass">
       <p v-for="warning in warnings" :key="warning" class="alert alert--warning">
@@ -301,6 +394,10 @@ const availabilityReasons = computed(() => {
           :current-price="result.current_price"
           :max-acceptable-price="headline.max_acceptable_price"
           :status="result.status"
+        />
+        <ChartDownload
+          filename="value-based-price-comparison.png"
+          name="price comparison"
         />
       </figure>
 
@@ -410,5 +507,119 @@ const availabilityReasons = computed(() => {
         />
       </details>
     </div>
+
+    <!-- Presentation mode: R's own solve, its headroom, the required effect and
+         the limitation that qualifies them. -->
+    <PresentationOverlay
+      v-if="presented"
+      title="Value-based price"
+      :notice="presented.notice"
+      :stale="presentedStale"
+      :superseded="presentedSuperseded"
+      :fallback-focus="() => presentButton"
+      @close="closePresentation()"
+    >
+      <div class="metrics present__metrics">
+        <MetricCard
+          label="Maximum acceptable annual price"
+          :value="priceText(presentedHeadline?.max_acceptable_price ?? null)"
+          :tone="presentedHeadline ? statusTone(presentedHeadline.status) : 'neutral'"
+          :sub="`Status: ${presentedHeadline?.status ?? 'Not available'} · reference threshold ${formatEuro(presented.wtp, 0)}/QALY`"
+        />
+        <MetricCard
+          label="Current annual price"
+          :value="formatEuro(presented.current_price, 2)"
+          sub="the price the analysis ran at and compared against"
+        />
+        <MetricCard
+          label="Price headroom"
+          :value="formatEuro(presentedHeadline?.headroom_eur ?? null, 2)"
+          :tone="presentedHeadline ? statusTone(presentedHeadline.status) : 'neutral'"
+          :sub="
+            isNum(presentedHeadline?.headroom_pct)
+              ? `${formatPercent((presentedHeadline?.headroom_pct ?? 0) / 100, 1)} of the current price`
+              : 'not identified by R'
+          "
+        />
+      </div>
+
+      <figure class="chart-figure present__chart">
+        <figcaption>Current annual price against the maximum acceptable price</figcaption>
+        <ValueBasedPriceComparison
+          :current-price="presented.current_price"
+          :max-acceptable-price="presentedHeadline?.max_acceptable_price ?? null"
+          :status="presented.status"
+        />
+      </figure>
+
+      <p :class="presentedHeadline?.available ? 'alert alert--info' : 'alert alert--warning'">
+        <span v-if="presentedHeadline && !presentedHeadline.available" :class="statusClass(presentedHeadline.status)">
+          {{ presentedHeadline.status }}
+        </span>
+        {{ presentedHeadline?.interpretation ?? presented.interpretation }}
+      </p>
+
+      <p v-for="warning in presented.warnings" :key="warning" class="alert alert--warning">
+        {{ warning }}
+      </p>
+
+      <div v-if="presentedRequired" class="callout">
+        <p class="callout__title">
+          <span>Required effectiveness at the current price</span>
+          <span class="badge">{{ presentedRequired.verdict_label }}</span>
+        </p>
+        <p class="callout__text">{{ presentedRequired.interpretation }}</p>
+      </div>
+
+      <p class="present__interpretation">{{ presented.limitation }}</p>
+
+      <figure class="table-figure">
+        <figcaption class="table-figure__caption">
+          Maximum acceptable annual price by assumption, illustrative
+          <span class="muted">
+            (rows: {{ presented.grid.row_axis.parameter }}; columns:
+            {{ presented.grid.column_axis.parameter }})
+          </span>
+        </figcaption>
+        <div class="table-scroll">
+          <table
+            class="table table--wrap"
+            aria-label="Maximum acceptable annual price by assumption, illustrative"
+          >
+            <thead>
+              <tr>
+                <th scope="col">
+                  {{ presented.grid.row_axis.parameter }} / {{ presented.grid.column_axis.parameter }}
+                </th>
+                <th
+                  v-for="level in presented.grid.column_axis.levels"
+                  :key="level.value"
+                  scope="col"
+                  class="is-right"
+                >
+                  {{ level.label }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in presented.grid.row_axis.levels" :key="row.value">
+                <th scope="row">{{ row.label }}</th>
+                <td
+                  v-for="column in presented.grid.column_axis.levels"
+                  :key="column.value"
+                  class="is-right"
+                >
+                  {{ presentedCellPrice(row, column) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </figure>
+
+      <template #settings>
+        <PresentationSettings :rows="presentedSettings" />
+      </template>
+    </PresentationOverlay>
   </section>
 </template>

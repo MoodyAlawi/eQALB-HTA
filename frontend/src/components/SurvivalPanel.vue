@@ -14,8 +14,15 @@
  * seed and sample size always give the same curves.
  */
 
-import { computed } from 'vue'
-import type { KmInterpretationCounts, KmRiskRow, KmStatus, KmStep, KmSummaryRow } from '../api/types'
+import { computed, ref, shallowRef } from 'vue'
+import type {
+  KmInterpretationCounts,
+  KmRiskRow,
+  KmStatus,
+  KmStep,
+  KmSummaryRow,
+  SurvivalResponse,
+} from '../api/types'
 import { formatCount, formatNumber, formatPercent, isNum, type Tone } from '../format'
 import { useModel } from '../composables/useModel'
 import { useResultEntrance } from '../composables/useResultEntrance'
@@ -23,11 +30,17 @@ import { prepareCsvDownload } from '../composables/useDownloadNotice'
 import { EXPORT_FILENAMES, kmSummaryCsv } from '../export/tabExports'
 import SurvivalCurveChart from './charts/SurvivalCurveChart.vue'
 import ButtonLabel from './ButtonLabel.vue'
+import ChartDownload from './ChartDownload.vue'
 import DataTable from './DataTable.vue'
 import InfoTip from './InfoTip.vue'
 import MetricCard from './MetricCard.vue'
 import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
+import PresentationOverlay from './presentation/PresentationOverlay.vue'
+import PresentationSettings, {
+  type PresentationSetting,
+} from './presentation/PresentationSettings.vue'
+import { movedSentence, supersededSentence, settingRow } from './presentation/settings'
 import type { Column } from './table'
 
 const model = useModel()
@@ -36,6 +49,18 @@ const { revealClass } = useResultEntrance('survival')
 
 const result = computed(() => model.survival)
 const steps = computed<KmStep[]>(() => result.value?.steps ?? [])
+
+/**
+ * The one line the result area carries while there is no result yet: the wait,
+ * while the request is in flight, and the guidance to start otherwise. The
+ * guidance's second half — that the same inputs always reproduce the same
+ * curves — belongs to the guidance, so the wait does not repeat it.
+ */
+const stateLine = computed(() =>
+  model.busy.survival
+    ? 'Simulating survival with these inputs.'
+    : 'Start with the default seed and sample size, then select Run survival simulation; the same inputs always reproduce the same curves.',
+)
 
 const summaryColumns: Column<KmSummaryRow>[] = [
   { key: 'treatment', label: 'Arm', value: (row) => row.treatment },
@@ -196,6 +221,84 @@ const eventRateDifference = computed(() => {
   if (!isNum(first.events) || !isNum(second.events)) return null
   return { first: first.events, second: second.events, difference: second.events - first.events }
 })
+
+// --- Presentation mode -------------------------------------------------------
+
+/**
+ * The simulation being presented, held as the response itself: the curves, the
+ * risk table, the arm summary, the checks and R's traffic-light interpretation all
+ * travel in it, and its seed and sample size are the run's own.
+ */
+const presented = shallowRef<SurvivalResponse | null>(null)
+const presentButton = ref<HTMLButtonElement | null>(null)
+const presentedSteps = computed<KmStep[]>(() => presented.value?.steps ?? [])
+
+/** The revision of this tab's stored result when the overlay was opened. */
+const presentedRevision = ref(0)
+
+function openPresentation(): void {
+  presented.value = result.value
+  presentedRevision.value = model.resultRevisions.survival
+}
+
+/** The line shown when a later run has replaced this result while it is open. */
+const presentedSuperseded = computed(() =>
+  presented.value !== null && model.resultRevisions.survival !== presentedRevision.value
+    ? supersededSentence()
+    : '',
+)
+
+function closePresentation(): void {
+  presented.value = null
+}
+
+/** The risk table pivoted exactly as the panel pivots it, from the run's own rows. */
+const presentedRisk = computed(() => {
+  const rows: KmRiskRow[] = presented.value?.risk_table ?? []
+  const years = [...new Set(rows.map((row) => row.year))].sort((a, b) => a - b)
+  const grouped = new Map<string, { treatment: string; atRisk: Record<number, number | null> }>()
+  for (const row of rows) {
+    let entry = grouped.get(row.treatment)
+    if (!entry) {
+      entry = { treatment: row.treatment, atRisk: {} }
+      grouped.set(row.treatment, entry)
+    }
+    entry.atRisk[row.year] = row.at_risk
+  }
+  const columns: Column<{ treatment: string; atRisk: Record<number, number | null> }>[] = [
+    { key: 'treatment', label: 'Arm', value: (row) => row.treatment },
+    ...years.map((year) => ({
+      key: `year-${year}`,
+      label: `Year ${year}`,
+      align: 'right' as const,
+      value: (row: { atRisk: Record<number, number | null> }) => formatCount(row.atRisk[year] ?? null),
+    })),
+  ]
+  return { rows: [...grouped.values()], columns }
+})
+
+/** The run's own settings: the seed and sample size it was simulated with. */
+const presentedSettings = computed<PresentationSetting[]>(() => {
+  const run = presented.value
+  if (!run) return []
+  return [
+    settingRow('patients', 'Patients per arm', formatCount(run.n_per_arm), 'patients'),
+    settingRow('followup', 'Follow-up', String(run.followup_years), 'years'),
+    settingRow('seed', 'Random seed', String(run.seed), ''),
+    settingRow(
+      'rrr',
+      'Relative risk reduction (run)',
+      isNum(run.rrr) ? formatPercent(run.rrr) : '—',
+      '%',
+    ),
+  ]
+})
+
+const presentedStale = computed(() =>
+  presented.value && model.survivalStale
+    ? movedSentence(['the simulation inputs or the shared assumptions'])
+    : '',
+)
 </script>
 
 <template>
@@ -204,11 +307,7 @@ const eventRateDifference = computed(() => {
       <div>
         <h2>Simulated Kaplan-Meier analysis</h2>
         <ResultTrace :reveal-class="revealClass" />
-        <p class="muted">
-          Individual patients are simulated from the annual event risks and the engagement-adjusted
-          treatment effect of the current scenario. The curves are the model's, drawn from the same
-          estimator as the number-at-risk table.
-        </p>
+        <p class="muted">How might event-free survival compare between the arms?</p>
       </div>
       <div class="panel__actions">
         <button
@@ -217,7 +316,17 @@ const eventRateDifference = computed(() => {
           :disabled="model.busy.survival"
           @click="model.runSurvival()"
         >
-        <ButtonLabel :busy="model.busy.survival" idle="Run survival simulation" pending="Simulating…" />
+        <ButtonLabel :busy="model.busy.survival" idle="Run survival simulation" pending="Simulating survival…" />
+        </button>
+        <button
+          v-if="result"
+          ref="presentButton"
+          type="button"
+          class="btn btn--ghost"
+          title="Show this result full screen, for a screen share or discussion"
+          @click="openPresentation()"
+        >
+          Present
         </button>
         <button
           type="button"
@@ -231,14 +340,15 @@ const eventRateDifference = computed(() => {
       </div>
     </header>
 
-    <p v-if="model.errors.survival" class="alert alert--danger">{{ model.errors.survival }}</p>
+    <p v-if="model.errors.survival" class="alert alert--danger" role="alert">
+      {{ model.errors.survival }}
+    </p>
 
     <StaleNotice v-if="result && model.survivalStale" action="Run survival simulation" />
 
     <p v-if="result" class="hint">
-      This export holds the summary tables above. The Shiny tab additionally downloads the simulated
-      patient-level dataset; the API does not return that dataset yet, so it is not offered here
-      rather than reconstructed with a different method.
+      The simulated patient-level dataset is not available here yet, so the download offers the
+      summary tables instead.
     </p>
 
     <div class="controls">
@@ -257,9 +367,8 @@ const eventRateDifference = computed(() => {
       </label>
     </div>
 
-    <p v-if="!result && !model.busy.survival" class="hint">
-      The same seed and sample size always reproduce the same curves, so you can change one input at
-      a time and compare.
+    <p v-if="!result" class="hint" role="status">
+      {{ stateLine }}
     </p>
 
     <div v-if="result" class="result-reveal" :class="revealClass">
@@ -296,6 +405,10 @@ const eventRateDifference = computed(() => {
           <InfoTip :text="bandInfo" topic="the confidence bands" />
         </figcaption>
         <SurvivalCurveChart :steps="steps" :followup-years="result.followup_years" />
+        <ChartDownload
+          filename="survival-event-free-survival.png"
+          name="event-free survival"
+        />
       </figure>
 
       <DataTable :columns="riskColumns" :rows="riskRows" caption="Number at risk by year" />
@@ -372,5 +485,73 @@ const eventRateDifference = computed(() => {
         </details>
       </section>
     </div>
+
+    <!-- Presentation mode: the run's own curves, risk table and interpretation. -->
+    <PresentationOverlay
+      v-if="presented"
+      title="Simulated Kaplan-Meier analysis"
+      :notice="presented.notice"
+      :stale="presentedStale"
+      :superseded="presentedSuperseded"
+      :fallback-focus="() => presentButton"
+      @close="closePresentation()"
+    >
+      <div class="metrics present__metrics">
+        <MetricCard
+          label="Patients per arm"
+          :value="formatCount(presented.n_per_arm)"
+          :sub="`follow-up ${presented.followup_years} years, seed ${presented.seed}`"
+        />
+        <MetricCard
+          label="Events, usual care"
+          :value="formatCount(presented.summary[0]?.events ?? null)"
+          sub="first MI or stroke"
+        />
+        <MetricCard
+          label="Events, eQalb"
+          :value="formatCount(presented.summary[1]?.events ?? null)"
+          sub="first MI or stroke"
+        />
+        <MetricCard
+          label="Hazard ratio (eQalb vs usual care)"
+          :value="presented.interpretation.display.hazard_ratio"
+          sub="eQalb versus usual care"
+        />
+      </div>
+
+      <figure class="chart-figure present__chart">
+        <figcaption>Event-free survival, simulated</figcaption>
+        <SurvivalCurveChart :steps="presentedSteps" :followup-years="presented.followup_years" />
+      </figure>
+
+      <p class="present__interpretation">
+        Simulated illustrative data: individual patients are drawn from the annual event risks and
+        the engagement-adjusted treatment effect of this run, not observed trial data.
+      </p>
+
+      <DataTable
+        :columns="presentedRisk.columns"
+        :rows="presentedRisk.rows"
+        caption="Number at risk by year"
+      />
+      <DataTable :columns="summaryColumns" :rows="presented.summary" caption="Arm summary" />
+
+      <details class="details">
+        <summary>Definitions and diagnostics from this run</summary>
+        <ul class="list">
+          <li v-for="check in presented.arm_contrast.checks" :key="check.Check">
+            <strong>{{ check.Check }}</strong> — {{ check.Finding }}
+          </li>
+        </ul>
+        <p class="hint">{{ presented.event_note }}</p>
+        <p class="hint">{{ presented.logrank_note }}</p>
+      </details>
+
+      <p class="alert alert--info">{{ presented.interpretation.interpretation }}</p>
+
+      <template #settings>
+        <PresentationSettings :rows="presentedSettings" />
+      </template>
+    </PresentationOverlay>
   </section>
 </template>

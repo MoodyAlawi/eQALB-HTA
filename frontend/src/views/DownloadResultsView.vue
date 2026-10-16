@@ -10,6 +10,13 @@
  * The one thing the browser cannot produce is the rendered chart images the
  * Shiny package carries; the precise remaining backend work is stated on the
  * page instead of being quietly dropped.
+ *
+ * The layout is the page's own: one centred column in the app's content area —
+ * the title, the introduction and the two actions centred, and the two result
+ * lists left-aligned inside it, since a list is easier to scan when every entry
+ * starts on the same edge. Centring is `page--fill`'s (horizontal always,
+ * vertical while the group fits); the page is never given a height of its own, so
+ * a long list simply scrolls.
  */
 
 import { computed, onMounted, onUnmounted, ref } from 'vue'
@@ -80,7 +87,7 @@ const gap = backendGap()
 </script>
 
 <template>
-  <section class="page" aria-labelledby="export-title">
+  <section class="page page--centered page--fill" aria-labelledby="export-title">
     <div class="page__inner">
       <h1 id="export-title" ref="heading" class="page__title" tabindex="-1">Download results</h1>
 

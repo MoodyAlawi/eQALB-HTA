@@ -9,27 +9,34 @@
  * the API in `bounds`.
  */
 
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import {
   OWSA_OUTCOMES,
   OWSA_OUTCOME_LABELS,
   type OwsaBound,
   type OwsaOutcome,
   type OwsaRangeOverride,
+  type OwsaResponse,
   type OwsaRow,
 } from '../api/types'
 import { formatEuro, formatQaly, isNum } from '../format'
-import { useModel } from '../composables/useModel'
+import { useModel, type OwsaRunRequest } from '../composables/useModel'
 import { useResultEntrance } from '../composables/useResultEntrance'
 import { prepareCsvDownload } from '../composables/useDownloadNotice'
 import { EXPORT_FILENAMES, owsaCsv } from '../export/tabExports'
 import TornadoChart from './charts/TornadoChart.vue'
 import ButtonLabel from './ButtonLabel.vue'
+import ChartDownload from './ChartDownload.vue'
 import DataTable from './DataTable.vue'
 import InfoTip from './InfoTip.vue'
 import MetricCard from './MetricCard.vue'
 import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
+import PresentationOverlay from './presentation/PresentationOverlay.vue'
+import PresentationSettings, {
+  type PresentationSetting,
+} from './presentation/PresentationSettings.vue'
+import { movedSentence, supersededSentence, scenarioSettingRows, settingRow } from './presentation/settings'
 import type { Column } from './table'
 
 const model = useModel()
@@ -63,6 +70,16 @@ function formatOutcome(value: number | null, outcome: OwsaOutcome): string {
 }
 
 const result = computed(() => model.owsa)
+
+/**
+ * The one line the result area carries while there is no result yet: the wait,
+ * while the request is in flight, and the guidance to start otherwise.
+ */
+const stateLine = computed(() =>
+  model.busy.owsa
+    ? 'Running the sensitivity analysis with these assumptions and ranges.'
+    : 'Select Run sensitivity analysis; it needs two model runs per parameter, so it takes a few seconds.',
+)
 
 /** The ranking the selector is set to, which is what the next run will use. */
 const outcome = computed(() => model.owsaOutcome)
@@ -324,6 +341,90 @@ function downloadCsv(): void {
   if (!current) return
   prepareCsvDownload(owsaCsv(current), EXPORT_FILENAMES.owsa)
 }
+
+// --- Presentation mode -------------------------------------------------------
+
+/**
+ * The one-way run being presented, and the request body that produced it. The
+ * ranking outcome is part of the response (`outcome`, `outcome_label`), and the
+ * scenario and adjusted ranges come from the stored request, so the overlay shows
+ * that run's own settings whether or not the controls have moved since.
+ */
+const presented = shallowRef<OwsaResponse | null>(null)
+/**
+ * The request that produced the presented run, captured with it from the store, so
+ * the settings it lists are the run's own even after a later run or a control
+ * change — and never the panel's controls.
+ */
+const presentedRequest = shallowRef<OwsaRunRequest | null>(null)
+const presentButton = ref<HTMLButtonElement | null>(null)
+
+/** The revision of this tab's stored result when the overlay was opened. */
+const presentedRevision = ref(0)
+
+function openPresentation(): void {
+  presented.value = result.value
+  presentedRequest.value = model.owsaRun
+  presentedRevision.value = model.resultRevisions.owsa
+}
+
+/** The line shown when a later run has replaced this result while it is open. */
+const presentedSuperseded = computed(() =>
+  presented.value !== null && model.resultRevisions.owsa !== presentedRevision.value
+    ? supersededSentence()
+    : '',
+)
+
+function closePresentation(): void {
+  presented.value = null
+}
+
+/**
+ * The run's settings: the ranking, threshold and parameter count the response
+ * reports, and the scenario and adjusted-range count from the request the store
+ * kept beside that result. Nothing here reads a control, so the list describes the
+ * run it was opened on however the panel has moved since.
+ */
+const presentedSettings = computed<PresentationSetting[]>(() => {
+  const run = presented.value
+  if (!run) return []
+  const request = presentedRequest.value
+  const rows: PresentationSetting[] = [
+    settingRow('outcome', 'Ranked outcome', run.outcome_label, ''),
+    settingRow('threshold', 'Reference WTP threshold', formatEuro(run.wtp), '€/QALY'),
+    settingRow('parameters', 'Parameters tested', String(run.table.length), ''),
+    settingRow(
+      'ranges',
+      'One-way ranges',
+      request && request.bounds && request.bounds.length > 0
+        ? `${request.bounds.length} adjusted in this session, the rest R-derived`
+        : 'R-derived, as returned with this run',
+      '',
+    ),
+  ]
+  rows.push(
+    ...scenarioSettingRows(
+      (request?.body ?? {}) as Record<string, number | null>,
+      model.defaults?.parameters ?? [],
+      '',
+    ),
+  )
+  return rows
+})
+
+/** What has moved since the run: the scenario, the threshold or the ranges. */
+const presentedStale = computed(() =>
+  presented.value !== null && model.owsaStale
+    ? movedSentence(['the scenario, threshold or ranges'])
+    : '',
+)
+
+/** The note under the settings rows. */
+const settingsNote = computed(() =>
+  model.owsaStale
+    ? 'Every row is the request this run was sent, kept with its result; the panel’s controls have been changed since and are not shown as the run’s.'
+    : 'Every row is the request this run was sent, kept with its result — not the controls as they stand now.',
+)
 </script>
 
 <template>
@@ -332,10 +433,7 @@ function downloadCsv(): void {
       <div>
         <h2>Deterministic sensitivity analysis</h2>
         <ResultTrace :reveal-class="revealClass" />
-        <p class="muted">
-          One parameter at a time, moved to its low and high bound with all others held at the
-          scenario values, ranked by how much the outcome moves.
-        </p>
+        <p class="muted">Which assumptions influence the result most?</p>
       </div>
       <div class="panel__actions">
         <button
@@ -344,7 +442,17 @@ function downloadCsv(): void {
           :disabled="model.busy.owsa"
           @click="model.runOwsa()"
         >
-        <ButtonLabel :busy="model.busy.owsa" idle="Run sensitivity analysis" pending="Running…" />
+        <ButtonLabel :busy="model.busy.owsa" idle="Run sensitivity analysis" pending="Running the sensitivity analysis…" />
+        </button>
+        <button
+          v-if="result"
+          ref="presentButton"
+          type="button"
+          class="btn btn--ghost"
+          title="Show this result full screen, for a screen share or discussion"
+          @click="openPresentation()"
+        >
+          Present
         </button>
         <button
           type="button"
@@ -358,7 +466,7 @@ function downloadCsv(): void {
       </div>
     </header>
 
-    <p v-if="model.errors.owsa" class="alert alert--danger">{{ model.errors.owsa }}</p>
+    <p v-if="model.errors.owsa" class="alert alert--danger" role="alert">{{ model.errors.owsa }}</p>
 
     <div class="controls">
       <div class="field field--inline">
@@ -487,8 +595,8 @@ function downloadCsv(): void {
       <p class="owsa-summary__text">{{ summaryText }}</p>
     </details>
 
-    <p v-if="!result && !model.busy.owsa" class="hint">
-      The analysis needs two model runs per parameter, so it takes a few seconds.
+    <p v-if="!result" class="hint" role="status">
+      {{ stateLine }}
     </p>
 
     <div v-if="result" class="result-reveal" :class="revealClass">
@@ -523,18 +631,19 @@ function downloadCsv(): void {
           :outcome="result.outcome"
           :format="format"
         />
+        <ChartDownload filename="sensitivity-tornado-diagram.png" name="tornado diagram" />
       </figure>
 
       <details class="details">
         <summary>Full one-way sensitivity table ({{ rows.length }} parameters)</summary>
         <DataTable :columns="tornadoColumns" :rows="rows" label="Full one-way sensitivity table" />
+        <p class="hint">
+          The downloaded CSV holds this table: one row per parameter, with the low and high results
+          in separate columns. The Shiny export writes the same results in a long layout instead —
+          one row per parameter and scenario — so the two files carry the same numbers in different
+          shapes.
+        </p>
       </details>
-
-      <p v-if="result" class="hint">
-        The downloaded CSV holds that table: one row per parameter, with the low and high results in
-        separate columns. The Shiny export writes the same results in a long layout instead — one row
-        per parameter and scenario — so the two files carry the same numbers in different shapes.
-      </p>
 
       <details v-if="warnings.length > 0" class="details">
         <summary>{{ warnings.length }} bound warnings from the model</summary>
@@ -543,5 +652,70 @@ function downloadCsv(): void {
         </ul>
       </details>
     </div>
+
+    <!-- Presentation mode: the run's own ranking and ranges, read from the
+         presented response rather than from the selector. -->
+    <PresentationOverlay
+      v-if="presented"
+      title="Deterministic sensitivity analysis"
+      :notice="presented.notice"
+      :stale="presentedStale"
+      :settings-note="settingsNote"
+      :superseded="presentedSuperseded"
+      :fallback-focus="() => presentButton"
+      @close="closePresentation()"
+    >
+      <div class="metrics present__metrics">
+        <MetricCard
+          label="Base case outcome"
+          :value="formatOutcome(presented.base_outcome, presented.outcome)"
+          :sub="presented.outcome_label"
+        />
+        <MetricCard
+          label="Base incremental cost"
+          :value="formatEuro(presented.base_incremental_cost)"
+          sub="scenario values"
+        />
+        <MetricCard
+          label="Base incremental QALYs"
+          :value="formatQaly(presented.base_incremental_qalys)"
+          sub="scenario values"
+        />
+        <MetricCard
+          label="Net monetary benefit at base"
+          :value="formatEuro(presented.base_incremental_nmb)"
+          :sub="`at ${formatEuro(presented.wtp)}/QALY`"
+        />
+      </div>
+
+      <figure class="chart-figure present__chart">
+        <figcaption>Tornado diagram — variation of {{ presented.outcome_label }}</figcaption>
+        <TornadoChart
+          :rows="presented.table"
+          :base-outcome="presented.base_outcome"
+          :outcome="presented.outcome"
+          :format="(value) => formatOutcome(value, presented!.outcome)"
+        />
+      </figure>
+
+      <details class="details">
+        <summary>R’s reading of this run</summary>
+        <p class="muted">{{ presented.summary_note }}</p>
+        <p class="owsa-summary__text">{{ presented.summary }}</p>
+      </details>
+
+      <details class="details">
+        <summary>One-way ranges used ({{ presented.bounds.length }} parameters)</summary>
+        <p class="muted">{{ presented.bounds_note }}</p>
+        <p class="present__interpretation">
+          The ranges in force for this run came back with it; the editable table with every low and
+          high value, in the panel’s own units, is on the Sensitivity analysis tab.
+        </p>
+      </details>
+
+      <template #settings>
+        <PresentationSettings :rows="presentedSettings" />
+      </template>
+    </PresentationOverlay>
   </section>
 </template>

@@ -580,16 +580,134 @@ code {
   margin: 0 0 1.9rem;
 }
 
+/* The menu: one centred column of two full-width entry points, with the two
+   secondary destinations side by side beneath them. The two-column grid is what
+   gives both rows a single width — each entry point spans both columns, and each
+   secondary takes one — so the pair and the gap between them add up to the row
+   above. The group is capped at a compact width and centred by the hero, so it is
+   never stretched across the page. */
 .home__actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.6rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 24rem;
 }
 
 .home__actions .btn {
-  padding: 0.55rem 1.1rem;
+  /* A hair less side padding than the shared button: on a full-width button it
+     changes nothing visually, and it is what keeps "Project description" on one
+     line in a half-width column on the narrower phones. */
+  padding: 0.55rem 0.9rem;
   font-size: 0.95rem;
+}
+
+/* The menu's four buttons: one compact single line each at ordinary widths, and
+   one shape and size for all of them, so the group reads as a menu rather than as
+   two oversized blocks. The two entry points are marked by an accent outline and a
+   soft accent tint rather than by a heavier block, and neither prints what it is
+   for on the screen — that is what the explanation overlay below is for.
+
+   Each rule is scoped through `.home__actions` so it outranks the shared `.btn`
+   rules that are declared further down this sheet. */
+.home__actions .home__action {
+  /* A label is one line while the column has room for it and wraps rather than
+     overflowing when a narrow screen or an enlarged text setting leaves it none;
+     `min-width: 0` is what lets the grid column shrink instead of forcing the
+     page wider. */
+  min-width: 0;
+  white-space: normal;
+  transition:
+    background-color 120ms var(--ease-move),
+    border-color 120ms var(--ease-move),
+    color 120ms var(--ease-move),
+    transform 120ms var(--ease-move);
+}
+
+/* The two entry points, one per row and both columns wide. */
+.home__actions .home__action--choice {
+  grid-column: 1 / -1;
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--heading);
+  font-weight: 600;
+}
+
+/* Colour only, and only where a pointer can hover: a touch screen must not be
+   left holding a hover state, so the shared hover rule is neutralised for these
+   four under `hover: none` and the menu's own hover is declared under
+   `hover: hover`. */
+@media (hover: hover) {
+  .home__actions .home__action:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .home__actions .home__action--choice:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent-contrast);
+    background: var(--accent);
+  }
+}
+
+@media (hover: none) {
+  .home__actions .home__action:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    color: var(--text);
+    background: var(--panel);
+  }
+
+  /* The choices keep their resting accent look, which is what the rule above
+     would otherwise take away; it comes second because the two selectors weigh
+     the same. */
+  .home__actions .home__action--choice:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--heading);
+    background: var(--accent-soft);
+  }
+}
+
+/* The press: 2% smaller, back the moment the button is released, and never in
+   the way of the click itself — nothing waits for it. Under reduced motion it is
+   dropped rather than stilled; see the reduced-motion block further down. */
+.home__actions .home__action:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* --- The menu's explanation overlay ---------------------------------------- */
+
+/* The app's own dialog: the shared `.modal` markup, the shared `dialog`
+   transition and the shared focus containment from `useModalFocus`. Nothing here
+   is a second modal system, and nothing about the other dialogs changes — the
+   rules below are scoped to this overlay's own class. Its motion is the shared
+   one (the backdrop fades while the panel fades and lifts the same few pixels);
+   only the timing is set here, inside the 150-180ms the menu is designed for. Its
+   two actions get the same feedback as the menu buttons. */
+
+.modal--menu.dialog-enter-active,
+.modal--menu.dialog-leave-active {
+  transition: opacity 170ms var(--ease-move);
+}
+
+.modal--menu.dialog-enter-active .modal__panel,
+.modal--menu.dialog-leave-active .modal__panel {
+  transition:
+    opacity 170ms var(--ease-move),
+    transform 170ms var(--ease-move);
+}
+
+.modal--menu .btn {
+  transition:
+    background-color 120ms var(--ease-move),
+    border-color 120ms var(--ease-move),
+    color 120ms var(--ease-move),
+    filter 120ms var(--ease-move),
+    transform 120ms var(--ease-move);
+}
+
+.modal--menu .btn:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .home__links {
@@ -679,6 +797,25 @@ code {
 
 .page--centered .page__actions {
   justify-content: center;
+}
+
+/* The Download results view: its content group is one centred column in the
+   app's own content area — horizontally always, and vertically while the group
+   fits. `margin: auto` is what makes it safe rather than a height of its own: it
+   centres the group when there is room and resolves to nothing when there is
+   not, so a page taller than the window starts at its top and scrolls instead of
+   being clipped above the viewport. The padding is the room it keeps either way,
+   the group is the page's own card and not the shell, and nothing here is fixed
+   or given an arbitrary height. */
+.page--fill {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 3.5rem);
+  padding: 2rem 0 2.5rem;
+}
+
+.page--fill .page__inner {
+  margin: auto;
 }
 
 /* --- Tabs ------------------------------------------------------------------ */
@@ -2279,6 +2416,16 @@ button:focus-visible {
   margin-bottom: 0.35rem;
 }
 
+/* The per-chart PNG action, under the chart it saves. It is part of the figure
+   while its result is, so the figure's height never changes when it is used and
+   the chart above it is never moved; it is right-aligned so it reads as an action
+   on that chart rather than as a heading below it. */
+.chart-figure__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0.4rem 0 0;
+}
+
 /* --- Responsive ----------------------------------------------------------- */
 
 .sidebar-toggle {
@@ -2304,6 +2451,12 @@ button:focus-visible {
   }
 
   .home {
+    min-height: auto;
+  }
+
+  /* Below this width a page is taller than a phone is, so the centred group keeps
+     its padding and its natural scroll instead of a forced centre. */
+  .page--fill {
     min-height: auto;
   }
 
@@ -2357,6 +2510,15 @@ button:focus-visible {
   .home__letter {
     color: var(--heading);
     text-shadow: none;
+  }
+
+  /* The press response on the menu and its overlay is dropped rather than
+     stilled: a 2% scale that cannot animate is a jump, and nothing else about
+     either button moves. The overlay itself is unaffected — with transitions off
+     it is simply there, and simply gone. */
+  .home__actions .home__action:active:not(:disabled),
+  .modal--menu .btn:active:not(:disabled) {
+    transform: none;
   }
 }
 
@@ -2798,8 +2960,9 @@ button:focus-visible {
   font-size: 1.05rem;
 }
 
-/* The welcome question: a small centred prompt rather than the wide panel the
-   case-facts overlay uses, since it carries two lines and two actions. */
+/* The small centred prompts — the welcome question and the Home menu's two
+   explanations — rather than the wide panel the case-facts overlay uses: each
+   carries two lines and two actions, so the panel is a prompt and not a page. */
 .modal__panel--welcome {
   max-width: 26rem;
   text-align: center;
@@ -2807,6 +2970,159 @@ button:focus-visible {
 
 .modal__panel--welcome .tutorial__nav {
   justify-content: center;
+}
+
+/* --- Base-case presentation mode -------------------------------------------
+   The viewport-sized panel the Base-case tab shows one completed run in, for a
+   screen share. It is the app's own dialog with a larger panel: the backdrop, the
+   `dialog` transition and the focus containment are all the shared ones, and only
+   the panel's shape and the typography inside it are set here. Nothing is fixed
+   and no height is invented — the panel is capped by the viewport and scrolls
+   inside itself, so a short window or a phone stacks the same content and scrolls
+   it. */
+
+.modal--present .modal__panel {
+  max-width: 68rem;
+  max-height: calc(100dvh - 2rem);
+}
+
+.present__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.9rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.present__identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+  margin: 0;
+}
+
+.present__brand {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.present__title {
+  font-size: clamp(1.05rem, 2vw, 1.3rem);
+  font-weight: 650;
+  color: var(--heading);
+}
+
+/* The figures are read from a shared screen, so they are larger than the
+   workspace's — and still capped, so they never crowd the chart out of the
+   panel. */
+.present__metrics {
+  margin-bottom: 0.9rem;
+}
+
+.present__metrics .metric__value {
+  font-size: clamp(1.5rem, 3vw, 2.05rem);
+}
+
+.present__metrics .metric__sub {
+  font-size: 0.85rem;
+}
+
+/* The ICER sentence the workspace keeps on the card's information control, shown
+   as text because a presentation has no hover to offer it through. */
+.present__interpretation {
+  margin: 0 0 0.9rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.present__chart {
+  margin-bottom: 1rem;
+}
+
+.present__chart .chart__canvas {
+  height: clamp(240px, 40vh, 420px);
+}
+
+/* The two-chart presentations: a readable pair on a wide screen, stacked when
+   there is no room for both — the shell's own scroll handles the rest, so no
+   chart is squeezed to fit. The workspace's `.grid--2` would fit, but its minimum
+   column is tuned for the panel, not for a full-screen presentation. */
+.present .grid--2 {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+}
+
+/* The disclosure that names what has moved since the run: the panel's own warning
+   tone, at the overlay's own size. */
+.modal--present .alert {
+  margin-bottom: 0.9rem;
+}
+
+/* The assumption snapshot: one row per assumption, the value and its unit
+   right-aligned so a column of figures lines up. */
+.present__assumptions {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.present__assumption {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin: 0;
+  padding: 0.15rem 0;
+  font-size: 0.88rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.present__assumption:last-child {
+  border-bottom: none;
+}
+
+.present__assumption-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.present__assumption-unit {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.present__setting-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.present__notice {
+  margin: 0.9rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  /* A label, its figure and the unit no longer fit on one line, so the label
+     takes one and the figure the next rather than being squeezed. */
+  .present__assumption {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .present__assumption-label {
+    grid-column: 1 / -1;
+  }
+
+  .present__assumption-unit {
+    justify-self: start;
+  }
 }
 
 @media (max-width: 640px) {

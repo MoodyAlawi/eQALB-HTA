@@ -144,10 +144,8 @@ function clearAllResults(): void {
     </header>
 
     <p class="hint">
-      Reset restores the 16 model assumptions and the threshold only, and keeps every completed
-      result; results are snapshots and re-run from their own button. Every analysis tab marks a
-      stored result as computed from earlier inputs when the inputs or the threshold it used have
-      changed.
+      Reset restores the 16 model assumptions and the threshold only; every completed result is
+      kept.
     </p>
 
     <div class="field field--threshold">

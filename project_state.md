@@ -370,6 +370,18 @@ explicitly documented otherwise.
   `null` and are shown as a dash rather than as a number. Source `./api/run_api.py`
   for the service, `./api/api_contract.md` for the contract, and
   `./frontend/README.md` for the interface.
+- Browser-tab branding in the frontend (static title and the title table only):
+  `frontend/index.html` carries `<title>OpenHealth</title>` and
+  `useAppView.ts`'s `PAGE_TITLES` gives the landing page and the eQalb application
+  (`/app`, which every in-app screen shares) the same "OpenHealth" title, so the tab
+  reads the same from the first paint through the Home screen, the tutorial, the
+  project description, the download view and all nine analysis tabs. It is the only
+  pair of title sources in the frontend: the two dynamic setters are that table (the
+  one the app uses on every move) and `BlogPostView.vue`, which titles an open post
+  with the post's own name, so nothing overwrites the app's title. The two public
+  documents that are pages of their own keep titles that name them — `/about` is
+  "About OpenHealth" and `/blog` is "Blog — OpenHealth" — and the metadata
+  description, favicons, landing copy and in-app eQalb branding are unchanged.
 - OpenHealth public shell: the public addresses are published on top of the same
   dependency-free view store (`frontend/src/composables/useAppView.ts`) — `/`,
   `/blog` and `/blog/<slug>`, `/about` and `/app`. `/` is
@@ -627,12 +639,25 @@ explicitly documented otherwise.
   lit. The heading names itself (and is not focusable), the letter spans are
   aria-hidden, and assistive technology hears
   "eQalb" once. Then "By
-  Mahmood Alawi", the subtitle "An educational HTA model", the primary "Start
-  analysis" action, "Project description" and "Download results", the
+  Mahmood Alawi", the subtitle "An educational HTA model", the four-button menu —
+  "Open analysis workspace" and "Guided tutorial" full-width on their own rows,
+  with "Project description" and "Download results" side by side beneath them, the
+  pair and its gap adding up to the row above, centred as one group under the
+  credits, and the first two marked by an accent outline and a soft accent tint —
+  followed by the
   creator/contact links (LinkedIn, GitHub) and a small icon light/dark control at
   the top-right. The whole composition is drawn complete and static — traces drawn
   whole, every letter in the full title colour — when the user prefers reduced
   motion.
+  The two entry points do not explain themselves on the screen: each opens the
+  app's own dialog (`modal modal--menu`, the shared `dialog` transition, the shared
+  focus containment from `useModalFocus`) with a short title, one sentence and two
+  actions — "Open workspace" or "Start tutorial", and "Close" — and only that
+  action navigates, so the menu stays behind it inert and unchanged and Escape, the
+  Close control or the backdrop returns to it. One explanation can be open at a
+  time, opening or closing one runs no analysis and touches no state, and the two
+  secondary destinations keep their direct navigation without a prompt in front of
+  them.
   The hosted Shiny tutorial link and the long model-description paragraph were
   removed from Home in Batch 1 of the UX revamp, and the project-level disclaimer
   now lives only in the Project description view: it was removed from Home and
@@ -640,7 +665,13 @@ explicitly documented otherwise.
   (`ProjectDescriptionView.vue`, `DownloadResultsView.vue`) carry the Shiny
   description wording, contact address and analyses list, and the session's
   exportable results respectively; Back and Escape return Home, and a compact
-  persistent "Home" button sits in the dashboard header. Navigation is one shared
+  persistent "Home" button sits in the dashboard header. The Download results page
+  is one centred group in the app's content area — `page--centered page--fill`:
+  the title, the introduction and the two actions are centred, the two result
+  lists stay left-aligned inside a width-limited column, and `margin: auto` in a
+  flex column (never a height of its own) centres the group while it fits and
+  resolves to nothing when it does not, so a long list starts at the top and
+  scrolls. Navigation is one shared
   ref (`frontend/src/composables/useAppView.ts`), not a router, and it never
   touches inputs or results. The model contract is fetched only when the dashboard
   is first opened, so Home makes no API request. `frontend/src/export/zip.ts` is a
@@ -650,6 +681,191 @@ explicitly documented otherwise.
   lists what was and was not included and states the remaining backend gap
   (R-rendered chart images). No prompt, no Vue component and no endpoint
   calculates, rescales or reinterprets a model result.
+- Base-case presentation mode in the browser interface (prototype, first iteration;
+  presentation only): the Base-case tab's own actions gain one compact "Present"
+  control, shown only once a valid base-case result exists, and it opens a
+  viewport-sized overlay for a screen share — the app's own dialog (the shared
+  `.modal` markup, the shared `dialog` transition and the focus containment from
+  `useModalFocus`) with one scoped `modal--present` class for a larger panel. It
+  shows a small eQalb identity line with the analysis name, a Close control, the
+  four headline figures at `clamp(1.5rem, 3vw, 2.05rem)`, the ICER sentence the
+  workspace keeps on its information control, the deterministic plane (a second
+  `BaseCasePlane` instance in its own container, so the workspace chart's DOM is
+  never moved), the run's assumption snapshot in a closed disclosure, and R's own
+  `notice` line. It is a view of an existing result and nothing else: no request is
+  issued (verified with a fetch/XHR spy), no figure is derived, no input, default,
+  threshold or export state is touched, and opening it snapshots the result object,
+  so a run that lands while it is open replaces the panel's result without
+  replacing the presented one. The assumptions are read from
+  `BaseCaseResponse.inputs` — the scenario R received — through the contract's
+  labels, and shown with the form's own conversion, so a field edited after the run
+  can never be printed as one the run used; a truthful line names what has moved
+  since the run (the threshold, the scenario inputs, or both) whenever anything
+  has. Only this tab has it: no other analysis tab or the main menu gained a
+  Present control, and there is no browser-fullscreen call, slide, auto-advance or
+  toolbar. Below 640px the panel stacks and scrolls inside itself, and under
+  `prefers-reduced-motion` it is simply present (the global rule leaves it no
+  motion to run).
+- Presentation mode in the browser interface (frontend only, all nine analysis
+  tabs): one compact "Present" action beside each tab's existing result actions,
+  shown only when that tab has a valid result, opens a viewport-sized overlay that
+  shows one completed analysis for a screen share. `components/presentation/`
+  carries it: `PresentationOverlay.vue` is the shell every tab renders (the app's
+  own `.modal` markup, the shared `dialog` transition and the focus containment from
+  `useModalFocus`, one scoped `modal--present` class for the larger panel, the small
+  eQalb identity line with the analysis title, the Close control, the line naming
+  what has moved since the run, the line saying a later run has replaced this one,
+  the settings disclosure and R's notice), `PresentationSettings.vue` renders one row
+  per setting, and `settings.ts` holds the two sentences plus the two row builders
+  (`movedSentence`, `supersededSentence`, `scenarioSettingRows`, `settingRow`) so no
+  panel invents wording. No row shows an internal identifier: a request field the HTA
+  summary reports as not supplied is named through `availabilityFieldLabel`
+  ("Probability cost-effective", "EVPI per patient", "ICER", "Cumulative net budget
+  impact", "DHT readiness"; an unknown future field loses its underscores rather than
+  appearing as one), and the value-of-information overlay's EVPPI table leaves out the
+  workspace's "Model argument" column, whose cells are R's own call arguments
+  (`scenario_rrr`, …), because the parameter column already names each row in words.
+  Each panel passes its own figures, charts and R-owned text
+  through slots, and each overlay keeps the response object it was opened with, so a
+  later run cannot change what is shown. Opening and closing runs nothing: no
+  request, no derived figure, no change to inputs, defaults, thresholds, results or
+  exports. There is no browser-fullscreen call, no slide, auto-advance, comparison
+  or toolbar, no new chart animation and no new dependency; the charts inside an
+  overlay are ordinary instances of the existing components in their own containers.
+  The two tabs whose run is a request rather than a response — one-way sensitivity
+  and readiness — keep that request (`useModel` holds `owsaRun` and `readinessRun`
+  as the request records themselves: the ranked outcome, threshold, scenario body
+  and range overrides for one-way, the readiness values and choices for readiness)
+  and their settings disclosures list exactly those, so a control edited after the
+  run is never printed as one the run used; the disclosure's own line says so, and
+  the moved-since-run line appears whenever the tab would now send something
+  different. The other seven tabs read their snapshot from the response R returned,
+  which already carried the inputs it ran.
+- Analysis-tab orientation in the browser interface (presentation copy only):
+  each of the nine analysis tabs opens with one question sentence in place of the
+  longer description it used to carry — "Is eQalb cost-effective at these
+  assumptions?" on the base case, "How much does the answer change when the
+  assumptions are uncertain?" on the PSA, "Which assumptions influence the result
+  most?" on the sensitivity tab, "What could implementation mean for the budget —
+  deterministic, undiscounted, per year?" on the budget tab, "How might
+  event-free survival compare between the arms?" on the survival tab, "How much
+  could resolving uncertainty be worth?" on the value of information, an
+  explicitly illustrative question on the readiness tab, "What annual price would
+  the model support at the reference threshold, and how does the current price
+  compare?" on the value-based price tab and "What do the analyses run so far add
+  up to?" on the HTA summary. The guidance shown before a result exists is one
+  line naming the tab's own action ("Start with the default assumptions, then
+  select Run base case."), and the value of information tab is the only tab with a
+  real prerequisite, which it states ("Run PSA first to use this analysis; it
+  reuses those draws, so the simulation is not repeated."). Every line sits in the
+  placeholder the tab already had, keeps its existing `.hint`/`.muted` styling — no
+  warning or error styling for a normal not-yet-run state — and disappears as soon
+  as its own result is committed. The tab strip's hint line, the `InfoTip`
+  controls and every disclosure are unchanged, and a unit, warning or model
+  assumption that no control, caption or R wording already carried was kept inside
+  the one sentence rather than dropped.
+- Analysis-run states in the browser interface (frontend only; no calculation, API or
+  execution behaviour changed): every explicit analysis action has one shape of state.
+  The store's `run()` refuses a second request for an analysis that is already running
+  — the belt to each panel's disabled action — so no double click, keyboard
+  activation or twice-confirmed dialog can start a duplicate. Only that analysis'
+  own action is disabled while it waits: the inputs, selectors, Present and the
+  download buttons stay usable, and a run that depends on another analysis (the value
+  of information needs the PSA) states the prerequisite instead of failing. The
+  previous result is never cleared by a new run: it stays on screen with its stale
+  notice while the request waits and is replaced only when R answers, so a failure
+  leaves it exactly as it was with one `role="alert"` message beside it (R's own
+  message, or the client's own "Cannot reach the model service…"), the action
+  re-enabled and every input untouched for a straight retry. The five states are
+  distinct and share one vocabulary: no result yet (`<p class="hint" role="status">`
+  with the tab's guidance), in flight (the same element carries the wait sentence
+  while the button's pending label and the app-wide loader say the same thing), result
+  available (the figures, with the placeholder gone), request failed (the alert above
+  it) and result from earlier settings (the existing stale notice, still
+  `alert--warning` and still informational). Every pending label names its own
+  analysis — "Running the base case…", "Running the sensitivity analysis…",
+  "Running the budget impact…", "Simulating survival…", "Calculating the value of
+  information…", "Assessing readiness…", "Calculating the value-based price…",
+  "Assessing the HTA summary…" — and the PSA names the run's own iteration count
+  ("Running 100 iterations…"), captured when the run starts so editing the iterations
+  field while it waits cannot relabel the run that is going; the PSA's in-flight line
+  (`role="status"`, the one place the older wording claimed "a 1,000-draw PSA takes
+  minutes" for every run, including a 100-draw one) now says "Running 100 iterations.
+  Keep this tab open until it finishes." and keeps the minutes warning only at or
+  above the size the confirmation dialog warns about. The rotating lighthearted line
+  is unchanged and stays where the pattern already existed — the app-wide loader card
+  under the factual status (`useLoadingMessages`: 7 s rotation, opacity-only
+  crossfade, one static message under reduced motion) — and was not copied into the
+  panels. No state uses red or orange except a genuine failure; no retry, polling,
+  background run or new trigger was added; nothing new is a container, so no state
+  change moves the layout, and the longest pending label still fits on one line at
+  390 px.
+- Workspace wording audit in the browser interface (frontend presentation copy only,
+  no calculation, API wording, export content or presentation-mode change): four
+  pieces of static text were reduced to what a reader needs on the way to a result.
+  (1) The assumptions sidebar's reset hint was three sentences that repeated the
+  "Reset model inputs" button's own title and the stale notice every tab shows in
+  situ ("results are snapshots and re-run from their own button", "every analysis tab
+  marks a stored result as computed from earlier inputs"); it is now the one fact the
+  hint alone carries — "Reset restores the 16 model assumptions and the threshold
+  only; every completed result is kept." — with the full scope still in the button's
+  title and the snapshot behaviour still stated by each tab's own result notice.
+  (2) The sensitivity tab's permanently visible paragraph about the downloaded CSV
+  (and how the Shiny export lays the same numbers out differently) moved unchanged
+  into the "Full one-way sensitivity table (N parameters)" disclosure, where the
+  table it describes already sits, so the open panel shows the ranked table, the
+  tornado and R's interpretation without a file-format aside. (3) The survival tab's
+  export note, which the download button's own title already covered in part and
+  which named the API ("the API does not return that dataset yet") and the Shiny
+  tab's extra download, is now one plain sentence that keeps the limitation: "The
+  simulated patient-level dataset is not available here yet, so the download offers
+  the summary tables instead." (4) The HTA summary's partial-assessment alert said
+  the same thing twice for one result — "Not yet included: …", R's not-assessable
+  domain names, and then the raw API request fields
+  ("Request fields not supplied: probability_cost_effective, evpi") — and the raw
+  field list also appeared again inside the availability disclosure; the prominent
+  copy is gone and the field list remains in that disclosure alone, so nothing a
+  reader is told is lost. Deliberately unchanged: every R-generated string (R's
+  interpretations, summaries, notes, warnings, thresholds, availability wording and
+  the simulated-data notices), the export strings and the text written into exported
+  files, every result-specific notice (stale, bound, excluded-iteration,
+  missing-analysis, failed-run), the readiness traffic-light disclaimer, the
+  value-based price insight's "it is not an input to this summary" clarification, and
+  each tab's one-sentence introduction.
+- Per-chart PNG export in the browser interface (frontend only, local review first):
+  every interactive ECharts chart in the analysis workspace carries one compact
+  "Download chart" action under it, inside the figure that holds that chart
+  (`components/ChartDownload.vue`). It saves the chart exactly as it is on screen —
+  the live instance is asked for its own image via `getDataURL`, looked up from the
+  chart's own container with `getInstanceByDom` (which returns undefined rather than
+  initialising a chart) — so nothing is rerun, no result is recomputed, no option is
+  changed and no second chart is created for the export. The current theme travels
+  with it: the live palette's panel colour is painted behind the image, so a
+  dark-theme chart exports as readable text on the dark panel and a light-theme one
+  as dark text on white. The image is written at twice the on-screen pixels, so it
+  stays sharp when enlarged. Nine charts are covered — the base-case plane, the PSA
+  plane and acceptability curve, the tornado, the budget-impact chart, the survival
+  curves, the EVPI and EVPPI charts and the value-based-price comparison; the
+  readiness and HTA summary tabs have tables rather than charts, so they get nothing,
+  and the tutorial's own charts are outside this workspace and were not touched. Files
+  are named for the analysis and the chart
+  (`base-case-cost-effectiveness-plane.png`, `psa-cost-effectiveness-plane.png`,
+  `psa-acceptability-curve.png`, `sensitivity-tornado-diagram.png`,
+  `budget-impact-net-and-cumulative.png`, `survival-event-free-survival.png`,
+  `value-of-information-evpi.png`, `value-of-information-evppi.png`,
+  `value-based-price-comparison.png`). The button is a real `<button>` with an
+  `aria-label` naming its chart ("Download the … chart as a PNG") and a `title` naming
+  the file, reached by Tab, activated by Enter or Space, and painted with the app's
+  ordinary focus ring; it is always present while its result is, so the figure's
+  height never changes when it is used. Outcomes go through the app's single download
+  notice (`prepareDownload`): "Download prepared." with the file name, or, when the
+  chart is not on screen, "The download could not be prepared. The chart is not on
+  screen yet." as a `role="alert"` — the chart and the result are left exactly as they
+  were. Presentation mode is untouched (its overlays build their own captions and do
+  not render this component), the consolidated results ZIP is untouched (it still
+  carries the numeric tables and no chart images), and the base64 payload is decoded
+  for the download without reading or re-encoding a pixel
+  (`export/png.ts`).
 - Browser interface foundation (UX revamp, Batch 1; presentation only): every
   help popover (`InfoTip.vue` — the assumptions, PSA controls, budget controls,
   readiness input, EVPI/EVPPI and the metric hints) is an overlay. The panel is
@@ -1782,6 +1998,445 @@ explicitly documented otherwise.
   instead of rotating.
 
 ## Current task
+Uncommitted (2026-10-16): **browser-tab title changed to "OpenHealth"** (frontend,
+two lines of source).
+
+| Where | Before | After |
+|---|---|---|
+| `frontend/index.html`, the static `<title>` | `eQalb — an interactive introduction to health-economic modelling` | `OpenHealth` |
+| `useAppView.ts`, `PAGE_TITLES[LANDING_PATH]` (`/`) | the same old title | `OpenHealth` |
+| `useAppView.ts`, `PAGE_TITLES[APP_PATH]` (`/app`, every in-app screen) | `eQalb — illustrative HTA model` | `OpenHealth` |
+
+`/about` ("About OpenHealth"), `/blog` ("Blog — OpenHealth") and an open blog post
+(its own name plus " — OpenHealth", set by `BlogPostView.vue`) were deliberately left
+alone: they are separate public documents with titles that name them, not the
+workspace's tab. The metadata description, favicons, landing copy, in-app eQalb
+branding, tutorial content and model naming are unchanged, and nothing else in the
+frontend writes `document.title` — the two setters found by a repo-wide search are
+that title table and the blog post view.
+
+Verified before leaving it in the tree: `npm run typecheck`, `npm run lint`,
+`npm run build` (`index-DwadKxDr.js`) and `git diff --check` all pass, and the built
+`dist/index.html` carries `<title>OpenHealth</title>`. In the browser the tab showed
+exactly "OpenHealth" on the landing page, on `/app` from the first paint, through the
+"Open analysis workspace" explanation overlay, on all nine analysis tabs, on the Home
+screen, the tutorial, the Project description and the Download results views, while a
+presentation overlay was open and after it closed; `/about` and `/blog` and a blog
+post kept their own titles. No regression: the base case still ran (€2,439), the
+chart export still produced `base-case-cost-effectiveness-plane.png` with one canvas
+and no extra request, presentation mode opened and closed with the workspace intact,
+the API reported `ok`, and no analysis request came from any navigation.
+
+Uncommitted (2026-10-16): **presentation-mode wording follow-up** (frontend copy
+only, local review first): the two places where a presentation still showed an
+internal identifier now show the reader's word for it, and nothing else about a
+presentation changed.
+
+| Where | Before | After |
+|---|---|---|
+| HTA summary overlay, settings disclosure | Row "Request fields not supplied" with the endpoint's own identifiers as its value: `probability_cost_effective, evpi` (and `icer`, `cumulative_budget_impact`, `readiness` when those are the ones missing). | Row "Values not supplied" with the workspace's own names for the same fields: "Probability cost-effective, EVPI per patient" (and "ICER", "Cumulative net budget impact", "DHT readiness"). Every field R reports is still listed; nothing is dropped, renamed in R, or guessed, and a field a future contract adds is written with its underscores removed rather than shown as an identifier. |
+| Value of information overlay, EVPPI table | Four columns, including "Model argument", whose cells are the R call's argument names (`scenario_rrr`, `scenario_engagement_year1`, …). | Three columns: Parameter, EVPPI per patient, Unclamped estimate — the same nine rows with the identifier column left out, since the parameter column already names each row in words. |
+
+Both are presentation-only, and the workspace's own copies are untouched: the HTA
+summary's "Availability of the upstream analyses" disclosure still lists the request
+fields, and the tab's EVPPI table still carries its "Model argument" column, so
+nothing about the desktop workspace changes. The mapping lives in
+`components/presentation/settings.ts` (`availabilityFieldLabel`) so no panel invents
+a name, and the overlay's column set is derived from the panel's own columns rather
+than duplicated.
+
+Verified before leaving it in the tree: `npm run typecheck`, `npm run lint`,
+`npm run build` (`index-Dg4e6nwv.js`) and `git diff --check` all pass. In the browser
+with all nine results stored, every overlay was opened with all of its disclosures
+expanded and its text scanned for identifiers: **zero** snake_case names and no
+"Request fields" phrase in any of the nine, while each overlay still showed its own
+figures, tables and settings rows (base case 4 metrics / 17 rows, PSA 4 / 4, tornado
+4 / 20, budget 4 / 9, survival 4 / 4, VOI 4 / 4 with its 9-row table, readiness 4 /
+15, value-based price 3 / 18, HTA summary 1 / 7); the value-of-information overlay's
+EVPPI table now reads Parameter | EVPPI per patient | Unclamped estimate with the
+same nine parameters, and its workspace table still reads all four columns including
+"Model argument"; the HTA summary overlay's settings show "Values not supplied:
+Probability cost-effective, EVPI per patient, DHT readiness" in the partial state
+(2 of 5 domains) and no such row when everything is included — the row appears
+exactly when R reports a field missing. No analysis request was issued while opening
+or closing any overlay (a fetch spy recorded none); Close and Escape returned the
+focus to that tab's Present action with zero overlays and zero `[inert]` left behind.
+No chart-export control appears inside an overlay (0 in all nine), and a workspace
+PNG export still produced a valid 163 KB image. At 390 px the value-of-information
+overlay had no page or panel overflow and its three-column table scrolled inside its
+own container (488 px content in 297 px). The wording audit is intact (the shortened
+sidebar hint still renders) and the HTA summary's workspace disclosure is unchanged.
+
+Uncommitted (2026-10-16): **per-chart PNG export for the workspace's interactive
+ECharts charts** (frontend only, local review first).
+
+Each of the nine workspace charts gained one small action — "Download chart", under
+the chart inside its own figure (`components/ChartDownload.vue`) — and nothing else
+about a chart changed: the composable, the chart components and their options are
+untouched, so the workspace and presentation-mode renderings are the same bytes they
+were.
+
+How it works, and why it is not a second chart: the button resolves the chart's live
+instance from its own container (`getInstanceByDom`, which never initialises
+anything) and asks that instance for its image (`getDataURL`, `type: 'png'`,
+`pixelRatio: 2`, with the live palette's panel colour as the background). Nothing is
+rerun, no result is recomputed, no option is modified, no instance or canvas is
+created for the export, and the image is the chart as currently rendered in its
+current theme and with its current data. The base64 payload is decoded to bytes
+(`export/png.ts`) and handed to the browser by the existing download helper, and the
+outcome is reported by the app's existing single notice (`prepareDownload`), so no
+new notice system and no new dependency were introduced.
+
+| Chart | File |
+|---|---|
+| Base case, deterministic cost-effectiveness plane | `base-case-cost-effectiveness-plane.png` |
+| PSA, cost-effectiveness plane | `psa-cost-effectiveness-plane.png` |
+| PSA, acceptability curve | `psa-acceptability-curve.png` |
+| Sensitivity, tornado diagram | `sensitivity-tornado-diagram.png` |
+| Budget impact | `budget-impact-net-and-cumulative.png` |
+| Survival, event-free survival | `survival-event-free-survival.png` |
+| Value of information, EVPI chart | `value-of-information-evpi.png` |
+| Value of information, EVPPI chart | `value-of-information-evppi.png` |
+| Value-based price, price comparison | `value-based-price-comparison.png` |
+
+Deliberately out of scope: presentation mode (its overlays build their own captions
+and do not include the action — verified zero buttons and no "Download chart" text in
+an open overlay), the tutorial's own charts, the readiness and HTA-summary tabs (they
+have tables, not charts), the consolidated results ZIP (its file list is unchanged
+and still carries no chart images), the R models, the API, the calculations, the
+input defaults and the existing CSV exports.
+
+Verified before leaving it in the tree: `npm run typecheck`, `npm run lint`,
+`npm run build` (`index--hTHQU07.js`) and `git diff --check` all pass. In the browser
+(model API on 127.0.0.1:8788, Vite on 127.0.0.1:5173) with all nine results stored,
+all nine buttons were clicked and every produced file was read back and decoded: each
+is a valid PNG with a non-empty payload (46–163 KB), many distinct colours
+(214–1067), non-zero ink, and dimensions exactly twice the canvas measured at click
+time (e.g. the base case 956x320 -> 1912x640, the tornado 956x420 -> 1912x840, the
+two value-of-information charts 930x320/930x420 -> 1860x640/1860x840), with the panel
+colour in the corner (dark theme `rgb(22,36,44)`, light theme `rgb(255,255,255)`), so
+each image is that chart in that theme rather than a blank or a shared frame. No API
+request was issued by any export (a fetch spy recorded none across all nine, the
+repeat runs and the keyboard run). Three repeated exports of one chart left the canvas
+count, the zrender root count and the figure height unchanged (1 canvas, 1 instance,
+402 px), so nothing leaks and nothing shifts. The button is reachable by Tab with
+`outline: 2px solid rgb(127,209,216)` and `:focus-visible` matching, and Enter
+downloads. With the chart's container removed, the action reported
+"The download could not be prepared. The chart is not on screen yet." as a
+`role="alert"` with zero downloads and the four result figures intact; leaving the tab
+and returning re-rendered the chart and the export worked again. Under
+`prefers-reduced-motion: reduce` the button has a 0 s transition and still exports. At
+390 and 1440 px on all seven chart tabs: no page overflow, no figure outside the
+viewport, no button outside its figure. The results package still builds 14 entries
+with no `.png` among them, presentation mode opens with no download action, and the
+stored results and figures are unchanged (base case €2,439 / 0.0082 / €298,966 /
+−€1,623). Not verified: the Shiny application (untouched), the hosted deployment
+(unchanged), a real screen reader (the label and role were read from the
+accessibility tree, not announced), and browsers other than Chromium.
+
+Uncommitted (2026-10-16): **conservative wording audit across the analysis
+workspace** (frontend copy only, local review first): four static texts reduced
+where the same information already lived somewhere a reader can reach it, with
+nothing removed that explains a result.
+
+The rule applied was one of replacement rather than deletion: a sentence could go
+only when the fact it carried is still available in the project description, an
+information popover, a collapsible section, the button's own title, or a
+result-specific notice. What changed:
+
+| Where | Before | After |
+|---|---|---|
+| Assumptions sidebar (`.assumptions > p.hint`) | "Reset restores the 16 model assumptions and the threshold only, and keeps every completed result; results are snapshots and re-run from their own button. Every analysis tab marks a stored result as computed from earlier inputs when the inputs or the threshold it used have changed." | "Reset restores the 16 model assumptions and the threshold only; every completed result is kept." The scope detail stays in the "Reset model inputs" title; the snapshot and stale behaviour is what each tab's own stale notice says, in the tab where it matters. |
+| Sensitivity analysis, permanently visible under the tornado | "The downloaded CSV holds that table: one row per parameter, with the low and high results in separate columns. The Shiny export writes the same results in a long layout instead — one row per parameter and scenario — so the two files carry the same numbers in different shapes." | Moved unchanged into the "Full one-way sensitivity table (N parameters)" disclosure, beside the table it describes; the open panel no longer carries a file-format aside (the download button's title still names the CSV's shape). |
+| Simulated survival, above the controls | "This export holds the summary tables above. The Shiny tab additionally downloads the simulated patient-level dataset; the API does not return that dataset yet, so it is not offered here rather than reconstructed with a different method." | "The simulated patient-level dataset is not available here yet, so the download offers the summary tables instead." The limitation is kept; the API reference, the Shiny comparison and the engineering rationale are gone, and what the export holds is already the download button's title. |
+| HTA decision summary, partial-assessment alert | "Not yet included: PSA, Value of information. R reports these domains as not assessable: Economic value, Decision uncertainty. Request fields not supplied: probability_cost_effective, evpi." | "Not yet included: PSA, Value of information. R reports these domains as not assessable: Economic value, Decision uncertainty." The raw request-field list — the only internal API vocabulary in the workspace — is gone from the prominent alert and still available inside the "Availability of the upstream analyses" disclosure, where it also appeared. |
+
+Two follow-up pieces of the same rule landed in **presentation mode only**, because a
+presentation is read by someone who has never seen the contract and the workspace's own
+copies are deliberate (the availability disclosure keeps the field list, and the
+value-of-information table keeps its model-argument column): the HTA summary's settings
+disclosure now names each not-supplied request field with the workspace's own wording
+(`availabilityFieldLabel` in `components/presentation/settings.ts` — `icer` → "ICER",
+`probability_cost_effective` → "Probability cost-effective", `evpi` → "EVPI per patient",
+`cumulative_budget_impact` → "Cumulative net budget impact", `readiness` → "DHT
+readiness", and an unknown future field written with its underscores removed rather than
+as an identifier) under the row label "Values not supplied"; and the value-of-information
+overlay's EVPPI table drops the "Model argument" column, whose cells are R's own call
+arguments (`scenario_rrr`, …), since the parameter column already names every row in
+words. Neither omits a value: the same fields are listed, and the same nine EVPPI rows
+are shown, with three reader-facing columns instead of four.
+
+Deliberately unchanged, and why: every string R writes (interpretations, summaries,
+`summary_note`/`bounds_note`/`event_note`/`logrank_note`/`evidence_note`/`rule_note`,
+thresholds, availability wording, the simulated-data notices) because R owns all
+wording about a result; the export strings and the text written into exported files,
+including the CSV button titles and `resultsPackage.ts`'s README and gap text; every
+result-specific notice (the stale notice, bound warnings, excluded-iteration counts,
+the value-of-information draw warning, failure messages); the readiness
+traffic-light disclaimer and legend; the value-based price insight's "it is not an
+input to this summary and does not change the position above", which no other line
+carries; the eight one-sentence tab introductions; and "held in this browser"
+phrasing, which distinguishes this session's PSA draws from a server-side rerun.
+Presentation mode's own settings rows were out of scope for that pass and were
+handled in the follow-up below.
+
+Verified before leaving it in the tree: `npm run typecheck`, `npm run lint`,
+`npm run build` (`index-_4G5NO3w.js`) and `git diff --check` all pass. In the
+browser (model API on 127.0.0.1:8788, Vite on 127.0.0.1:5173) with all nine results
+stored: the shortened sidebar hint renders; the sensitivity note is absent from the
+open panel (`0` matching nodes) and present and visible once the table disclosure is
+opened, absent from `innerText` and `checkVisibility() === false` while it is closed;
+the survival note reads the new sentence and the panel contains no "the API does not
+return" text; the HTA summary alert renders the two plain-language sentences with no
+`<code>` field list in the panel; at 1440, 1024, 768 and 390 px the base case,
+sensitivity, survival and HTA summary tabs report `scrollWidth === clientWidth` with
+no paragraph escaping the panel; base-case figures are unchanged (€2,439 / 0.0082 /
+€298,966 / −€1,623) with one canvas and no request issued; and the edited strings
+render in the light theme in the muted hint colour (`rgb(100, 116, 139)` on
+`rgb(244, 247, 249)`) as they do in dark. Not verified: the Shiny application
+(untouched), the hosted deployment (unchanged), and browsers other than Chromium.
+
+Uncommitted (2026-10-16): **loading, in-flight, success, error and
+cancellation-adjacent states audited and made consistent across all nine analysis
+actions** (frontend only, local review first), on top of the same day's presentation
+mode (all nine tabs), the Base-case prototype, the snapshot-metadata follow-up, the
+minimal-clutter orientation pass, the main-menu layout and the Download results
+centring — all preserved, and nothing about the R models, the API contract, the
+calculations, the input defaults, the exports or the analysis execution changed.
+
+What was wrong and what it is now, in one place per state:
+
+- **Duplicates.** The store's `run()` now returns early when that analysis is
+  already running, so a second submission cannot start a second identical request
+  even if it reaches the handler (a triple click in one tick fired exactly one
+  request; a programmatic click on the disabled action fired none). Each panel still
+  disables only its own action — the inputs, the ranked-outcome selector, Present and
+  the download buttons stay usable while a run waits, which is what makes it possible
+  to keep exploring while a long PSA runs.
+- **The previous result survives a new run.** Nothing is cleared when a request
+  starts: the earlier result stayed on screen with its stale notice through a
+  re-run of the one-way analysis (its 14-row table and its chart) and was replaced
+  only when R answered.
+- **Failure.** A failed request leaves the previous result, one `role="alert"`
+  message (R's own detail, or the client's own unreachable-service sentence), the
+  action re-enabled and every input as the user left it; the retry then succeeded and
+  the message cleared. No automatic retry, no polling, no background run.
+- **The five states read differently, in the one element each tab already had.**
+  "No result yet" and "request in flight" are the same `<p class="hint" role="status">`
+  slot, which now carries the wait sentence while the run goes
+  ("Running the budget impact with these inputs.") and the tab's guidance otherwise,
+  so the guidance is replaced rather than added to and it disappears the moment the
+  result lands. "Result available" is the figures with that line gone; "request
+  failed" is the alert above them; "result from earlier settings" is the existing
+  stale notice and is still informational, not an error.
+- **Loading text is analysis-specific, and honest about what is running.** Each
+  pending label names its own analysis, and the PSA's names the run's own iteration
+  count, captured when the run starts: editing the iterations field from 100 to 1,000
+  while a 100-draw run was in flight left both the button and the in-flight line
+  saying 100. The PSA's in-flight line — the one place the old wording claimed "a
+  1,000-draw PSA takes minutes" for every run — now reads "Running 100 iterations.
+  Keep this tab open until it finishes." for a small run and keeps the minutes warning
+  only at or above the size the confirmation dialog warns about.
+- **The lighthearted rotation was left where it already existed.** The app-wide
+  loader card (`useLoadingMessages`, 7 s rotation, opacity-only crossfade, one static
+  message under reduced motion) still turns over during a long analysis run and was
+  not copied into the panels or duplicated anywhere; under
+  `prefers-reduced-motion: reduce` the ECG dash in the pending button is stilled too
+  (`animation: none`), and no transition runs.
+
+Verified before leaving it in the tree: `npm run typecheck`, `npm run lint`,
+`npm run build` (`index-BaxIfIJZ.js`) and `git diff --check` all pass. In the browser
+(model API on 127.0.0.1:8788, Vite on 127.0.0.1:5173) each of the nine analyses was
+started and driven through its states — the placeholder sentence and its
+`role="status"`, the in-flight sentence and pending label, the result, and (for the
+budget impact) a deliberate 500 to prove the failure path; the slow analyses (PSA at
+the documented 100 draws, one-way, value-based price, value of information, HTA
+summary) supplied the in-flight samples directly and the fast ones were held with
+emulated latency so their in-flight line could be read rather than assumed. A run
+navigated away from and back mid-flight still showed its pending state, its disabled
+action and its previous result; a triple click fired one request and a click on the
+disabled action fired none; the workspace was driven from 0 to 9 of 9 stored and
+back to the no-result state using the app's own "Clear all results", with each tab's
+placeholder returning exactly as before. At 390 px no state produced page-level
+overflow, every pending label stayed on one line (the longest, "Calculating the
+value of information…", at 266 px) and the in-flight line was shorter than the
+guidance it replaced, so nothing moved. Presentation mode opened on the base case
+(€2,439, 17 settings rows) and the value-based price (€155.03, 18 rows) with no
+request, focus back on Present and no leftover overlay or `[inert]`; the Download
+results view was still absent from the dashboard and still rendered on
+`page === 'export'` through its menu action, with the same included/not-yet-run
+lists; charts drew as before (one canvas on the base case after open/close, two on
+the PSA and the value of information). Not verified: the Shiny application
+(untouched), the hosted deployment (unchanged), a 1,000-draw PSA (the wording branch
+at or above the confirmation size was read in the code and not run, per the standing
+policy on PSA sizes), browsers other than Chromium, and a real screen reader (the
+live regions and the alert roles were read from the accessibility tree, not
+announced).
+
+Uncommitted (2026-10-16): **presentation mode extended to all nine analysis tabs**
+(frontend only, local review first), on top of the same day's Base-case prototype,
+minimal-clutter orientation pass, main-menu layout and Download results centring
+(all preserved, including the approved Base-case design and its chart-entry
+behaviour). A shared presentation shell carries the parts every analysis shows the
+same way — the small eQalb identity line and analysis title, the Close control,
+the line naming what has moved since the run, the line saying a later run has
+replaced this one, the run-settings disclosure and R's own simulated-data notice —
+and each panel supplies its own figures, charts and R-owned wording through slots.
+One compact "Present" action sits beside each tab's existing result actions, shown
+only when that tab has a valid result and absent from the main menu, the tutorial,
+the loading states and the empty placeholders. No new dependency, no browser
+fullscreen, no slides, auto-advance, comparison or toolbar, and no chart animation
+was added or removed: each overlay's charts are ordinary instances of the existing
+components in their own containers, and they animate exactly as the workspace
+instances do.
+
+What each tab presents, all read from the presented response:
+
+- Base case — the four headline figures, the ICER sentence and the deterministic
+  plane (the approved prototype, unchanged).
+- Cost-effectiveness and PSA — mean cost, mean QALYs, median ICER and the
+  probability cost-effective at the run's own threshold, with the plane and the
+  acceptability curve side by side, the excluded-iteration warning and the
+  iteration-cloud note.
+- Sensitivity analysis — the base outcome in the run's own ranking, base cost, base
+  QALYs and base NMB, the tornado, R's narrative for the run and the range count
+  with R's bounds note.
+- Budget impact — cumulative net impact, intervention and implementation cost and
+  healthcare savings, the yearly chart, the deterministic/undiscounted sentence and
+  the yearly table, with population, horizon and the settings R reports.
+- Simulated survival — patients per arm with the run's seed and follow-up, events
+  per arm and the hazard ratio, the curves, number at risk and arm summary, the
+  definitions/diagnostics/log-rank lines and R's traffic-light interpretation.
+- Value of information — EVPI per patient at the run's threshold, mean cost and
+  QALYs, the draws reused, the two visual summaries, the EVPPI table and the
+  per-patient, approximation and population-value qualifications.
+- DHT readiness — population and active users, R's own status counts (no new
+  overall score or ranking), R's interpretation, the domain table with R's statuses
+  and the quantitative outputs.
+- Value-based price — the supported price with R's status band, the current price
+  and headroom, the comparison chart, R's interpretation, the required-effect
+  verdict, R's limitation, any warnings and the 3 x 3 scan.
+- HTA decision summary — R's overall position and domain count, R's interpretation,
+  the domain dashboard, the explicit not-yet-included list, the evidence priorities
+  and the traffic-light rules.
+
+Snapshot integrity: each overlay snapshots the response object when it opens, so a
+later run cannot change what is shown; the settings it prints come from that
+response (its own inputs, thresholds, seeds, draw counts and availability flags), or
+— only while the tab's own comparison says the stored run still matches the panel's
+controls — from the settings that produced it, and never from an unrun control. When
+anything has moved the overlay says so and omits the control-derived rows; when a
+later run lands behind an open overlay it says that too, and neither changes the
+figures. Opening and closing issues no request, derives no figure and changes no
+input, result or export.
+
+Verified before leaving it in the tree: `npm run typecheck`, `npm run lint`,
+`npm run build` and `git diff --check` all pass, and every tab was driven in the
+browser (model API on 127.0.0.1:8788, Vite on 127.0.0.1:5173). Present is absent on
+all nine tabs before their own result exists and present afterwards; each overlay's
+figures matched its panel exactly (PSA €2,418 / 0.0078 / €333,633 / 1.0% at
+€100,000; budget €15,480,000 over 5 years; readiness 63,750 eligible with the domain
+counts; value-based price €155.03 with headroom −€204.97; VOI €0.11 per patient over
+100 reused draws); no request was issued while opening or closing any overlay (a
+fetch/XHR spy recorded none); each overlay's charts drew in their own containers —
+one canvas where the panel has one, two for the PSA and the value of information —
+and the workspace instances stayed live afterwards, with five rapid open/close cycles
+leaving no extra canvas or ECharts instance; Close, Escape and the backdrop all
+closed the overlay, returned the focus to that tab's Present action and left zero
+`[inert]`; Escape inside an open disclosure closed that first; a later run landing
+behind an open overlay left the presented run on screen (the 5-year budget
+€15,480,000 shown while the panel moved to the 8-year €33,216,000) together with the
+"a later run has replaced this result" line; changing an assumption after a run added
+the "controls have changed" line while the figures stayed the run's; the panel stacks
+and scrolls inside itself at 390 px with both charts 275 px wide and no page
+overflow; light and dark both render; under `prefers-reduced-motion` the overlay is
+present at once with 0 s transitions and no transform; navigating away while open
+unmounted cleanly with no `[inert]` left and the menu usable; and the approved
+Base-case overlay, the main-menu explanations, the centred Download results page, the
+analysis-tab wording and the stored results were all unchanged, with no console or
+page error. Not verified: the Shiny application (untouched), the hosted deployment
+(unchanged), a real screen-share capture, browsers other than Chromium, and print
+rendering of the overlays beyond the global print rules.
+
+**Snapshot-metadata limitations (resolved).** The response is the only per-run record the app
+keeps: the base case, PSA, budget impact, survival, value of information,
+value-based price and HTA summary all carry their own run metadata, so those
+presentations need nothing from the controls. The one-way sensitivity analysis does
+not report the scenario it ran, and the readiness assessment does not report its
+seven values, so the store keeps the request each of those two runs was sent —
+`owsaRun` holds the `OwsaRunRequest` record (threshold, `scenario_*` body and the
+range overrides, or `null` when R derived them) and `readinessRun` holds the
+readiness request body, both beside their result — and the presentation lists
+exactly that, never the controls; the disclosure says so, and the store's staleness
+comparison reads the same stored record, so what is shown and what is compared
+cannot disagree. Nothing is invented for a run that predates the retained record, and
+no settings history, undo or cross-run comparison exists.
+
+Already in the tree from earlier the same day: the minimal-clutter orientation pass
+over the browser interface, frontend only, in its revised form. The Home screen's
+menu is the two
+entry points ("Open analysis workspace", "Guided tutorial") full-width on their
+own rows with the two secondary destinations ("Project description", "Download
+results") side by side beneath them, the pair and its 8 px gap adding up to the
+row above, the whole group capped at a compact width and centred under the
+credits, and the two entry points marked only by an accent outline and a soft
+accent tint; the two-line filled buttons of the first attempt were removed, along
+with the rules that existed only for them. Labels stay on one line down to a
+370 px viewport and wrap to a second line (equal heights, no clipping, no
+overflow) below that, since the grid's `min-width: 0` lets the columns shrink. Each of the nine analysis tabs opens with a single question
+sentence in place of its longer description, and the guidance shown before a
+result exists is one line naming that tab's own action, with the value of
+information tab stating its genuine PSA prerequisite. The two entry points now
+open a small centred explanation of their own instead of navigating at once — the
+app's own dialog, with a short title, one sentence, one action ("Open workspace" /
+"Start tutorial") and a "Close" control, closable by Escape, the Close control or
+the backdrop, navigating only from its action, one overlay at a time, and running
+nothing while it opens or closes — while "Project description" and "Download
+results" keep their direct navigation. The Download results page is now one
+centred group in the app's content area, horizontally and — while it fits —
+vertically, with its two result lists left-aligned inside it and natural scrolling
+when it is taller than the window. No calculation, input, default, endpoint,
+export, tutorial step, animation, landing page, blog, favicon, theme, route or
+deployment file was touched, `app.R` is untouched, and nothing was committed,
+pushed or deployed.
+
+Verified before leaving it in the tree: `npm run typecheck`, `npm run lint`,
+`npm run build` and `git diff --check` all pass, and the running app (model API on
+127.0.0.1:8788, Vite on 127.0.0.1:5173) was checked in the browser. The menu
+renders as three rows — the two entry points full width and the secondary pair
+side by side, with the pair plus its 8 px gap adding up to the row above
+(384 = 188 + 188 + 8 at 768 px and wider, 342 = 167 + 167 + 8 at 390 px) — centred
+under the credits with the LinkedIn/GitHub line still centred, no clipped label and
+no horizontal overflow at 320, 360, 370, 375, 390, 430, 768, 1240 and 1440 px;
+every label is one line down to 370 px and the two secondary labels wrap to a
+second line (equal heights, still no overflow) at 360 and 320 px; its four
+destinations still resolve, and hover and press
+were exercised on a hover-capable pointer (the choices fill to the accent on
+hover, the secondary pair go accent-soft, the press is scale(0.98) and returns on
+release). Both explanations open with the right title, sentence and action; Close,
+Escape and the backdrop each return to the unchanged menu with the focus on the
+button that opened it; Continue navigates once (nine tabs for the workspace, Part
+1 step 1 for the tutorial); six rapid opens leave one overlay and four rapid
+Continue clicks still navigate once; Tab and Shift+Tab wrap inside the overlay, a
+programmatic focus on the menu behind it is refused, opening and closing issues no
+HTTP request, the stored results count is unchanged, and no console or page error
+appeared anywhere. Under `prefers-reduced-motion` the overlay appears at once
+(0 s transitions) and the press transform is removed rather than stilled. The
+Download results page was measured at 390, 820, 1024, 1240 and 1440 px: the group
+is centred while it fits (equal auto margins inside the content area), starts at
+the top and scrolls when it does not, keeps its padding below 1024 px with the
+vertical centring dropped, and shows no horizontal overflow; the title,
+introduction and actions are centred with the lists left-aligned — checked with no
+analyses run and with two stored — and `#export-title` is absent from the
+dashboard and the tutorial in every case. The nine analysis tabs still render the
+previous pass's introductions and guidance unchanged. The menu's touch behaviour
+was checked as far as this Chromium allows: it would not emulate the `hover` media
+feature (CDP reported `(hover: hover)` regardless), so the block's declarations
+were applied with the condition stripped, and the choice button kept its resting
+accent look while the secondary button stayed neutral — the rule itself and its
+order were read back from the served CSSOM, and the touch branch was not exercised
+on hardware. Not verified: the Shiny application (untouched), the hosted
+deployment (unchanged), and any browser other than Chromium.
 
 Completed and released (2026-10-15): the frontend presentation work — the result
 entrance and its ECG trace, the tutorial step transitions, the five interaction-polish
@@ -4926,6 +5581,15 @@ another post beyond writing it and listing it in `posts.ts`.
 
 | Date | Change | Verified? |
 |---|---|---|
+| 2026-10-16 | Browser-tab title changed to "OpenHealth", frontend only. The static `<title>` in `frontend/index.html` was `eQalb — an interactive introduction to health-economic modelling`; it is now `OpenHealth`. The two entries of `PAGE_TITLES` in `frontend/src/composables/useAppView.ts` that would have overwritten it are now `OpenHealth` as well — the landing address `/` (which carried the old title) and the application address `/app`, which every in-app screen shares (Home, tutorial, project description, download view and the dashboard), so the tab reads "OpenHealth" throughout the product rather than switching to "eQalb — illustrative HTA model" on the workspace. The comment above the table now records that. `/about` ("About OpenHealth"), `/blog` ("Blog — OpenHealth") and an open blog post (titled by the post in `BlogPostView.vue`) are unchanged, as are the metadata description, the favicons, the landing copy, the in-app eQalb branding, the tutorial content, the model naming, the API, the R files, the exports and every analysis behaviour | Yes - frontend, local review first. `npm run typecheck`, `npm run lint`, `npm run build` (`index-DwadKxDr.js`, 934.73 kB) and `git diff --check` pass; `frontend/dist/index.html` carries `<title>OpenHealth</title>` and the description untouched. Browser at 127.0.0.1:5173: the tab showed exactly "OpenHealth" on `/`, on `/app` before and after the menu's explanation overlay, on all nine analysis tabs, on the Home screen, the tutorial, the Project description and the Download results views, with a presentation overlay open and after Escape; `/about` read "About OpenHealth", `/blog` read "Blog — OpenHealth" and the published post read "Release of eQalb & The introduction of OpenHealth! — OpenHealth". No regression: the base case ran to €2,439, the chart export produced `base-case-cost-effectiveness-plane.png` with one canvas, the only requests during the pass were the app's own health/defaults load and that one analysis run, presentation mode opened and closed cleanly, and `/api/health` returned `ok`. Limitation: verified in the Vite dev server and the production build output; the hosted deployment was not redeployed |
+| 2026-10-16 | Presentation-mode wording follow-up to the audit, frontend copy only. Two internal identifiers that were still visible in an overlay now read as the reader's word for them. (1) The HTA summary's settings disclosure listed the endpoint's own request-field names under "Request fields not supplied" (`probability_cost_effective`, `evpi`, and `icer`, `cumulative_budget_impact`, `readiness` when those are the missing ones); the row is now "Values not supplied" and each field is named with the workspace's own wording through a new `availabilityFieldLabel` in `components/presentation/settings.ts` ("Probability cost-effective", "EVPI per patient", "ICER", "Cumulative net budget impact", "DHT readiness", with an unknown future field written with its underscores removed rather than left as an identifier), so every field R reports is still listed and none is guessed. (2) The value-of-information overlay's EVPPI table carried the workspace's "Model argument" column, whose cells are R's own call arguments (`scenario_rrr`, …); the overlay now uses a `presentedColumns` set derived from the panel's columns with that one column left out, since the parameter column already names each row in words — same nine rows, three reader-facing columns. Both changes are presentation-only: the HTA summary's "Availability of the upstream analyses" disclosure and the tab's own EVPPI table (four columns) are unchanged, and no figure, table value, notice, layout, transition, focus behaviour or chart-export control was touched | Yes - frontend, local review first. `npm run typecheck`, `npm run lint`, `npm run build` (`index-Dg4e6nwv.js`, 934.81 kB) and `git diff --check` pass. Browser at 127.0.0.1:5173 with all nine results stored: all nine overlays opened with every disclosure expanded and scanned for `[a-z]+(_[a-z]+)+` identifiers — zero in all nine, and no "Request fields" phrase — while each still showed its own metrics, tables and settings rows (4/17, 4/4, 4/20, 4/9, 4/4, 4/4 with its 9-row EVPPI table, 4/15, 3/18, 1/7); the VOI overlay table read Parameter | EVPPI per patient | Unclamped estimate with the same nine parameters while the workspace table kept all four columns including "Model argument"; the HTA summary overlay showed "Values not supplied: Probability cost-effective, EVPI per patient, DHT readiness" in the partial state (2 of 5 domains) and no such row when all five were included; a fetch spy recorded no request while opening or closing any overlay, and Close/Escape returned focus to Present with 0 overlays and 0 `[inert]`; no overlay contained a chart-export control (0 in all nine) and a workspace PNG export still produced a valid 163 KB image; at 390 px the VOI overlay had no page or panel overflow and its table scrolled locally (488 px in 297 px). Limitation: Chromium only; the workspace's own request-field list and model-argument column were deliberately left as they are, since the request scoped this to presentation mode |
+| 2026-10-16 | Per-chart PNG export for the workspace's interactive ECharts charts, frontend only and local review first. New `components/ChartDownload.vue` renders one compact "Download chart" action inside the figure that holds a chart (nine charts: base-case plane, PSA plane and acceptability curve, tornado, budget impact, survival curves, EVPI and EVPPI charts, value-based-price comparison) and saves that chart as it is on screen: the live instance is resolved from the chart's own container with `getInstanceByDom` (which never initialises one) and asked for its own image with `getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: panel })` using the live theme palette, so nothing is rerun, no result is recomputed, no option is changed and no second chart or canvas is created for the export; the base64 payload is decoded in the new `export/png.ts` and written through the existing `downloadBytes`, and the outcome is reported by the existing single download notice via `prepareDownload`. New `.chart-figure__actions` rule in `styles.css` gives the action its own row under the chart (right-aligned, always present, so the figure's height never changes when it is used). The button is a real `<button>` with an `aria-label` naming its chart and a `title` naming the file, keeps the app's focus ring, works with Enter/Space, and on failure (chart not on screen) reports "The download could not be prepared. The chart is not on screen yet." as a `role="alert"` while leaving the chart and the result untouched. Presentation mode (no export controls), the tutorial charts, the readiness and HTA-summary tabs (no charts), the consolidated results ZIP, the CSV exports, the R models, the API and the calculations were all left unchanged; no dependency was added | Yes - frontend, local review first. `npm run typecheck`, `npm run lint`, `npm run build` (`index--hTHQU07.js`, 934.53 kB) and `git diff --check` pass. Browser at 127.0.0.1:5173 against the model service on 127.0.0.1:8788 with all nine results stored: all nine actions clicked and every produced file read back and decoded — each a valid PNG of 46-163 KB with 214-1067 distinct colours, non-zero ink and dimensions exactly twice the canvas measured at the click (base case 956x320 -> 1912x640, tornado 956x420 -> 1912x840, VOI charts 930x320/930x420 -> 1860x640/1860x840), the panel colour in the corner in both themes (dark `rgb(22,36,44)`, light `rgb(255,255,255)`); the file names matched the per-chart convention (`base-case-cost-effectiveness-plane.png` … `value-based-price-comparison.png`); a fetch spy recorded no API request across all nine, three repeats of one chart and a keyboard export; three repeated exports left the canvas count, the zrender root count and the figure height unchanged (1/1/402 px); Tab reaches the button with `outline: 2px solid rgb(127,209,216)` and `:focus-visible` matching, and Enter downloads; with the chart container removed the failure notice appeared as a `role="alert"` with zero downloads and the four result figures intact, and returning to the tab re-rendered the chart and the export worked again; `prefers-reduced-motion: reduce` gave a 0 s transition with the export still working; at 390 and 1440 px on all seven chart tabs there was no page overflow, no figure outside the viewport and no button outside its figure; the results package still built its 14 unchanged entries with no `.png`, presentation mode opened with zero download actions and no "Download chart" text, and the stored results were unchanged (base case €2,439 / 0.0082 / €298,966 / −€1,623). Limitation: Chromium only; no real screen reader (the label and role were read from the accessibility tree); the Shiny app and the hosted deployment were not touched |
+| 2026-10-16 | Conservative wording audit across the analysis workspace, frontend copy only. Four static texts were reduced or moved, each only where the same fact stays reachable: the assumptions sidebar's reset hint collapsed from three sentences to one ("Reset restores the 16 model assumptions and the threshold only; every completed result is kept."), since the rest repeated the "Reset model inputs" title and the stale notice each tab already shows; the sensitivity tab's permanently visible CSV/Shiny-layout paragraph moved unchanged into the "Full one-way sensitivity table (N parameters)" disclosure beside the table it describes; the survival tab's export note became "The simulated patient-level dataset is not available here yet, so the download offers the summary tables instead.", dropping the API reference, the Shiny comparison and the engineering rationale while keeping the limitation; and the HTA summary's partial-assessment alert lost its raw request-field list ("Request fields not supplied: probability_cost_effective, evpi") — the only internal API vocabulary in user-facing copy — which remains inside the "Availability of the upstream analyses" disclosure where it also appeared, next to the plain-language "Not yet included" and not-assessable-domain sentences. Every R-generated string, export string, result-specific notice, disclaimers and the tab introductions were left as they were, and presentation mode, calculations, defaults, exports and the API contract were untouched | Yes - frontend, local review first. `npm run typecheck`, `npm run lint`, `npm run build` (`index-_4G5NO3w.js`, 932.73 kB) and `git diff --check` pass. Browser at 127.0.0.1:5173 with all nine results stored: the new sidebar sentence renders; the sensitivity note has 0 matching nodes in the open panel, sits in the closed table disclosure where `innerText` excludes it and `checkVisibility()` is false while closed, and is visible once opened; the survival panel shows the new sentence and contains no "the API does not return" text; the HTA summary alert shows the two plain sentences and the panel has no `<code>` field list; base-case figures unchanged (€2,439 / 0.0082 / €298,966 / −€1,623), one canvas, no request issued; `scrollWidth === clientWidth` with no paragraph escaping its panel at 1440, 1024, 768 and 390 px on the base case, sensitivity, survival and HTA summary tabs; the edited strings render in light (`rgb(100, 116, 139)` on `rgb(244, 247, 249)`) and dark. Limitation: Chromium only; the Shiny app and the hosted deployment were not touched |
+| 2026-10-16 | Loading, in-flight, success, error, empty and stale states audited and made consistent for every explicit analysis action, frontend only and local review first. `useModel.run()` now returns early when that analysis is already running, so no double click, repeat key activation or twice-confirmed dialog can start a duplicate request; each panel still disables only its own action, leaving inputs, the ranked-outcome selector, Present and the download buttons usable while a run waits. `runPsa()` captures the iteration count and the seed once, before the request is built, publishes the count as `psaInFlight` and clears it in a `finally`, so the request, the pending label and the in-flight line all describe the run that is going rather than whatever the fields say while it waits. Every panel's placeholder became one `<p class="hint" role="status">` that carries the wait sentence while the request is in flight and the tab's own guidance otherwise (the guidance is replaced, not added to, and it disappears when the result lands); the PSA's in-flight line, which used to claim "A 1,000-draw PSA takes minutes" for every run including a 100-draw one, is now "Running N iterations. Keep this tab open until it finishes." with the minutes warning only at or above `PSA_CONFIRM_MIN`; every error paragraph gained `role="alert"`; and every pending label now names its own analysis ("Running the base case…", "Running the sensitivity analysis…", "Running the budget impact…", "Simulating survival…", "Calculating the value of information…", "Assessing readiness…", "Calculating the value-based price…", "Assessing the HTA summary…"), matching the app loader's own sentences. No result is cleared by a new run, a failure keeps the previous result with one message, the action re-enabled and the inputs untouched for a straight retry, and nothing new is a container or a colour. No calculation, API contract, input default, threshold, export, presentation-mode behaviour or tutorial flow changed, and the rotating lighthearted line was left where the pattern already existed (the app loader's card) rather than copied into the panels | Yes - frontend, local review first. `npm run typecheck`, `npm run lint`, `npm run build` (`index-BaxIfIJZ.js`, 933.18 kB) and `git diff --check` pass. Browser at 127.0.0.1:5173 against the model service on 127.0.0.1:8788, all nine analyses driven through their states: each new placeholder sentence and in-flight sentence read with `role="status"` and each error with `role="alert"`; the slow analyses (PSA at the documented 100 draws, one-way, value-based price, value of information, HTA summary) supplied in-flight samples directly and the fast ones (base case, budget, survival, readiness) were held with emulated latency; a triple click in one tick fired exactly one base-case request and a programmatic click on a disabled action fired none; a run navigated away from and back mid-flight kept its pending label, disabled action and previous result; the previous result stayed on screen through a one-way re-run (14-row table plus chart) and was replaced only on success; an injected HTTP 500 on the budget impact left the previous result, showed one message with `role="alert"`, kept the edited input at 18 and allowed a retry that then succeeded and cleared the message; editing the PSA iterations from 100 to 1,000 while a 100-draw run was in flight left the button and the in-flight line saying "Running 100 iterations", and the app loader's quip rotated between two samples 8 s apart under normal motion and stayed one static message with `transition-duration: 0s` and `animation: none` on the pending ECG under `prefers-reduced-motion: reduce`; the workspace was taken from 0 to 9 of 9 stored and back to the empty state with the app's own "Clear all results", each placeholder returning as before; at 390 px every state had 0 page overflow, the longest pending label stayed on one line at 266 px and the in-flight line was shorter than the guidance it replaced; presentation mode opened on the base case (€2,439, 17 rows) and the value-based price (€155.03, 18 rows) with no request, focus back on Present and no leftover overlay or `[inert]`; the Download results view stayed absent from the dashboard and still rendered only on `page === 'export'` via its menu action with the same included/not-yet-run lists; charts drew as before with one canvas on the base case after open/close and two on the PSA and the value of information. Not verified: a 1,000-draw PSA (the minutes-warning branch was read in the code, not run, per the standing PSA-size policy), a real screen reader, browsers other than Chromium, and the Shiny app and hosted deployment, which were not touched |
+| 2026-10-16 | Presentation-mode snapshot metadata follow-up, frontend only, in place of the fallback that read the panel's live controls. `useModel` now keeps the exact request a one-way sensitivity run and a readiness assessment were sent beside their results: `owsaRun` holds the `OwsaRunRequest` record (the threshold, the `scenario_*` body and the range overrides the run carried, or `null` when R derived them) and `readinessRun` holds the readiness request body, both in `shallowRef`s with the `OwsaRunRequest` interface exported; `owsaStale` and `readinessStale` compare that stored record with what the tab would send now, so the displayed settings and the staleness verdict cannot diverge. `SensitivityPanel.vue` snapshots the stored request when Present opens and builds its disclosure from it (the run's own scenario values through `scenarioSettingRows`, the range count from the run's own bounds, the ranked outcome and threshold from the request) and `ReadinessPanel.vue` lists the run's readiness values, booleans and choice levels read from its stored body; both disclosures gained one line saying every row is the request that run was sent, kept with its result, and the moved-since-run line names the difference whenever the controls have changed since. No API contract, R calculation, input default, threshold, export or execution behaviour changed, no settings history, undo or comparison feature was added, and the approved Base-case design is untouched | Yes - frontend. `npm run typecheck`, `npm run lint` (89 files, 114 rules, 0 diagnostics), `npm run build` (`index-CTTfZYWF.js`, 931.93 kB) and `git diff --check` pass. Browser at 127.0.0.1:5173 against the live model service: a sensitivity run from a clean page reports no moved-since-run line and its disclosure lists the run's own annual intervention price 500, which stays 500 after the control is edited to 640 — with the moved line ("the scenario, threshold or ranges") and the changed-controls note appearing instead — and the workspace result unchanged; readiness does the same (stored smartphone access 55% with its control at 80%, 15 rows read from the stored request); a fetch spy records no request when either overlay opens or closes; all nine tabs' overlays open and close with their own metrics, charts in their own containers, focus back on Present and no leftover overlay node or inert attribute; 390px with reduced motion gives no transform, no transition and no horizontal overflow. One earlier "stale after a fresh run" reading was traced to a run that had not finished when Present was opened, not to the comparison. Limitation: Chromium only, and no PSA larger than the documented 100-draw validation run was started |
+| 2026-10-16 | Presentation mode extended to every analysis tab, frontend only and local review first, building on the approved Base-case prototype without redesigning it or removing its chart-entry behaviour. Two new files carry the shared structure — `frontend/src/components/presentation/PresentationOverlay.vue` (the app's own dialog and transition, the focus containment from `useModalFocus`, one scoped `modal--present` class, the eQalb identity line and analysis title, the Close control, the moved-since-run line, the later-run line, the settings disclosure and R's notice) and `PresentationSettings.vue` plus `settings.ts` (one row per setting, and the `movedSentence`/`supersededSentence`/`scenarioSettingRows`/`settingRow` helpers, so no panel words these itself) — and each of the nine panels gained one compact Present action beside its existing result actions (shown only when that tab has a valid result) plus its own content: four headline figures, its charts where it has them (one canvas where the panel has one, two for the PSA and the value of information, none for readiness and the HTA summary), R's own interpretation, warnings and limitations where they exist, the run's settings in a disclosure, and tables for the budget year rows, the survival risk table and arm summary, the readiness domains and numbers, the value-based price scan and the HTA decision dashboard and evidence priorities. Every overlay snapshots the response object when it opens, so a later run cannot change what is shown; the settings it prints come from that response, or — only while the store's own staleness comparison says the stored run still matches the controls — from the settings that produced it, and never from an unrun control, with the two tabs whose responses do not echo their inputs (one-way sensitivity and readiness) saying so in the disclosure instead. Opening and closing issues no request, derives no figure and changes no input, result or export. `styles.css` gained the overlay's own panel shape, the two-column chart grid and the settings-row rules; no other file changed | `npm run typecheck`, `npm run lint`, `npm run build` and `git diff --check` all pass. In the running app (model API on 127.0.0.1:8788, Vite on 127.0.0.1:5173): Present is absent on all nine tabs before their own result exists and present afterwards; each overlay's figures matched its panel exactly (PSA €2,418 / 0.0078 / €333,633 / 1.0% at €100,000/QALY; budget €15,480,000 over 5 years; survival 1,000 per arm, seed 20261004, 192 events in usual care; readiness 63,750 eligible with R's status counts; value-based price €155.03 with headroom −€204.97 and the required-effect verdict; VOI €0.11 per patient over 100 reused draws; HTA summary "Not yet assessable" with the not-included list); no request was issued while opening or closing any overlay (a fetch/XHR spy recorded none); each overlay's charts drew in their own containers and the workspace instances stayed live, with five rapid open/close cycles leaving no extra canvas or ECharts instance; Close, Escape and the backdrop all closed the overlay, returned the focus to that tab's Present action and left zero `[inert]`, and Escape inside an open disclosure closed that first; a later run landing behind an open overlay left the presented run on screen (the 5-year budget €15,480,000 while the panel moved to the 8-year €33,216,000) with the later-run line shown, and reopening after that showed the newest run with no line; changing an assumption after a run added the controls-have-changed line while the figures stayed the run's; the panel stacks and scrolls inside itself at 390 px with both charts 275 px wide and no page overflow; light and dark both render; under `prefers-reduced-motion` the overlay is present at once with 0 s transitions and no transform; navigating away while open unmounted cleanly with no `[inert]` left and the menu usable; and the approved Base-case overlay, the main-menu explanations, the centred Download results page, the analysis-tab wording and the stored results were unchanged, with no console or page error. Not verified: the Shiny application (untouched); the hosted deployment (unchanged); a real screen-share capture; browsers other than Chromium; and print rendering of the overlays beyond the global print rules. No PSA larger than the documented 100-draw validation run was started |
+| 2026-10-16 | The base-case presentation-mode prototype, frontend only, first iteration and scoped to the Base-case tab. One compact "Present" action is added beside that result's existing actions (shown only once a valid result exists) and it opens a viewport-sized overlay for a screen share: the app's own dialog — the shared `.modal` markup, the shared `dialog` transition and the shared focus containment from `useModalFocus`, with one scoped `modal--present` class for the larger panel — carrying a small eQalb identity line and the analysis name, a Close control, the four headline figures at `clamp(1.5rem, 3vw, 2.05rem)`, the ICER sentence the workspace keeps on its information control, the deterministic plane in a second `BaseCasePlane` instance with its own container, the run's assumption snapshot in a closed disclosure, and R's own `notice` line. It is a view of an existing result and nothing more: no request (verified with a fetch/XHR spy), no derived figure, no change to inputs, defaults, thresholds, results or exports, and the result object is snapshotted on open so a run that lands while it is open replaces the panel's result without replacing the presented one. The assumptions shown are read from `BaseCaseResponse.inputs` — the scenario R received — through the contract's labels with the form's own conversion, so an edited control can never be printed as one the run used, and a line naming what has moved (threshold, scenario inputs, or both) appears whenever anything has. No browser-fullscreen call, slide, auto-advance or toolbar; no other tab or the main menu gained the control. Three files: `frontend/src/components/BaseCasePanel.vue` (the action, the snapshot, the overlay and its wording), `frontend/src/styles.css` (the `modal--present` panel shape and the `.present__*` rules, with a two-column mobile row rule) and `project_state.md`. No R, API, calculation, export, tutorial, landing, blog, routing, dependency or deployment file was touched, no `app.R` line changed, and nothing was committed, pushed or deployed | `npm run typecheck`, `npm run lint`, `npm run build` and `git diff --check` all pass. In the running app (model API on 127.0.0.1:8788, Vite on 127.0.0.1:5173): Present is absent before a run and joins the other two actions after one; opening it issued no request and started no run; the four figures and the sentence matched the workspace exactly (€2,439 / 0.0082 / €298,966 / −€1,623 at €100,000/QALY); the disclosure listed 17 rows (threshold plus the 16 parameters with their contract labels and units) from the response rather than the controls; the plane drew in its own container (painted pixels sampled) while the workspace chart kept its own 796 × 320 canvas, painted, through five open/close cycles that left exactly one canvas and one ECharts instance in the document; Close, Escape and the backdrop each closed the overlay, returned the focus to Present and left zero `[inert]`, and Escape with the focus inside the assumptions disclosure closed that first; a threshold change after the run added the "controls have changed" line while the figures stayed the run's; a new run landing while the overlay was open (the request visible in the spy) left the presented €50,000/QALY run on screen with the newest run behind it; the panel measured 1088 × 727 with a 1025 × 329 chart and no internal scroll at 1169 px, and stacked and scrolled inside itself at 390 and 360 px with no page overflow (charts 275 and 245 px wide, figures 24 px); light and dark both read correctly; under `prefers-reduced-motion` the overlay was present at once with 0 s transitions and no transform; and the main-menu explanations, the centred Download results page, the analysis-tab wording and the stored-results state were all unchanged, with no console or page error. Not verified: the Shiny application (untouched); the hosted deployment (unchanged); a real screen-share capture; browsers other than Chromium; and a genuinely long assumption list at phone width, which the panel's own scroll would handle but which was not exercised beyond the 17-row snapshot |
+| 2026-10-16 | The minimal-clutter orientation pass over the browser interface, frontend presentation copy and layout only, in its revised form. The Home screen's menu is four compact one-line buttons laid out as three rows — "Open analysis workspace" and "Guided tutorial" full-width on their own rows, with "Project description" and "Download results" side by side beneath them in a two-column grid whose pair plus its 8 px gap adds up to the row above (384 = 188 + 188 + 8 px at 768 px wide and beyond, 342 = 167 + 167 + 8 px at 390 px), the group capped at 24rem and centred under the credits — with the two entry points marked only by an accent outline (`--accent`) and a soft accent tint (`--accent-soft`) and their label weight, and the two-line filled buttons of the first attempt removed together with the rules that existed only for them (`.home__choice`, `.home__choice-note`, `align-items: center`). Hover, press and scoping: the four menu buttons declare their own feedback (background, border and text colour over 120 ms; a `scale(0.98)` press that returns on release and never delays the click) through `.home__actions`, which is also what outranks the shared `.btn` rules declared further down the sheet; the menu's hover is declared under `@media (hover: hover)` and the shared `.btn:hover` rule is neutralised for these four under `@media (hover: none)`, so a touch screen is never left holding a hover state; disabled buttons keep the shared `.btn:disabled` treatment. Each of the two entry points now opens a small centred explanation instead of navigating at once: it is the app's own dialog (the shared `.modal` markup, the shared `dialog` transition and the shared focus containment from `useModalFocus`, with one scoped `modal--menu` class carrying a 170 ms timing inside the 150-180 ms asked for and the same button feedback for its two actions), it shows one short title, one sentence and two controls ("Open workspace" or "Start tutorial", and "Close"), and it navigates only from its own action — Escape, the Close control and the backdrop each return to the unchanged menu, one overlay can be open at a time, the menu behind it is inert, and opening or closing it runs nothing: no analysis, no request, no input or tutorial-session change. "Project description" and "Download results" keep their direct navigation. The nine analysis tabs keep the pass's single question sentence in place of their longer descriptions, and the pre-result guidance keeps its one line naming that tab's own action, with the value of information tab stating its PSA prerequisite. The Download results page is now one centred group in the app's content area (`page--centered page--fill`): the title, introduction and actions centred, the two result lists left-aligned inside a width-limited column, `margin: auto` in a flex column (never a height of its own) centring the group while it fits and resolving to nothing when it does not, and the vertical centring dropped below 1024 px in favour of padding and natural scrolling. Twelve files: `frontend/src/views/HomeView.vue`, `frontend/src/views/DownloadResultsView.vue`, `frontend/src/styles.css`, the nine analysis panels (`BaseCasePanel`, `CostEffectivenessPanel`, `SensitivityPanel`, `BudgetImpactPanel`, `SurvivalPanel`, `ValueOfInformationPanel`, `ReadinessPanel`, `ValueBasedPricePanel`, `HtaSummaryPanel`) and `project_state.md`. No calculation, input, default, endpoint, export, tutorial step, animation, landing page, blog, favicon, theme, route or deployment file was touched, `app.R` is untouched, no dependency was added, and nothing was committed, pushed or deployed | `npm run typecheck`, `npm run lint`, `npm run build` and `git diff --check` all pass. In the running app (model API on 127.0.0.1:8788, Vite on 127.0.0.1:5173): the menu renders as the three rows described above, centred under the credits with the LinkedIn/GitHub line still centred, no clipped label and no horizontal overflow at 320, 360, 370, 375, 390, 430, 768, 1240 and 1440 px; every label stays on one line down to a 370 px viewport and the two secondary labels wrap to a second line of equal height (still no overflow) at 360 and 320 px; and the four destinations still resolve; hover and press were exercised on a hover-capable pointer (the choices fill to the accent, the secondary pair go accent-soft, the press measures `matrix(0.98, …)` and returns to `none` on release with no navigation). Both explanations open with the right title, sentence and button labels ("Explore the model" / "Open workspace", "Learn by doing" / "Start tutorial", each with Close); Close, Escape and the backdrop each return to the unchanged menu with the focus on the button that opened it; Continue navigates once (nine tabs for the workspace, Part 1 step 1 with "Results updated." for the tutorial); six rapid opens leave exactly one overlay and four rapid Continue clicks on the same button still navigate once; Tab and Shift+Tab wrap inside the overlay (Open workspace → Close → Open workspace), a programmatic focus on the menu behind it is refused, the background menu buttons report inert while it is open and zero `[inert]` remain after every close path; a fetch/XHR spy recorded no request while opening or closing either overlay and the sidebar still reported "2 of 9 analyses stored" afterwards; no console or page error appeared. Under `prefers-reduced-motion` the overlay is present with 0 s transitions and the press transform computes to `none` instead of a jump. The Download results page was measured with no analyses run and with two stored: the group is centred while it fits (equal auto margins inside the content area — 47.4 px at 1000 px tall), starts at the top and scrolls when it does not (a 777 px card in a 620 px viewport leaves the top at 48 px with `scrollHeight` 905), keeps its 32/40 px padding with the vertical centring dropped below 1024 px, and shows no horizontal overflow at any width; `#export-title` is absent from the dashboard and from the tutorial in every case, and Escape and Back both return Home. The welcome question and the app's other dialogs are unchanged (its own `modal` classes, 0.19 s timing, focus contained and returned to the selected tab). Not verified: the Shiny application (untouched); the hosted deployment (unchanged, nothing was committed, pushed or deployed); the touch branch of the menu's hover handling beyond the declaration-level check described above, since this Chromium would not emulate the `hover` media feature and no real touch device was used; the app under `prefers-reduced-motion` beyond the two behaviours above (the overlay appearing at once and the press transform being dropped); and any browser other than Chromium |
 | 2026-10-15 | The frontend release, through the existing workflow: the accumulated presentation work (`fe0ebd0`) and the dialog focus containment (`213072e`) were merged into `main` as `ea192dd` (PR #4, no branch protection and no required checks on `main`) and published by `Deploy frontend` run 7 — release `7-ea192dd5fb193a6ada5ceb88929adebc1d92fef2`, replacing `6-38aa15e…`. The `Deploy to production` job waited for the production environment's approval (00:40:55 to 00:43:00) and then activated the release, verified the bundle checksum, and validated the public site: `GET /`, `/app` and `/about` each returned 200 *and* each served the new bundle, and `/api/health` reported `status: ok` | Production verification, done independently of the workflow's own step. `https://openhealth.ngo` serves `/assets/index-B8vbHfDF.js` (896,467 bytes) and `/assets/index-DZqI3MQc.css` (51,486 bytes), both byte-identical (sha256) to a local build of the merged commit; the bundle carries `page-entry`, `result-trace`, `tabs__indicator`, `tut-stage`, `download-notice`, the loading-line block and the containment code (`[inert]`, `focusin`), and neither `debugReveal` nor `RevealDiagnostic`, and `/?debugReveal=1` renders no diagnostic. Live in the browser: the landing page with its footer `Blog` link; blog index → post and post → index each with the 160 ms page-entry fade measured mid-move (`is-entering-b` / `is-entering-a`, opacity 0.91 / 0.96), with the published post at `/blog/release-of-eqalb-and-openhealth`; `/app` Home → dashboard with a base-case run returning €2,439.00 incremental cost, 0.0082 QALYs and an ICER of €298,966, the 224 × 19 px ECG trace animating under the heading and the per-analysis export button present; the welcome question containing the focus (its first action focused, the page entry and dev script inert, the header refusing the focus, Tab wrapping, "Open analysis" returning the focus to the selected analysis tab) and the PSA confirmation containing the focus (Continue focused, the app header, sidebar and tab strip inert, Tab wrapping, Escape returning the focus to the Run PSA button with **no run started**); Download results rendering only on its own view, reached from the app Home screen with the focus moved to its heading, and absent from the dashboard; the tutorial loading and a Next move playing `is-leaving is-forward` → `is-idle is-forward` with one step in the document and the arriving heading focused; and a 100-iteration PSA (~14 s) showing the factual `Running the probabilistic sensitivity analysis…` line over three different lighthearted lines with no consecutive repeat, the card holding one height (167 px) and being removed as the run completed. Not verified on production, and stated as such: the tutorial Part 2 dialogs (case facts, congratulation), reduced-motion and print behaviour, the disabled-opener and unmount-while-open containment cases, and any browser other than Chromium (the deployed JS and CSS are byte-identical to the locally verified build), and the model inputs a browser session changes are session-local |
 | 2026-10-15 | The dialog focus containment the previous release stopped for, frontend only: the four real modals (the welcome question, the PSA confirmation, the case facts and the congratulation) now keep the keyboard to themselves. One new composable, `composables/useModalFocus.ts`, and one wiring line plus a `ref` per dialog in `App.vue`, `CostEffectivenessPanel.vue` and `Part2View.vue`; the dialogs' existing motion, Escape, Cancel, Confirm, close-button and backdrop behaviour, wording and requests are untouched, and the focus moves that used to sit in each dialog's open path (four `nextTick` calls) now belong to the composable. On open the focus moves to the dialog's own first action; Tab and Shift+Tab wrap inside; every element outside the dialog becomes `inert` — through the dialog's relatives, never through an ancestor, so a dialog can never inert itself — with each element's prior state remembered and restored; on close the focus returns to the opener, or to the selected analysis tab for the welcome question (which is asked on arrival and has no button to return to), or stays where it is when the opener is the run button `Continue` has just disabled. Nothing is restored into a page that was left. A dialog whose leave is cancelled by a quick reopen clears its own `inert` on the way back in, so a reopened dialog can never be left switched off | `npm run typecheck`, `npm run lint` and `npm run build` pass and `git diff --check` is clean. Measured in the running app on all four dialogs: opener → contained Tab and Shift+Tab (PSA: Continue → Cancel → Continue wraps; facts: Tab stays on Close) → background controls refused the focus (the app header's Home button, a tab, the assumptions panel, the stepper, the tutorial's Exit) → every close path (Confirm, Cancel, Close, Escape, the backdrop) returned the focus (the PSA run button, the Case facts trigger, the stepper's Recommendation button, the welcome question's fallback tab) with zero `[inert]` left → a real pointer click over the header's Home button reached only the backdrop and did not navigate → a disabled opener left the focus on the body instead of on a disabled button → a Back navigation while the facts overlay was open unmounted the page with zero `[inert]` left and the app usable again → the facts overlay reopened inside its own leave fade was not inert, focused, tab-trapped and closable → under reduced motion the same containment held and the dialog element was removed 24 ms after closing, behind no fade. No console or page errors during two full dialog cycles. No 1,000-draw PSA was run for a focus check |
 | 2026-10-15 | The page-entry fade, frontend only: a page now fades in when an internal link or button moves the visitor to it, over 160 ms and opacity only, and the accumulated frontend polish work — the result ECG trace and its summary entrance, the tutorial step transitions, the sliding tab indicator, the disclosure expansion, the analysis-button pending states, the download feedback, the dialog transitions, the 24-message loading line with its 7 s rotation and crossfade — is released with it. Three files carry the fade: `composables/usePageEntrance.ts` (new: which entries fade, and the five that do not), the `.page-entry` wrapper and the composable wiring in `App.vue` (the wrapper holds the page content only; every fixed overlay stays outside it), and the `.page-entry` rules in `styles.css`. Two identical keyframes are alternated, because an animation only replays when its name changes. Nothing about navigation, history, scroll restoration, inputs, results or the address was touched | `npm run typecheck`, `npm run lint`, `npm run build` and `git diff --check` all pass. In the browser, per frame: the class lands with the DOM update and the animation's own duration measured `160ms` with opacity 0 → 1 (`page-entry-b`, currentTime 0→122 ms of 160 ms, full at 144 ms), then the class clears at 480 ms — the safety window, not the animation. The moves verified with the fade: blog index → post, post → index, blog → landing, landing → blog, Home → dashboard, Home → tutorial, Home → download results (`is-entering-a`/`-b` alternating, opacity 0 → 1). The moves verified *without* it, each by design: a first paint (0 animations on load), a same-entry click ("Blog" while on the index), Back/Forward (landing scrolled to 1500 → blog → Back restored 1500 with 0 animations), the landing page's crossing into the app (the wrapper stayed class-less through the whole launch, which ran its own `launch--looping`/`launch--leaving` and handed over at 831 ms), the Home screen (dashboard → Home: no fade) and a scrolled arrival (About at 260 → landing: no fade, scroll preserved, header still at top 0). Rapid navigation (three moves inside one fade) ended on the last page at opacity 1 with one wrapper and no leftover class. Reduced motion: 0 animations, `animationDuration: 0s`, opacity 1 immediately; print: `animation: none`. Fixed chrome: on blog → landing the landing page's header measured top 0, left 0, width 890 on every frame of the fade; the download notice is outside the wrapper and still sat in the window corner after a CSV export. No regression found: the result trace is still one 224 × 19.2 px strip with its three animations and the same values, a tutorial Next still ran `is-leaving is-forward` → `is-entering is-forward` with one step in the document and focus on the arriving heading (the wrapper stayed class-less), the tab indicator stayed aligned with no page fade, the CSV export notice still reported `Download prepared.` with `role="status"`, the download results view still renders only on its own page (absent from the dashboard), and 390 px had no horizontal overflow. Not claimed: no second published post exists, so post → post could not be exercised in the app — the slug is the only thing that differs in the entry key, and the index → post move is the same path; and the earlier finding that a dialog does not contain the focus is unchanged and is now recorded as a release blocker (see Known limitations) |

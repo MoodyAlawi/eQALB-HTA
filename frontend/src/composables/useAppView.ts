@@ -63,9 +63,16 @@ const PAGE_PATHS: Record<AppPage, string> = {
   dashboard: APP_PATH,
 }
 
+/**
+ * The browser-tab title for each address. The landing page and the eQalb
+ * application share the OpenHealth title, so the tab reads the same everywhere a
+ * visitor moves inside the product; the two public pages that are their own
+ * documents — About and the blog index — keep titles that name them, and an open
+ * blog post is titled by the post (see BlogPostView).
+ */
 const PAGE_TITLES: Record<string, string> = {
-  [LANDING_PATH]: 'eQalb — an interactive introduction to health-economic modelling',
-  [APP_PATH]: 'eQalb — illustrative HTA model',
+  [LANDING_PATH]: 'OpenHealth',
+  [APP_PATH]: 'OpenHealth',
   [ABOUT_PATH]: 'About OpenHealth',
   [BLOG_PATH]: 'Blog — OpenHealth',
 }

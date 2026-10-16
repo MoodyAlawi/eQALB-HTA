@@ -79,10 +79,11 @@ const SCENARIO_IDS = new Set<string>(SCENARIO_PARAMETER_IDS)
 
 /**
  * The status sentence the app-wide loading indicator shows while an analysis
- * runs. It is the same "running" wording each panel's own button already uses,
- * so the loader and the button describe the one wait the one way. Only the long
- * operations ever reach the card; a fast run finishes inside the indicator's
- * grace period and shows nothing.
+ * runs. Each panel's own button carries the same sentence in its pending state,
+ * so the loader, the button and the panel's placeholder describe the one wait the
+ * one way; the PSA is the only exception, because its wait names the run's own
+ * size instead (see psaInFlight). Only the long operations ever reach the card; a
+ * fast run finishes inside the indicator's grace period and shows nothing.
  */
 const ANALYSIS_BUSY_LABELS: Record<AnalysisKey, string> = {
   baseCase: 'Running the base case…',
@@ -222,12 +223,21 @@ const resultRevisions = reactive<Record<AnalysisKey, number>>(
  * could not see an assumption change, and every number in its table depends on
  * the scenario it ran on.
  */
-const readinessRun = shallowRef<string | null>(null)
 const htaSummaryRun = shallowRef<string | null>(null)
 const valueBasedPriceRun = shallowRef<string | null>(null)
 const budgetRun = shallowRef<string | null>(null)
 const survivalRun = shallowRef<string | null>(null)
-const owsaRun = shallowRef<string | null>(null)
+
+/**
+ * The two runs whose request body the client keeps as a value rather than as a
+ * string: the one-way analysis and the readiness assessment — the two whose
+ * responses do not echo their inputs — so a presentation of either run can list
+ * the settings it actually used. Each holds the very object the request was built
+ * from; the staleness check serialises it with the same function it compares
+ * against, so the comparison and the display cannot disagree.
+ */
+const owsaRun = shallowRef<OwsaRunRequest | null>(null)
+const readinessRun = shallowRef<ReadinessInputs | null>(null)
 
 /**
  * What the stored value-of-information result was computed from: the PSA result
@@ -244,6 +254,16 @@ const busy = reactive<Record<AnalysisKey, boolean>>(
 const errors = reactive<Record<AnalysisKey, string | null>>(
   Object.fromEntries(ANALYSIS_KEYS.map((key) => [key, null])) as Record<AnalysisKey, string | null>,
 )
+
+/**
+ * The iteration count of the PSA run that is in flight, or null when none is.
+ *
+ * It is captured when the run starts, so everything that describes the wait — the
+ * button's pending label and the panel's in-flight line — describes the run that
+ * is actually going, and editing the iterations field while it waits cannot
+ * relabel it. Cleared when the run settles, either way.
+ */
+const psaInFlight = shallowRef<number | null>(null)
 
 // --- Derived state -----------------------------------------------------------
 
@@ -301,7 +321,12 @@ const baseCaseStale = computed(() => isStale(baseCase.value?.wtp))
  * assumptions that have moved.
  */
 const owsaStale = computed(() =>
-  owsa.value === null ? false : isBodyStale(owsaRun.value, JSON.stringify(owsaRequest())),
+  owsa.value === null
+    ? false
+    : isBodyStale(
+        owsaRun.value === null ? null : JSON.stringify(owsaRun.value),
+        JSON.stringify(owsaRequest()),
+      ),
 )
 
 /**
@@ -326,7 +351,12 @@ function isBodyStale(snapshot: string | null, current: string): boolean {
 }
 
 const readinessStale = computed(() =>
-  readiness.value === null ? false : isBodyStale(readinessRun.value, JSON.stringify(readinessBody())),
+  readiness.value === null
+    ? false
+    : isBodyStale(
+        readinessRun.value === null ? null : JSON.stringify(readinessRun.value),
+        JSON.stringify(readinessBody()),
+      ),
 )
 
 const htaSummaryStale = computed(() =>
@@ -598,6 +628,13 @@ function setInput(id: string, value: number): void {
 }
 
 async function run(key: AnalysisKey, action: () => Promise<void>): Promise<void> {
+  // One request per analysis at a time. Each panel disables its own action while
+  // it waits, so this is the belt to that braces: a second call — a double click
+  // that lands before the disabled state paints, a second keyboard activation, a
+  // confirmation dialog confirmed twice — finds the analysis already running and
+  // leaves the first request alone. Nothing about the analysis is reset by the
+  // refusing call, and its caller still gets a promise that resolves.
+  if (busy[key]) return
   busy[key] = true
   errors[key] = null
   // The token is this run's own completion; it is called in the `finally` below,
@@ -623,15 +660,25 @@ function runBaseCase(): Promise<void> {
 }
 
 function runPsa(): Promise<void> {
+  // The iterations and the seed are read once, here, before the request is built:
+  // they are what this run is, so the request, the pending label and the in-flight
+  // line all describe the same run even if the fields are edited while it waits.
+  const sims = psaSims.value
+  const seed = psaSeed.value
   return run('psa', async () => {
-    const result = await api.postPsa(scenarioBody(), {
-      nSim: psaSims.value,
-      seed: psaSeed.value,
-      wtp: wtp.value,
-    })
-    psa.value = result
-    // New draws invalidate a value-of-information result computed from old ones.
-    if (voi.value && voi.value.n !== result.n_successful) voi.value = null
+    psaInFlight.value = sims
+    try {
+      const result = await api.postPsa(scenarioBody(), {
+        nSim: sims,
+        seed,
+        wtp: wtp.value,
+      })
+      psa.value = result
+      // New draws invalidate a value-of-information result computed from old ones.
+      if (voi.value && voi.value.n !== result.n_successful) voi.value = null
+    } finally {
+      psaInFlight.value = null
+    }
   })
 }
 
@@ -641,24 +688,20 @@ function runPsa(): Promise<void> {
  * and otherwise absent: omitting them is how the request asks R for the ranges it
  * derives from the scenario. No range is derived, clamped or defaulted here.
  */
-function owsaRequest(): {
-  wtp: number
-  body: Partial<ScenarioInputs>
-  bounds: OwsaRangeOverride[] | null
-} {
+function owsaRequest(): OwsaRunRequest {
   return { wtp: wtp.value, body: scenarioBody(), bounds: owsaBounds.value }
 }
 
 function runOwsa(outcome: OwsaOutcome = owsaOutcome.value): Promise<void> {
   owsaOutcome.value = outcome
-  const snapshot = JSON.stringify(owsaRequest())
+  const request = owsaRequest()
   return run('owsa', async () => {
     owsa.value = await api.postOwsa(scenarioBody(), {
       outcome,
       wtp: wtp.value,
       bounds: owsaBounds.value ?? undefined,
     })
-    owsaRun.value = snapshot
+    owsaRun.value = request
   })
 }
 
@@ -738,7 +781,7 @@ function runReadiness(): Promise<void> {
   return run('readiness', async () => {
     const body = readinessBody()
     readiness.value = await api.postReadiness(body)
-    readinessRun.value = JSON.stringify(body)
+    readinessRun.value = body
   })
 }
 
@@ -965,6 +1008,10 @@ const model = reactive({
   htaSummary,
   valueBasedPrice,
   resultRevisions,
+  voiPsaSource,
+  voiThreshold,
+  owsaRun,
+  readinessRun,
   probabilityCostEffective,
   owsaOutcomeLabel,
   psaStale,
@@ -979,6 +1026,7 @@ const model = reactive({
   // run state
   busy,
   errors,
+  psaInFlight,
   runBaseCase,
   runPsa,
   runOwsa,
@@ -993,4 +1041,15 @@ const model = reactive({
 
 export function useModel() {
   return model
+}
+
+/**
+ * The request one one-way sensitivity-analysis run was sent, kept beside its
+ * result. Exported so a presentation of that run can list the settings it used
+ * without reading the panel's controls.
+ */
+export interface OwsaRunRequest {
+  wtp: number
+  body: Partial<ScenarioInputs>
+  bounds: OwsaRangeOverride[] | null
 }
