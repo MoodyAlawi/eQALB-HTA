@@ -1,0 +1,382 @@
+# eQalb backend production deployment.
+#
+# Scope is deliberately narrow: the FastAPI service and its R worker children in
+# /opt/eqalb. The workflow pipes deploy/backend-deploy.sh to `bash -s` on the
+# VPS as the SSH deploy user, and that script checks out one committed revision,
+# syncs the pinned Python and renv environments, restarts eqalb-api.service and
+# health-checks it. The frontend, Caddy, DNS, the systemd unit, /etc/eqalb/api.env
+# and the Shiny application are not touched.
+#
+# This first version is manual only. Automatic deployment on push is deliberately
+# left commented out until a manual deploy and a manual rollback have both been
+# verified; see deploy/BACKEND_DEPLOY.md.
+#
+# The server's R worker is a child of the API process (api/r_client.py starts it;
+# eqalb-api.service uses KillMode=control-group), so restarting the one service
+# restarts the API and every worker together.
+
+name: Deploy backend
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'deploy installs the selected ref; rollback restores a recorded or named commit.'
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - rollback
+      ref:
+        description: 'Git branch, tag or full SHA to deploy. For a rollback this only selects the deployment script; use rollback_sha for the target.'
+        required: false
+        default: main
+        type: string
+      rollback_sha:
+        description: 'Rollback target: a full 40-character commit SHA. Leave empty to restore the last known-good revision recorded on the server.'
+        required: false
+        type: string
+
+  # Automatic deployment is intentionally not enabled in this first version.
+  # After a manual deploy and a manual rollback have both been verified, add:
+  #
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'api/**'
+  #     - 'eqalb_*.R'
+  #     - '.Rprofile'
+  #     - 'renv.lock'
+  #     - 'renv/**'
+  #     - 'deploy/backend-deploy.sh'
+  #     - '.github/workflows/deploy-backend.yml'
+
+# Only one backend deployment at a time, and never cancel one that is midway
+# through a dependency install or a service restart.
+concurrency:
+  group: backend-production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DEPLOY_SCRIPT: deploy/backend-deploy.sh
+  PUBLIC_HEALTH_URL: https://openhealth.ngo/api/health
+
+jobs:
+  deploy:
+    name: Deploy the backend
+    runs-on: ubuntu-24.04
+    # A hung download or R restore must not occupy a runner for the default
+    # multi-hour job limit.
+    timeout-minutes: 30
+    # The environment carries the five deploy secrets and, when configured, the
+    # required-reviewer gate. Nothing reaches the server before it passes.
+    environment: backend-production
+    steps:
+      - name: Check out the selected ref
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 1
+
+      - name: Resolve and validate the commit
+        id: resolve
+        env:
+          MODE: ${{ inputs.mode || 'deploy' }}
+          ROLLBACK_SHA: ${{ inputs.rollback_sha }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in
+            deploy|rollback) ;;
+            *) echo "::error::unknown mode '$MODE'"; exit 1 ;;
+          esac
+
+          sha="$(git rev-parse HEAD)"
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::the selected ref did not resolve to a full 40-character commit SHA"
+            exit 1
+          fi
+          if [ "$MODE" = rollback ] && [ -n "${ROLLBACK_SHA:-}" ]; then
+            if ! [[ "$ROLLBACK_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::rollback_sha must be a full 40-character lowercase commit SHA"
+              exit 1
+            fi
+          fi
+
+          {
+            echo "sha=$sha"
+            echo "short=${sha:0:12}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Selected commit: $sha"
+
+      - name: Validate the required secrets are present
+        env:
+          SSH_KEY: ${{ secrets.BACKEND_DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ secrets.BACKEND_DEPLOY_SSH_HOST }}
+          KNOWN_HOSTS: ${{ secrets.BACKEND_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          status=0
+          require_secret() {
+            if [ -z "$2" ]; then
+              printf '::error::the backend-production environment is missing the %s secret\n' "$1"
+              return 1
+            fi
+          }
+          require_secret BACKEND_DEPLOY_SSH_KEY "$SSH_KEY" || status=1
+          require_secret BACKEND_DEPLOY_SSH_HOST "$SSH_HOST" || status=1
+          require_secret BACKEND_DEPLOY_KNOWN_HOSTS "$KNOWN_HOSTS" || status=1
+          exit "$status"
+
+      - name: Prepare the SSH key and the pinned host key
+        env:
+          SSH_KEY: ${{ secrets.BACKEND_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.BACKEND_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/backend_deploy_key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/backend_deploy_key" "$HOME/.ssh/known_hosts"
+
+          # Parse the key without printing it. An encrypted key cannot be used in
+          # BatchMode, so fail here with a clear message instead of at SSH time.
+          if ! timeout 10 ssh-keygen -y -f "$HOME/.ssh/backend_deploy_key" \
+               >/dev/null 2>&1 </dev/null; then
+            echo '::error::the BACKEND_DEPLOY_SSH_KEY secret is not a valid unencrypted SSH private key'
+            exit 1
+          fi
+
+      - name: Deploy on the VPS
+        id: deploy
+        env:
+          SSH_HOST: ${{ secrets.BACKEND_DEPLOY_SSH_HOST }}
+          SSH_PORT: ${{ secrets.BACKEND_DEPLOY_SSH_PORT }}
+          SSH_USER: ${{ secrets.BACKEND_DEPLOY_SSH_USER }}
+          MODE: ${{ inputs.mode || 'deploy' }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+          ROLLBACK_SHA: ${{ inputs.rollback_sha }}
+        run: |
+          set -euo pipefail
+          host="$SSH_HOST"
+          port="${SSH_PORT:-22}"
+          user="${SSH_USER:-ubuntu}"
+
+          if [ -z "$host" ]; then
+            echo '::error::BACKEND_DEPLOY_SSH_HOST is empty'
+            exit 1
+          fi
+          if ! [[ "$host" =~ ^[A-Za-z0-9._:-]+$ ]]; then
+            echo '::error::BACKEND_DEPLOY_SSH_HOST contains unexpected characters'
+            exit 1
+          fi
+          if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+            echo '::error::BACKEND_DEPLOY_SSH_PORT must be a TCP port number'
+            exit 1
+          fi
+          if ! [[ "$user" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+            echo '::error::BACKEND_DEPLOY_SSH_USER is not a valid Unix account name'
+            exit 1
+          fi
+          if [ ! -f "$DEPLOY_SCRIPT" ]; then
+            echo "::error::$DEPLOY_SCRIPT is missing from the selected commit"
+            exit 1
+          fi
+
+          # Every argument is a literal or a validated 40-character hex SHA, so
+          # the remote command string cannot introduce a shell command.
+          case "$MODE" in
+            deploy)
+              remote_command="bash -s -- deploy $SHA"
+              ;;
+            rollback)
+              if [ -n "${ROLLBACK_SHA:-}" ]; then
+                remote_command="bash -s -- rollback $ROLLBACK_SHA"
+              else
+                remote_command="bash -s -- rollback"
+              fi
+              ;;
+            *)
+              echo "::error::unknown mode '$MODE'"
+              exit 1
+              ;;
+          esac
+
+          log="$RUNNER_TEMP/backend-deploy.log"
+          : > "$log"
+          set +e
+          ssh -T \
+            -p "$port" \
+            -i "$HOME/.ssh/backend_deploy_key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null \
+            -o ConnectTimeout=20 \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=20 \
+            "${user}@${host}" \
+            "$remote_command" < "$DEPLOY_SCRIPT" 2>&1 | tee "$log"
+          status="${PIPESTATUS[0]}"
+          set -e
+
+          if [ "$status" -ne 0 ]; then
+            echo "::error::the backend deployment failed (exit $status). See the log above; no automatic rollback was attempted."
+            exit "$status"
+          fi
+
+      - name: Check the deployment result
+        if: success()
+        id: result
+        env:
+          MODE: ${{ inputs.mode || 'deploy' }}
+          REQUESTED_SHA: ${{ steps.resolve.outputs.sha }}
+          ROLLBACK_SHA: ${{ inputs.rollback_sha }}
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/backend-deploy.log"
+          deployed_sha="$(sed -n 's/^DEPLOYED_SHA=//p' "$log" | tail -n 1)"
+          deployed_at="$(sed -n 's/^DEPLOYED_AT=//p' "$log" | tail -n 1)"
+          previous_sha="$(sed -n 's/^PREVIOUS_SHA=//p' "$log" | tail -n 1)"
+          health="$(sed -n 's/^HEALTH=//p' "$log" | tail -n 1)"
+
+          if ! [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::the server did not report a deployed commit SHA'
+            exit 1
+          fi
+          if [ "$health" != "ok" ]; then
+            echo '::error::the server did not report a healthy deployment'
+            exit 1
+          fi
+          if [ -z "$deployed_at" ]; then
+            echo '::error::the server did not report a deployment time'
+            exit 1
+          fi
+          if [ "$MODE" = deploy ] && [ "$deployed_sha" != "$REQUESTED_SHA" ]; then
+            echo "::error::the server deployed $deployed_sha, not the requested $REQUESTED_SHA"
+            exit 1
+          fi
+          if [ "$MODE" = rollback ] && [ -n "${ROLLBACK_SHA:-}" ] && [ "$deployed_sha" != "$ROLLBACK_SHA" ]; then
+            echo "::error::the server rolled back to $deployed_sha, not the requested $ROLLBACK_SHA"
+            exit 1
+          fi
+
+          {
+            echo "deployed_sha=$deployed_sha"
+            echo "deployed_at=$deployed_at"
+            echo "previous_sha=$previous_sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify the public health endpoint
+        run: |
+          set -euo pipefail
+          body="$(mktemp)"
+          code="$(curl -sS -o "$body" -w '%{http_code}' \
+            --max-time 20 --retry 5 --retry-delay 3 --retry-connrefused \
+            "$PUBLIC_HEALTH_URL")"
+          echo "GET $PUBLIC_HEALTH_URL -> HTTP $code"
+          cat "$body"
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::GET $PUBLIC_HEALTH_URL returned HTTP $code"
+            exit 1
+          fi
+          python3 - "$body" <<'PY'
+          import json
+          import sys
+
+          path = sys.argv[1]
+          try:
+              with open(path, encoding="utf-8") as handle:
+                  data = json.load(handle)
+          except Exception as exc:  # noqa: BLE001 - any parse failure is unhealthy
+              print("::error::the public health response is not valid JSON: %s" % exc)
+              sys.exit(1)
+
+          r_model = data.get("r_model") or {}
+          ready = r_model.get("ready_workers", 0)
+          configured = r_model.get("configured_workers", 0)
+          ok = (
+              data.get("status") == "ok"
+              and data.get("model_ready") is True
+              and isinstance(ready, int)
+              and ready >= 1
+              and data.get("r_model_error") is None
+          )
+          if not ok:
+              print(
+                  "::error::the public health response is not healthy: "
+                  "status=%r model_ready=%r ready_workers=%r configured_workers=%r "
+                  "r_model_error=%r"
+                  % (
+                      data.get("status"),
+                      data.get("model_ready"),
+                      ready,
+                      configured,
+                      data.get("r_model_error"),
+                  )
+              )
+              sys.exit(1)
+          if isinstance(configured, int) and configured > ready:
+              print(
+                  "::warning::only %d of %d configured R workers are ready"
+                  % (ready, configured)
+              )
+          print("Public health check passed.")
+          PY
+
+      - name: Write the deployment summary
+        if: always()
+        env:
+          MODE: ${{ inputs.mode || 'deploy' }}
+          REQUESTED_SHA: ${{ steps.resolve.outputs.sha }}
+          DEPLOYED_SHA: ${{ steps.result.outputs.deployed_sha }}
+          DEPLOYED_AT: ${{ steps.result.outputs.deployed_at }}
+          PREVIOUS_SHA: ${{ steps.result.outputs.previous_sha }}
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/backend-deploy.log"
+          if [ ! -f "$log" ]; then
+            log=/dev/null
+          fi
+          deployed_sha="$DEPLOYED_SHA"
+          deployed_at="$DEPLOYED_AT"
+          previous_sha="$PREVIOUS_SHA"
+          if [ -z "$deployed_sha" ]; then
+            deployed_sha="$(sed -n 's/^DEPLOYED_SHA=//p' "$log" | tail -n 1)"
+          fi
+          if [ -z "$deployed_at" ]; then
+            deployed_at="$(sed -n 's/^DEPLOYED_AT=//p' "$log" | tail -n 1)"
+          fi
+          if [ -z "$previous_sha" ]; then
+            previous_sha="$(sed -n 's/^PREVIOUS_SHA=//p' "$log" | tail -n 1)"
+          fi
+
+          {
+            echo '## Backend deployment'
+            echo ''
+            echo '| Item | Value |'
+            echo '| --- | --- |'
+            echo "| Status | ${{ job.status }} |"
+            echo "| Mode | \`${MODE:-unknown}\` |"
+            echo "| Workflow ref commit | \`${REQUESTED_SHA:-unknown}\` |"
+            echo "| Deployed commit | \`${deployed_sha:-unknown}\` |"
+            echo "| Deployed at (UTC) | ${deployed_at:-unknown} |"
+            echo "| Previous known-good | \`${previous_sha:-none}\` |"
+            echo "| Public health | ${PUBLIC_HEALTH_URL} |"
+            echo "| Workflow run | [\`${GITHUB_RUN_ID}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) |"
+            echo ''
+            if [ "${{ job.status }}" != 'success' ]; then
+              echo 'No automatic rollback was attempted. See deploy/BACKEND_DEPLOY.md for the rollback procedure.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove the SSH key material
+        if: always()
+        run: rm -f "$HOME/.ssh/backend_deploy_key" "$HOME/.ssh/known_hosts"

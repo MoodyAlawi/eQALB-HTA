@@ -534,6 +534,10 @@ added later once real RSS figures are known.
 
 ## 6. Rollback and routine operations
 
+For the automated backend release path, see
+[`BACKEND_DEPLOY.md`](./BACKEND_DEPLOY.md). The commands below remain the manual
+procedure and the rollback fallback.
+
 ```bash
 # --- Status and logs ---------------------------------------------------------
 systemctl status eqalb-api caddy --no-pager
