@@ -138,11 +138,9 @@ src/
   blog.css              # the blog only: its layout and reading column, scoped under .blog; it declares
                         # no palette of its own and reads landing.css's tokens
   assets/
-    mahmood-portrait.png # the About me portrait the app ships (640 x 591, 346 kB), derived from the
-                         # author's original; keeps the cut-out's alpha, imported so the build
-                         # fingerprints it, rendered at <= 288px and lazy-loaded
-    mahmood.png          # the author's original (1305 x 1206, 962 kB), kept as the source of any
-                         # future re-export; not referenced by the build
+    mahmood-portrait.png # the About me portrait the app ships (640 x 591, 346 kB); keeps the
+                         # cut-out's alpha, imported so the build fingerprints it, rendered at
+                         # <= 288px and lazy-loaded
     onlylogo.png         # the OpenHealth mark (1024 x 1024 RGBA, genuinely transparent - the
                          # corners and 55% of the pixels are fully see-through, with no white
                          # background), the source of the tab icons in public/; not referenced by
@@ -431,12 +429,11 @@ src/
 - **The landing page carries no disclaimer.** The simulated-data and educational
   wording lives inside the app, where the results are, so `/` does not repeat it.
 - **The About me portrait** ships as
-  [`src/assets/mahmood-portrait.png`](./src/assets/mahmood-portrait.png) — a
-  640 × 591 derivative of the author's [`mahmood.png`](./src/assets/mahmood.png)
-  (1305 × 1206), imported by the landing view so the build fingerprints it and a
-  missing file fails the build. It has to stay a PNG: the original is a cut-out
-  with a transparent background (about 60% of its pixels), which a JPEG would
-  flatten, and Windows' image encoders offer no WebP to convert it to. It sits in
+  [`src/assets/mahmood-portrait.png`](./src/assets/mahmood-portrait.png), a
+  640 × 591 image imported by the landing view so the build fingerprints it and
+  a missing file fails the build. It has to stay a PNG: it is a cut-out with a
+  transparent background (about 60% of its pixels), which a JPEG would flatten. It
+  sits in
   the About panel's narrow column under the name, carrying no box of its own — no
   border, background, frame or shadow — so the cut-out sits directly on the
   landing page's own background in either theme; its intrinsic `width`/`height`
@@ -531,16 +528,15 @@ build sets `sourcemap: false` in [`vite.config.ts`](./vite.config.ts), so no
 rollback are documented in [`../deploy/FRONTEND_DEPLOY.md`](../deploy/FRONTEND_DEPLOY.md);
 the full host runbook remains [`../deploy/DEPLOY.md`](../deploy/DEPLOY.md).
 
-The deployment server and the GitHub `production` environment are configured,
-the operator has confirmed the environment's required-reviewer/approval rule, and
+The deployment server and the GitHub `production` environment are configured, and
 one end-to-end automated deployment has succeeded. Neither the automatic rollback
 after a failed validation nor the manual rollback has been exercised yet, so both
 remain untested. That successful release was built from `main`, and the workflow
-only deploys on a push to `main` or a manual dispatch: the landing page on this
-branch is **not** part of any deployed release, so `https://openhealth.ngo`
-serves a build from before this work and cannot show the landing page, its
-palette, its portrait or its scroll reveal. Review it on the dev server
-(`http://127.0.0.1:5173`) until this branch is merged and deployed.
+only deploys on a push to `main` or a manual dispatch: a build from another branch
+is **not** part of any deployed release, so the live site serves an older bundle
+that cannot show a newer landing page, palette, portrait or scroll reveal. Review
+such work on the dev server (`http://127.0.0.1:5173`) until it is merged and
+deployed.
 
 ## Known limitations
 

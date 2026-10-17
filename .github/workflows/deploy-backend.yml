@@ -63,7 +63,10 @@ permissions:
 
 env:
   DEPLOY_SCRIPT: deploy/backend-deploy.sh
-  PUBLIC_HEALTH_URL: https://openhealth.ngo/api/health
+  # The public health endpoint to verify after a deployment. Set this as a
+  # repository or environment variable (for example
+  # https://<your-domain>/api/health); it is deliberately not hard-coded here.
+  PUBLIC_HEALTH_URL: ${{ vars.PUBLIC_HEALTH_URL }}
 
 jobs:
   deploy:
@@ -117,6 +120,7 @@ jobs:
           SSH_KEY: ${{ secrets.BACKEND_DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ secrets.BACKEND_DEPLOY_SSH_HOST }}
           KNOWN_HOSTS: ${{ secrets.BACKEND_DEPLOY_KNOWN_HOSTS }}
+          HEALTH_URL: ${{ vars.PUBLIC_HEALTH_URL }}
         run: |
           set -euo pipefail
           status=0
@@ -129,6 +133,13 @@ jobs:
           require_secret BACKEND_DEPLOY_SSH_KEY "$SSH_KEY" || status=1
           require_secret BACKEND_DEPLOY_SSH_HOST "$SSH_HOST" || status=1
           require_secret BACKEND_DEPLOY_KNOWN_HOSTS "$KNOWN_HOSTS" || status=1
+          if [ -z "$HEALTH_URL" ]; then
+            printf '::error::the PUBLIC_HEALTH_URL repository or environment variable is not set; set it to your public health endpoint, for example https://<your-domain>/api/health\n'
+            status=1
+          elif ! printf '%s' "$HEALTH_URL" | grep -Eq '^https?://[^[:space:]]+$'; then
+            printf '::error::PUBLIC_HEALTH_URL is not an http(s) URL\n'
+            status=1
+          fi
           exit "$status"
 
       - name: Prepare the SSH key and the pinned host key

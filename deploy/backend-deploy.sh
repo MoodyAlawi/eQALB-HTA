@@ -14,7 +14,7 @@
 # /opt/eqalb/.venv, the project renv library, and the eqalb-api systemd service
 # (which stops and starts the API and, with it, every R worker child). What it
 # records: the deployed SHA and time, the previous known-good SHA, and any
-# in-flight attempt, in /var/lib/eqalb-backend-deploy. It never edits model code,
+# in-flight attempt, in the state directory below. It never edits model code,
 # API code, the frontend, the Caddy configuration or any unit or environment
 # file.
 #
@@ -48,7 +48,7 @@
 # Use the rollback action documented in deploy/BACKEND_DEPLOY.md.
 #
 # This script is deliberately not root: run it as the SSH deploy account
-# (eqalb-backend-deploy in production; the workflow's BACKEND_DEPLOY_SSH_USER).
+# (the account named by the workflow's BACKEND_DEPLOY_SSH_USER).
 # It uses passwordless sudo for exactly two things:
 #   * sudo -u eqalb ...        (the application account that owns /opt/eqalb)
 #   * systemctl restart eqalb-api.service
@@ -70,7 +70,7 @@ VENV_PYTHON="$PROJECT_DIR/.venv/bin/python"
 
 # Deployment-only state. Owned by the SSH deploy user, never by eqalb and never
 # tracked in Git.
-STATE_DIR="/var/lib/eqalb-backend-deploy"
+STATE_DIR="${EQALB_DEPLOY_STATE_DIR:-/var/lib/eqalb-backend-deploy}"
 STATE_FILE="$STATE_DIR/state.env"
 PENDING_FILE="$STATE_DIR/pending.env"
 HISTORY_FILE="$STATE_DIR/history.log"
