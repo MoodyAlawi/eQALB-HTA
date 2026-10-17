@@ -24,9 +24,9 @@ What you can do with it:
 
 ## Live demo
 
-Try the hosted version:
-
-https://01a11174-15b8-e5c7-dbb8-5ca8cb298ab0.share.connect.posit.cloud/
+A hosted copy of the Shiny application may be available; this repository does not
+publish a demo address. To run it yourself, see [Running locally](#running-locally)
+and the browser stack section below.
 
 ## Analyses included
 
@@ -151,10 +151,10 @@ Repository layout:
 | frontend/ | The optional Vue 3 + Vite interface for the API. |
 | .vscode/tasks.json | The VS Code tasks that run the Shiny app, the model API and the frontend dev server. |
 | renv.lock, .Rprofile, renv/ | The reproducible package environment. |
-| manifest.json | The deployment manifest used by the hosted demo. |
-| deploy/ | Production templates and deployment automation for the browser stack: `Caddyfile`, `eqalb-api.service`, `api.env.example`, the `DEPLOY.md` runbook, and the backend deployment script and its `BACKEND_DEPLOY.md` guide. Placeholders only; no live host values. |
+| manifest.json | The deployment manifest used by the hosted Shiny demo. |
+| deploy/ | Generic, placeholder-only templates and deployment automation for the browser stack: `Caddyfile`, `eqalb-api.service`, `api.env.example`, the `DEPLOY.md` self-hosting runbook, and the optional `BACKEND_DEPLOY.md` and `FRONTEND_DEPLOY.md` automation guides. No host values. |
 | agents.md | The project rules and conventions followed while developing the application. |
-| project_state.md | A short log of verified status, known limitations, and next steps. |
+| CONTRIBUTING.md | How to build, run, test and propose changes, and the one Git command never to run. |
 
 ## Running locally
 
@@ -200,26 +200,47 @@ Two things worth knowing:
 
 ## Deploying it yourself
 
-The "Live demo" above is the Shiny application hosted on Posit Connect and stays
-as it is. The browser stack can also be self-hosted on a single Ubuntu 26.04 LTS
-VPS behind one domain: Caddy serves the static Vue build and reverse-proxies only
-`/api/*` to FastAPI on loopback, and FastAPI owns one local R worker as a child
-process over stdin/stdout, so neither FastAPI nor R is reachable from the
-internet. There is no database, no user accounts and no session persistence to
-run alongside it.
+The browser stack can be self-hosted on a single Ubuntu VPS behind one domain:
+Caddy serves the static Vue build and reverse-proxies only `/api/*` to FastAPI on
+loopback, and FastAPI owns its local R workers as child processes over
+stdin/stdout, so neither FastAPI nor R is reachable from the internet. There is no
+database, no user accounts and no session persistence to run alongside it.
 
-The templates in [`deploy/`](./deploy) are parameterised with placeholders
-(`YOUR_DOMAIN`, `/opt/eqalb`, `eqalb`) and contain no host values, so the only
-edits a deployment needs are the two `YOUR_DOMAIN` occurrences and the server's
-own environment file. [`deploy/DEPLOY.md`](./deploy/DEPLOY.md) is the runbook:
-packages, server baseline, install, DNS/Caddy, validation and rollback. Backend
-releases can be deployed from GitHub Actions with
-[`deploy/BACKEND_DEPLOY.md`](./deploy/BACKEND_DEPLOY.md); the workflow is
-manual-only, and its deploy, explicit rollback, empty-target rollback and return
-to `main` are live-verified, while automatic deployment on push is still
-disabled. The legacy Shiny application is not part of that deployment: `app.R`
-and `run_app.R` stay a reference implementation for the existing Posit Connect
-demo.
+Everything in [`deploy/`](./deploy) is a template. The values that belong to your
+own host are placeholders — `<your-domain>`, `<app-path>`, `<app-user>`,
+`<service-name>`, `<deploy-user>`, `<state-directory>` — with suggested defaults
+recorded in [`deploy/DEPLOY.md`](./deploy/DEPLOY.md), which is the runbook:
+packages, the R build, server baseline, install, DNS/Caddy, validation, routine
+operations and rollback.
+
+Two optional GitHub Actions automations are documented separately, and both are
+off by default:
+
+- [`deploy/BACKEND_DEPLOY.md`](./deploy/BACKEND_DEPLOY.md) — deploys the API and
+  its R workers, with a manual `workflow_dispatch` trigger, a SHA-pinned checkout,
+  a health check and recorded state for rollback. The `push` trigger is commented
+  out until you decide to enable it, and the workflow needs a
+  `PUBLIC_HEALTH_URL` repository or environment variable.
+- [`deploy/FRONTEND_DEPLOY.md`](./deploy/FRONTEND_DEPLOY.md) — ships only the
+  static bundle into an immutable release directory behind a symlink that Caddy
+  serves.
+
+The legacy Shiny application is not part of that deployment: `app.R` and
+`run_app.R` are a reference implementation that runs under `shiny::runApp()` or on
+a Shiny host of your choosing.
+
+### Before you push
+
+**Never run `git push --mirror` (or `git push --all`) from a clone of this
+repository.** Local `refs/agents/*` checkpoint refs can exist in a working clone,
+and a mirror push publishes them along with the branches. Push explicit refs
+instead:
+
+```bash
+git push origin main
+```
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the rest of the workflow.
 
 ## Limitations
 
@@ -247,7 +268,7 @@ Created by Mahmood Alawi
 
 ## Screenshots
 
-Screenshots are not committed to the repository yet. The hosted demo above is the quickest way to see the current interface. Planned captures:
+Screenshots are not committed to the repository yet. Running the application locally is the quickest way to see the current interface. Planned captures:
 
 | Screenshot | What it will show |
 |---|---|

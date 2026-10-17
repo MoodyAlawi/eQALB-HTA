@@ -49,8 +49,7 @@ price tab into decision support: R's plain-language summary is visible, the
 required-effectiveness figure is a callout carrying R's own verdict word, the
 solver name and method note, the request-completeness paragraph, the engineering
 scenario rows and the duplicate illustrative-data notice are gone from the
-interface, and what remains sits in exactly two closed disclosures. Details are in
-`project_state.md`.
+interface, and what remains sits in exactly two closed disclosures. Details are kept in the private project record.
 The existing Shiny application (`app.R`, `run_app.R`, `eqalb_*.R`) is unchanged
 and still runs on `127.0.0.1:7788`; it is read-only historical reference
 behaviour. The Vue application is the supported user-facing product, and the
@@ -76,8 +75,7 @@ request, and again on each new run even when the numbers match) — and tutorial
 steps and Part 2 sections cross-fade with a
 few pixels of horizontal travel through `components/tutorial/TutorialStepStage.vue`,
 which renders one step at a time and moves focus to the arriving step's heading.
-`prefers-reduced-motion` removes both. See `project_state.md` for the details and
-the verification.
+`prefers-reduced-motion` removes both. See the private project record for the details and the verification.
 
 A further frontend-only pass, also uncommitted, polished five routine interactions
 and added a lighthearted second line under long waits. The analysis tab strip now
@@ -252,10 +250,9 @@ endpoint whose response is a union, which is worth having typed early.
   `aria-selected`, `aria-current` on the selected tab, `aria-controls`, roving
   `tabindex` and arrow-key movement; one
   `role="tabpanel"` named by its tab; an accessible name for every `DataTable`,
-  from its caption or a `label` prop). Both were frontend-only and are recorded in
-  `project_state.md`.
+  from its caption or a `label` prop). Both were frontend-only and are recorded in the private project record.
 - The approved UX revamp is being delivered in batches; Batch 1 (global frontend
-  foundation) is implemented and recorded in `project_state.md`: viewport-clamped
+  foundation) is implemented and recorded in the private project record: viewport-clamped
   overlay help popovers, the repeated dashboard disclaimer banner removed, internal
   filenames and launch commands removed from the interface, the
   Value-based Price tab moved immediately before the final HTA Decision Summary
@@ -272,7 +269,7 @@ endpoint whose response is a union, which is worth having typed early.
   the full colour with a brief soft bloom and beginning its return as the next
   letter rises, timed so the word is back at rest as the trailing pulse enters.
   The heading is not focusable, so no focus ring is drawn around the wordmark. Batch 2
-  (base case and PSA) is implemented and recorded in `project_state.md`: the
+  (base case and PSA) is implemented and recorded in the private project record: the
   model-structure line was removed from the assumptions panel and the base-case
   header, the two decompositions moved into closed disclosures under the base-case
   metric cards (tables, reconciliation totals, notes and accessible names kept),
@@ -291,7 +288,7 @@ endpoint whose response is a union, which is worth having typed early.
   one-line caption beneath the chart states what the two sides of the line mean,
   naming that the current result lies above the line only when R reports it as not
   cost-effective. Batch 3 (one-way sensitivity analysis, budget impact, value of
-  information) is implemented and recorded in `project_state.md`: OWSA's narrative
+  information) is implemented and recorded in the private project record: OWSA's narrative
   moved into a closed "How to interpret this result" disclosure with R's strings
   unchanged, the budget-impact controls became a panel-only stacked form so each
   label keeps its own information control (with the footer sentences replaced by
@@ -302,7 +299,7 @@ endpoint whose response is a union, which is worth having typed early.
   EVPPI rows in R's own order against R's EVPI line, with the caveat inside the
   disclosure). Frontend-only again: no calculation, threshold or endpoint changed.
   Batch 4 (DHT readiness, value-based price, HTA decision summary) is implemented
-  and recorded in `project_state.md`: the readiness inputs became a panel-only
+  and recorded in the private project record: the readiness inputs became a panel-only
   grouped stacked form built from R's own `group` field with every InfoTip on its
   label line, and the interoperability control now carries the existing R
   sentence, published as that choice set's `info` field — the single approved
@@ -318,8 +315,8 @@ endpoint whose response is a union, which is worth having typed early.
   the dashboard, the evidence priorities, the traffic-light rules and the
   availability block are closed disclosures, plus one optional insight that repeats
   R's stored value-based price result without requesting it. A polish batch
-  followed the final acceptance review, still frontend-only and recorded in
-  `project_state.md`: one shared `StaleNotice` sentence marks a stored result as
+  followed the final acceptance review, still frontend-only and recorded in the
+  private project record: one shared `StaleNotice` sentence marks a stored result as
   computed from earlier inputs in all nine tabs (budget impact, survival and value
   of information gained the request-snapshot comparison they were missing), one
   `useDisclosure` listener gives every secondary-information disclosure the same

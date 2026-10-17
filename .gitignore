@@ -29,6 +29,11 @@ __pycache__/
 
 # --- Deployment readiness: never track machine-local or generated material ---
 
+# Internal project and operations records live in a private repository, never
+# here. See CONTRIBUTING.md.
+project_state.md
+.project_state.md
+
 # Node dependencies and local build output.
 node_modules/
 dist/
