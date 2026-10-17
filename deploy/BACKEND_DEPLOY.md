@@ -1,10 +1,22 @@
 # Backend production deployment (GitHub Actions, manual first version)
 
-Status: **implemented in the repository, not yet run against production.** The
-workflow is manual-only. The first live deploy, the first live rollback and the
-`backend-production` environment are still outstanding; until they have been
-done, treat this automation as unverified. [`DEPLOY.md`](./DEPLOY.md) remains the
-host runbook (packages, R, the API service, DNS, Caddy) and the manual fallback.
+Status: **implemented in the repository; the first live run failed in preflight
+and that failure is fixed, but no live deployment has succeeded yet.** The
+workflow is manual-only. The first successful live deploy and the first live
+rollback are still outstanding; until they have been done, treat this automation
+as unverified. [`DEPLOY.md`](./DEPLOY.md) remains the host runbook (packages, R,
+the API service, DNS, Caddy) and the manual fallback.
+
+The first live run reached the server and stopped before checkout with
+`/etc/eqalb/api.env is not readable by eqalb`. SSH login, the pinned host key and
+the application-account sudo grant for `eqalb-backend-deploy` were confirmed on
+the host during that investigation. Live inspection found that
+`/etc/eqalb` and `/etc/eqalb/api.env` do not exist: this host keeps its settings
+inline in the systemd unit (`Environment=EQALB_RSCRIPT=/opt/R/4.5.1/bin/Rscript`,
+no `EnvironmentFiles=`) and runs two R workers. The script now reads the
+effective configuration from systemd and its environment files and only requires
+an environment file when the unit actually declares one. Section 2.1 records the
+resolution rules.
 
 This document covers only the FastAPI backend and its R workers. The frontend has
 its own automation in [`FRONTEND_DEPLOY.md`](./FRONTEND_DEPLOY.md), and neither
@@ -18,8 +30,8 @@ Deployed by this automation:
   full Git SHA (reproducible from that SHA alone).
 - The pinned Python dependencies in `/opt/eqalb/.venv`, installed from
   `api/requirements.lock.txt`.
-- The project `renv` library, restored from `renv.lock` with
-  `/opt/R/4.5.1/bin/Rscript`.
+- The project `renv` library, restored from `renv.lock` with the R executable
+  the service actually uses (resolved from the service configuration).
 - The `eqalb-api` systemd service, restarted once the dependency steps succeed.
 
 Never touched:
@@ -28,8 +40,10 @@ Never touched:
 - Any R model module, `api/main.py`, `api/plumber.R`, the frontend, exports or
   application defaults. The automation ships the committed files unchanged; it
   does not edit them.
-- `/etc/eqalb/api.env`, `/etc/systemd/system/eqalb-api.service`, the Caddy
-  configuration, DNS, firewall rules, certificates or the frontend symlink.
+- `/etc/systemd/system/eqalb-api.service`, any drop-in, any environment file the
+  unit declares, the Caddy configuration, DNS, firewall rules, certificates or
+  the frontend symlink. The script reads those settings but never writes them,
+  and it never creates an environment file.
 - The R installation in `/opt/R/4.5.1` (it is only used, never rebuilt).
 
 ## 2. The deployed topology this relies on
@@ -42,25 +56,71 @@ Inspection of the repository and runbook established:
 | Service | `eqalb-api.service` |
 | Service account | `eqalb` |
 | Process manager | systemd |
-| API listener | `127.0.0.1:8000` (loopback only; Caddy proxies `/api/*`) |
-| Health | `GET http://127.0.0.1:8000/api/health`, publicly `https://openhealth.ngo/api/health` |
-| R | `/opt/R/4.5.1/bin/Rscript`; R 4.5.1 is recorded in `renv.lock` |
+| API listener | loopback only; Caddy proxies `/api/*`. Resolved from the unit, not assumed to be a fixed port. |
+| Health | `GET http://<resolved-listener>/api/health`, publicly `https://openhealth.ngo/api/health` |
+| R | `EQALB_RSCRIPT` when set, otherwise `Rscript` from the service `PATH`; R 4.5.1 is recorded in `renv.lock` |
 | R packages | the project `renv` library, restored from `renv.lock` |
 | Python | `/opt/eqalb/.venv/bin/python`; pinned by `api/requirements.lock.txt` |
 | R workers | children of the FastAPI process (`api/r_client.py`), no separate unit, no port |
-| Server-local settings | `/etc/eqalb/api.env` (root:eqalb, mode 0640) |
+| Server-local settings | inline `Environment=` in the unit and/or any `EnvironmentFile=` it declares. On the live host: inline only, no environment file. |
 
 `eqalb-api.service` is the only process manager entry. Its unit uses
 `KillMode=control-group`, so restarting it stops and starts the API **and every R
 worker child** together. There is no R worker service to restart separately.
 
-Observed on the live host while writing this: `/api/health` reports `status: ok`,
+Observed on the live host: `/api/health` reports `status: ok`,
 `model_ready: true`, and `configured_workers: 2`, `ready_workers: 2`, with
-`rscript: /opt/R/4.5.1/bin/Rscript`. The committed `deploy/api.env.example` sets
-`EQALB_R_WORKERS=1`; the live host is server-local configuration and is **not**
-changed by this workflow. The health check accepts any positive number of ready
-workers and warns when fewer than configured are ready, so it works with either
-setting.
+`rscript: /opt/R/4.5.1/bin/Rscript`. The unit sets `EQALB_RSCRIPT` inline, has no
+`EnvironmentFile=`, and is active and healthy. The committed
+`deploy/api.env.example` sets `EQALB_R_WORKERS=1`; the live host is server-local
+configuration and is **not** changed by this workflow. The health check accepts
+any positive number of ready workers and warns when fewer than configured are
+ready, so it works with either setting.
+
+### 2.1 How the script resolves the service configuration
+
+Before checkout, the script reads systemd's effective properties with
+`systemctl show` (no root) and resolves only the settings the deployment needs.
+It never sources or executes configuration text. Only values for the allowlisted
+names `EQALB_RSCRIPT`, `EQALB_API_HOST`, `EQALB_API_PORT`, `EQALB_R_WORKERS`,
+`UVICORN_HOST`, `UVICORN_PORT` and `PATH` are read or printed; other variables
+are only reported by name (for example, one removed by `UnsetEnvironment=`) and
+never by value.
+
+Order of precedence, matching systemd:
+
+1. `Environment=` in the unit and its drop-ins.
+2. Each `EnvironmentFile=` the unit declares, in order. These override
+   `Environment=`; later files override earlier ones. A `-`-prefixed file is
+   optional: a missing optional file is skipped exactly as systemd skips it. A
+   missing required file is a stop, because the service could not start.
+3. `ExecStart=` decides how the listener is chosen:
+   - `api/run_api.py` / `api/main.py`: `EQALB_API_HOST`/`EQALB_API_PORT`, else
+     the code defaults `127.0.0.1:8788`.
+   - a uvicorn command line (`python -m uvicorn ...` or the `uvicorn` script):
+     `--host`/`--port`, then `UVICORN_HOST`/`UVICORN_PORT`, then the uvicorn
+     defaults `127.0.0.1:8000`. `EQALB_API_*` is not read by this launcher.
+   - an unrecognised launcher: `EQALB_API_*`/`UVICORN_*` if set, otherwise the
+     listener observed from the running service.
+4. `EQALB_RSCRIPT`, else the same `PATH` lookup `api/r_client.py` performs.
+   `EQALB_R_WORKERS` defaults to `2`.
+
+The running process is cross-checked against the configuration:
+
+- `EQALB_RSCRIPT` must match what a restart would use, or the script stops; the
+  `renv` library is version-specific, so a silent R change is not acceptable.
+- The resolved listener port must match the port the service is actually
+  listening on, or the script stops; a restart would move Caddy's upstream.
+- For a uvicorn command line, `--host`/`--port` override `UVICORN_*`, so an
+  overridden variable is not treated as a conflict.
+- A worker-count difference is reported as a warning, not a stop.
+
+If a setting cannot be established from those sources, the script stops before
+checkout and prints the read-only commands that will establish it. It does not
+invent a value, and it does not create or copy an environment file.
+
+The `status` action runs the same resolution read-only and prints the chosen
+values and their sources.
 
 ## 3. How a deployment runs
 
@@ -76,11 +136,20 @@ Workflow: [`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-b
    runner's `~/.ssh`, confirms the key is unencrypted, and connects with
    `StrictHostKeyChecking=yes`, `BatchMode=yes`, and only that pinned host key.
 4. It pipes the committed `deploy/backend-deploy.sh` from the runner to
-   `bash -s` on the VPS as the SSH deploy user (default `ubuntu`). The script is
-   the one from the selected commit, not whatever copy is on the server.
+   `bash -s` on the VPS as the SSH deploy user. Production uses the dedicated
+   account `eqalb-backend-deploy` (set in `BACKEND_DEPLOY_SSH_USER`); the
+   workflow's fallback is `ubuntu` for a host that has not been migrated. The
+   script is the one from the selected commit, not whatever copy is on the
+   server.
 5. On the server the script:
-   - takes a `flock` deployment lock, checks the state directory, the service
-     account, passwordless sudo, `/etc/eqalb/api.env` and `EQALB_RSCRIPT`;
+   - checks the state directory, the application-account sudo grant, the
+     service-restart grant, the checkout and the component paths;
+   - resolves the service configuration read-only (section 2.1) and stops
+     before changing anything if the R executable, the listener or a required
+     environment file cannot be established;
+   - probes the current health before the lock is taken; a service that is
+     active but does not answer on the resolved listener is a stop;
+   - takes a `flock` deployment lock;
    - records the current checkout HEAD and refuses to overwrite tracked local
      changes;
    - fetches `origin` (with prompts disabled), unshallows if needed, checks out
@@ -90,8 +159,8 @@ Workflow: [`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-b
    - verifies the R version against `renv.lock`, runs
      `renv::restore(prompt = FALSE)`, and requires
      `renv::status()$synchronized` to be `TRUE`;
-   - only then restarts `eqalb-api.service` and polls
-     `http://127.0.0.1:8000/api/health` (3 s interval, 180 s timeout);
+   - only then restarts `eqalb-api.service` and polls the resolved
+     `http://<listener>/api/health` (3 s interval, 180 s timeout);
    - on success writes the deployed SHA, deployment time and previous known-good
      SHA to `/var/lib/eqalb-backend-deploy/state.env`, appends a line to
      `history.log`, and prints `DEPLOYED_SHA=`, `DEPLOYED_AT=`, `PREVIOUS_SHA=`,
@@ -121,7 +190,7 @@ Environment secrets:
 |---|---|---|
 | `BACKEND_DEPLOY_SSH_HOST` | yes | VPS host name or address. Never committed; supplied only here. |
 | `BACKEND_DEPLOY_SSH_PORT` | no | SSH port; the workflow defaults to 22. |
-| `BACKEND_DEPLOY_SSH_USER` | no | SSH deploy account; the workflow defaults to `ubuntu`. |
+| `BACKEND_DEPLOY_SSH_USER` | no | SSH deploy account. Production is `eqalb-backend-deploy`, which is already set; the workflow's fallback is `ubuntu`. |
 | `BACKEND_DEPLOY_SSH_KEY` | yes | Dedicated, unencrypted, CI-only OpenSSH private key. Never an operator's personal key. |
 | `BACKEND_DEPLOY_KNOWN_HOSTS` | yes | The host's pinned public host key line(s), from `ssh-keyscan` or `/etc/ssh/ssh_host_*_key.pub`. |
 
@@ -192,36 +261,42 @@ Everything here is done by an operator, once. The workflow does none of it.
 
 ### 5.1 State directory and least-privilege sudo
 
-The script runs as the SSH deploy user (not root). It needs exactly two sudo
+Production uses a dedicated account, `eqalb-backend-deploy`, which is not the
+application account and is not an operator's login. It needs exactly two sudo
 capabilities: run application commands as `eqalb`, and restart the one service.
-For the default `ubuntu` account:
+Nothing broader is granted.
 
 ```bash
-sudo install -d -m 0700 -o ubuntu -g ubuntu /var/lib/eqalb-backend-deploy
+sudo install -d -m 0700 -o eqalb-backend-deploy -g eqalb-backend-deploy \
+  /var/lib/eqalb-backend-deploy
 
 sudo tee /etc/sudoers.d/eqalb-backend-deploy >/dev/null <<'EOF'
-ubuntu ALL=(eqalb) NOPASSWD: ALL
-ubuntu ALL=(root) NOPASSWD: /usr/bin/systemctl restart eqalb-api.service
+eqalb-backend-deploy ALL=(eqalb) NOPASSWD: ALL
+eqalb-backend-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart eqalb-api.service
 EOF
 sudo chmod 0440 /etc/sudoers.d/eqalb-backend-deploy
 sudo visudo -cf /etc/sudoers.d/eqalb-backend-deploy
 ```
 
 `(eqalb) NOPASSWD: ALL` is application-account access, not root: it lets the
-deploy user install that account's code and dependencies. Root access is limited
-to restarting `eqalb-api.service`. If the deploy user already has broad
-passwordless sudo, these entries still work but do not give the least-privilege
-split; prefer the dedicated entries.
+deploy account install that account's code and dependencies. Root access is
+limited to restarting `eqalb-api.service`. The account owns the state directory
+and nothing else; `/opt/eqalb` stays owned by `eqalb`.
+
+The SSH key is installed for this account with the `restrict` prefix described
+in section 4. `BACKEND_DEPLOY_SSH_USER` is already set to
+`eqalb-backend-deploy`. SSH login, the pinned host key, the application-account
+sudo grant and the systemctl restart grant have been tested on the host.
 
 The workflow uses `ssh -T` and `sudo -n`, so no TTY is available. Do not set
 `Defaults requiretty` for this account; Ubuntu's default does not. The preflight
 `sudo -n` checks fail fast if a password or a TTY is required.
 
-If you use a dedicated account instead of `ubuntu`, create it, own the state
-directory with it, and replace `ubuntu` in the sudoers file. Set
-`BACKEND_DEPLOY_SSH_USER` accordingly. A dedicated account is the better
-least-privilege choice; `ubuntu` is the documented default because that is the
-existing operator account.
+A host that has not been migrated can still use `ubuntu` as the deploy account.
+Create the same state directory owned by `ubuntu` and replace the account name
+in the sudoers entries and `BACKEND_DEPLOY_SSH_USER`. Do not use `eqalb` itself
+as the SSH account: it would blur the application and deployment roles. Do not
+use `eqalb-deploy`, which is the frontend deployment account.
 
 ### 5.2 Verify the server prerequisites
 
@@ -230,7 +305,9 @@ Run these as the deploy user, or adjust for the account you chose:
 ```bash
 # The service and its current health.
 systemctl is-active eqalb-api
-curl -s http://127.0.0.1:8000/api/health
+cd /opt/eqalb
+bash deploy/backend-deploy.sh status        # prints the resolved listener
+curl -s http://127.0.0.1:<resolved-port>/api/health
 
 # The checkout is on origin and can be fetched without a prompt.
 sudo -u eqalb git -C /opt/eqalb remote -v
@@ -242,13 +319,35 @@ sudo -u eqalb /opt/eqalb/.venv/bin/python -m pip --version
 cd /opt/eqalb
 sudo -u eqalb -H /opt/R/4.5.1/bin/Rscript --version        # expect 4.5.1
 sudo -u eqalb -H /opt/R/4.5.1/bin/Rscript -e 'renv::status()'
-sudo -u eqalb sed -n 's/^EQALB_RSCRIPT=//p' /etc/eqalb/api.env
 
 # The tools the script uses, and the two sudo grants.
-command -v git curl python3 flock systemctl
+command -v git curl python3 flock systemctl ss
 sudo -n -u eqalb -- true
 sudo -n -l "$(command -v systemctl)" restart eqalb-api.service
 ```
+
+Read-only inspection of how the service is configured. This is what the script
+does; it needs no root:
+
+```bash
+systemctl show eqalb-api.service --no-pager \
+  -p FragmentPath -p DropInPaths -p User -p Group -p WorkingDirectory \
+  -p ActiveState -p MainPID -p Environment -p EnvironmentFiles \
+  -p UnsetEnvironment -p PassEnvironment -p ExecStart
+systemctl cat eqalb-api.service
+sudo -u eqalb ss -ltnp
+```
+
+`systemctl show -p Environment` contains **only** the inline `Environment=`
+assignments. Values loaded from an `EnvironmentFile=` are not included; read
+those files directly (as `eqalb`) or use the `status` action, which resolves
+both sources.
+
+On the live host the expected shape is: `FragmentPath=/etc/systemd/system/eqalb-api.service`,
+no drop-ins, no `EnvironmentFiles=`, `User=eqalb`, `Group=eqalb`,
+`WorkingDirectory=/opt/eqalb`, inline
+`EQALB_RSCRIPT=/opt/R/4.5.1/bin/Rscript`, and two ready workers. There is no
+`/etc/eqalb/api.env`; the deployment does not need one and must not create one.
 
 Use the path printed by `command -v systemctl` in the sudoers entry too; on
 Ubuntu it is `/usr/bin/systemctl`.
@@ -268,8 +367,11 @@ but it will not recreate `/opt/R/4.5.1` or install R packages outside `renv`.
 
 ## 6. First deployment
 
-1. Add the `backend-production` environment and the secrets above (three are
-   mandatory; the port and user secrets have defaults).
+1. Confirm the `backend-production` environment exists and its secrets are set
+   (three are mandatory; the port has a default and the user secret is already
+   set to `eqalb-backend-deploy`). The first run reached the deployment job, so
+   the connection path is in place; the remaining question is whether the
+   preflight resolves the live listener.
 2. In GitHub: **Actions → Deploy backend → Run workflow**.
    - `mode`: `deploy`
    - `ref`: `main` (or the exact commit/tag you want)
@@ -290,7 +392,8 @@ but it will not recreate `/opt/R/4.5.1` or install R packages outside `renv`.
    cat /var/lib/eqalb-backend-deploy/state.env
    sudo -u eqalb git -C /opt/eqalb rev-parse HEAD
    systemctl status eqalb-api --no-pager | head -20
-   curl -s http://127.0.0.1:8000/api/health
+   cd /opt/eqalb
+   bash deploy/backend-deploy.sh status    # prints the resolved listener and sources
    curl -s https://openhealth.ngo/api/health
    ```
 
@@ -383,11 +486,12 @@ A run is healthy only when all of these are true:
 
 The endpoint returns HTTP 200 even when the model is degraded, so the check
 parses the JSON body rather than relying on the status code alone. The server
-check is private (`127.0.0.1:8000`); the workflow then repeats the same rules
-against the public `https://openhealth.ngo/api/health`. A public-only failure
-with a healthy private check points at Caddy, TLS, DNS or the network, not at the
-new backend; the backend deployment is still recorded, and the workflow still
-fails so the problem is not silent.
+check uses the resolved listener, which section 2.1 proves against the running
+service; the workflow then repeats the same rules against the public
+`https://openhealth.ngo/api/health`. A public-only failure with a healthy private
+check points at Caddy, TLS, DNS or the network, not at the new backend; the
+backend deployment is still recorded, and the workflow still fails so the
+problem is not silent.
 
 Failure outcomes:
 
@@ -466,6 +570,24 @@ Verified in the repository, without a VPS or GitHub secrets:
   `.github/workflows/deploy-backend.yml`.
 - The workflow YAML parses and contains one `deploy` job with the expected nine
   steps and only the `workflow_dispatch` trigger.
+- The configuration parser was tested against realistic systemd property and
+  environment-file inputs: quoted and unquoted values, comments, blank lines,
+  line continuations, CRLF, UTF-8 rejection, multi-line quotes, `export` (not
+  supported by systemd), inline comments (kept as part of the value), NUL-
+  separated `/proc/PID/environ`, `ss` output with IPv4/IPv6/wildcard addresses
+  and PID filtering, `ExecStart` with `run_api.py`, `uvicorn`, `--host`/`--port`,
+  `--uds`, and unknown launchers.
+- The resolver was run with stubbed systemd, `ss`, curl and `/proc` in 30
+  scenarios, including: inline-only configuration with no environment file (the
+  production shape), a genuine `EnvironmentFile` (including one that overrides
+  `Environment=`), an optional missing file, a required missing file, an
+  unreadable file, a `%` specifier, an `UnsetEnvironment` conflict, a listener
+  mismatch, an R mismatch between configuration and the running process, an
+  unknown launcher resolved from `ss`, an inactive service with explicit
+  settings, a wildcard and an IPv6 listener, `run_api.py` ignoring `--port`,
+  uvicorn CLI arguments overriding `UVICORN_*`, and a worker-count warning.
+- Preflight ordering was tested: a configuration failure exits non-zero with no
+  checkout, `pip`, `renv` or restart call.
 - The health parser was run against the **live** production
   `https://openhealth.ngo/api/health` response: it accepted the healthy
   response (`status=ok`, `model_ready=true`, 2 of 2 workers) and rejected
@@ -476,34 +598,59 @@ Verified in the repository, without a VPS or GitHub secrets:
 Not verified locally, because they require the live host and the GitHub
 environment:
 
-- The SSH key, pinned host key, port, user and network path.
-- The sudoers grants, the state directory ownership and the absence of a sudo
-  password prompt.
-- The server's `origin` URL and non-interactive fetch.
+- The SSH key, pinned host key, port, user and network path (SSH, pinned
+  host-key login and application-account sudo were tested by the operator on
+  the host, not from this repository).
+- The `eqalb-backend-deploy` sudoers grants, the state directory ownership and
+  the absence of a sudo password prompt.
+- The server's `origin` URL and non-interactive fetch (reported as passing by
+  the operator; not re-run here).
 - The current `renv` consistency and the Python environment.
 - The actual checkout, `pip install`, `renv::restore`, service restart, health
   polling, state write and rollback.
-- The `backend-production` environment and its secrets/approval rule.
+- The `backend-production` approval rule, and a workflow run that completes
+  (SSH and the deployment job did run; the preflight, not the connection, failed).
 - The public health path after a real deployment.
 
-The first run should therefore be treated as the integration test. Inspect the
-workflow log and the server state file; do not enable the `push` trigger first.
+The first live run failed at the old preflight, before any change, so no
+deployment state was written and no service was restarted. This fix is local
+only. The first re-run should therefore be treated as the integration test:
+inspect the `status` output and workflow log; do not enable the `push` trigger
+first.
 
 ## 12. Risks and open deployment information
 
-- **No live run yet.** Everything server-side is unverified until the first
-  manual deploy. The first run is expected to be the integration test.
-- **Passwordless sudo is a prerequisite.** The host's current sudo policy was
-  not inspected from here. If `ubuntu` requires a password for `sudo`, the
-  workflow fails at the preflight check; install the sudoers drop-in first.
-- **The live host's Git access is unverified.** The repository is public, so an
-  HTTPS checkout should fetch without credentials, but the server's actual
-  `origin` and whether it uses SSH is not known. The script disables interactive
-  prompts, so a missing credential fails fast rather than hanging.
+- **No successful live run yet.** The first run failed in preflight before any
+  change; the fix is locally tested only. The next run is the integration test.
+- **The live host's Git access is not re-verified here.** The repository is
+  public, so an HTTPS checkout needs no credentials, and the operator reports a
+  non-interactive fetch passing. The script disables interactive prompts, so a
+  missing credential fails fast rather than hanging.
+- **The configuration must be resolvable without root.** The script reads
+  `systemctl show`, `/proc/PID/environ` and any declared environment files as
+  `eqalb`. An environment file that `eqalb` cannot read is a stop, not an
+  attempt to read it as root. Grant read access with the `DEPLOY.md` ownership
+  (`root:eqalb`, mode 0640) or set the documented `EQALB_DEPLOY_*` overrides.
+- **An unrecognised `ExecStart` launcher is resolved from the running service.**
+  If the listener cannot be established from the unit, an environment file or
+  `ExecStart`, the script uses the port the service is actually listening on and
+  reports that source. The post-restart health check is the final proof. A
+  service that is not running and has no explicit listener is a stop.
+- **`systemctl show -p Environment` does not include `EnvironmentFile` values.**
+  Those files are parsed separately, as data, and are applied after the inline
+  assignments, matching systemd. The script never sources them.
+- **A unit edited without `daemon-reload` can disagree with the running
+  process.** An R-path, listener or worker difference between the running
+  process and the unit configuration is reported; the first two stop the
+  deployment, the worker count warns. Reconcile the unit or reload systemd
+  before deploying.
 - **The live host reports 2 R workers**, while the committed
   `deploy/api.env.example` records 1. This is server-local configuration and is
   not changed here. The health check deliberately accepts any positive ready
-  count; confirm the intended count in `/etc/eqalb/api.env`.
+  count; confirm the intended count in the unit environment.
+- **The live host has no `/etc/eqalb/api.env`.** That is supported; the script
+  does not require it, does not create it, and does not copy
+  `api.env.example` over production.
 - **Brief restart gap.** `systemctl restart` stops and starts the one service, so
   requests can fail for the restart duration. Zero-downtime deployment is not
   implemented, by design for this version.
@@ -530,5 +677,5 @@ workflow log and the server state file; do not enable the `push` trigger first.
   not a new requirement introduced by the automation. A build failure stops the
   deployment before the service is restarted.
 - **No database or migrations.** The application has no database, so there is
-  nothing else to back up or migrate. The durable state is the Git SHA plus
-  `/etc/eqalb/api.env`.
+  nothing else to back up or migrate. The durable state is the Git SHA plus the
+  server-local unit configuration and any environment file it declares.

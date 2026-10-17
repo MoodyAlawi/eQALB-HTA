@@ -15,7 +15,24 @@
 # (which stops and starts the API and, with it, every R worker child). What it
 # records: the deployed SHA and time, the previous known-good SHA, and any
 # in-flight attempt, in /var/lib/eqalb-backend-deploy. It never edits model code,
-# API code, the frontend, the Caddy configuration or /etc/eqalb/api.env.
+# API code, the frontend, the Caddy configuration or any unit or environment
+# file.
+#
+# Configuration is resolved from the service itself, read-only, before anything
+# is changed. Supported sources, in the order systemd applies them:
+#   * Environment= in the unit (and its drop-ins)
+#   * EnvironmentFile= files listed by the unit, in order (they override
+#     Environment=, and later files override earlier ones)
+#   * ExecStart: a uvicorn command line uses --host/--port, then
+#     UVICORN_HOST/UVICORN_PORT, then 127.0.0.1:8000; api/run_api.py and
+#     api/main.py use EQALB_API_HOST/EQALB_API_PORT and default to 127.0.0.1:8788
+#   * unset settings fall back to the application defaults from those files
+# EQALB_RSCRIPT selects R; when it is unset, Rscript is resolved from the
+# service PATH exactly as api/r_client.py does. EQALB_R_WORKERS defaults to 2.
+# An EnvironmentFile is optional: a host with only inline systemd settings is
+# supported. Files are parsed as data (never sourced), every value used is
+# checked against the running service, and a value that cannot be established
+# is reported instead of guessed.
 #
 # There is no separate R worker service: api/r_client.py starts the workers as
 # children of the FastAPI process, and eqalb-api.service uses
@@ -30,8 +47,9 @@
 # non-zero after printing the service logs; it does NOT roll back automatically.
 # Use the rollback action documented in deploy/BACKEND_DEPLOY.md.
 #
-# This script is deliberately not root: run it as the SSH deploy user. It uses
-# passwordless sudo for exactly two things:
+# This script is deliberately not root: run it as the SSH deploy account
+# (eqalb-backend-deploy in production; the workflow's BACKEND_DEPLOY_SSH_USER).
+# It uses passwordless sudo for exactly two things:
 #   * sudo -u eqalb ...        (the application account that owns /opt/eqalb)
 #   * systemctl restart eqalb-api.service
 # See deploy/BACKEND_DEPLOY.md for the one-time sudoers and state directory.
@@ -48,7 +66,6 @@ umask 022
 PROJECT_DIR="/opt/eqalb"
 APP_USER="eqalb"
 SERVICE="eqalb-api.service"
-RSCRIPT="/opt/R/4.5.1/bin/Rscript"
 VENV_PYTHON="$PROJECT_DIR/.venv/bin/python"
 
 # Deployment-only state. Owned by the SSH deploy user, never by eqalb and never
@@ -59,11 +76,28 @@ PENDING_FILE="$STATE_DIR/pending.env"
 HISTORY_FILE="$STATE_DIR/history.log"
 LOCK_FILE="$STATE_DIR/deploy.lock"
 
-# The service binds loopback only (deploy/api.env.example). These overrides
-# exist for a host whose /etc/eqalb/api.env uses different values.
-API_HOST="${EQALB_DEPLOY_API_HOST:-127.0.0.1}"
-API_PORT="${EQALB_DEPLOY_API_PORT:-8000}"
-HEALTH_URL="http://${API_HOST}:${API_PORT}/api/health"
+# Application defaults, used only when the service configuration does not
+# determine a value. They come from the committed launchers:
+#   api/main.py and api/run_api.py: 127.0.0.1:8788, EQALB_R_WORKERS defaults to 2
+#   api/r_client.py:               EQALB_R_WORKERS defaults to 2, Rscript from PATH
+#   uvicorn command line:          127.0.0.1:8000
+DEFAULT_APP_HOST="127.0.0.1"
+DEFAULT_APP_PORT="8788"
+DEFAULT_UVICORN_HOST="127.0.0.1"
+DEFAULT_UVICORN_PORT="8000"
+DEFAULT_WORKERS="2"
+
+# The only variables this script reads values for from the unit environment or
+# an environment file. A service unit may set other (including secret)
+# variables; they are ignored, and only their names can appear in a diagnostic,
+# never their values.
+CONFIG_KEYS=(EQALB_RSCRIPT EQALB_API_HOST EQALB_API_PORT EQALB_R_WORKERS UVICORN_HOST UVICORN_PORT PATH)
+
+# Explicit operator overrides for a host whose configuration cannot be resolved
+# read-only. They are never guessed and are still health-checked.
+RSCRIPT_OVERRIDE="${EQALB_DEPLOY_RSCRIPT:-}"
+API_HOST_OVERRIDE="${EQALB_DEPLOY_API_HOST:-}"
+API_PORT_OVERRIDE="${EQALB_DEPLOY_API_PORT:-}"
 HEALTH_TIMEOUT="${EQALB_DEPLOY_HEALTH_TIMEOUT:-180}"
 HEALTH_INTERVAL="${EQALB_DEPLOY_HEALTH_INTERVAL:-3}"
 
@@ -81,6 +115,39 @@ PENDING_AT=""
 PENDING_BASE_SHA=""
 CHECKED_OUT=0
 RESTARTED=0
+CHANGES_POSSIBLE=0
+CONFIG_STRICT=1
+
+# Resolved service configuration. Each value carries its provenance so a
+# failure can say exactly which source produced it.
+HEALTH_URL=""
+SERVICE_PROPERTIES=""
+SERVICE_FRAGMENT=""
+SERVICE_DROPINS=""
+SERVICE_USER=""
+SERVICE_GROUP=""
+SERVICE_WORKDIR=""
+SERVICE_ACTIVE="unknown"
+SERVICE_MAINPID="0"
+EXEC_MODE="unknown"
+EXEC_HOST=""
+EXEC_PORT=""
+EXEC_SOCKET=0
+RUNTIME_AVAILABLE=0
+RESOLVED_RSCRIPT=""
+RESOLVED_RSCRIPT_SOURCE=""
+RESOLVED_R_VERSION=""
+RESOLVED_API_HOST=""
+RESOLVED_API_HOST_SOURCE=""
+RESOLVED_API_PORT=""
+RESOLVED_API_PORT_SOURCE=""
+RESOLVED_WORKERS=""
+RESOLVED_WORKERS_SOURCE=""
+OBSERVED_HOSTS=()
+OBSERVED_PORTS=()
+declare -A CONFIG_ENV=()
+declare -A CONFIG_SOURCE=()
+declare -A RUNTIME_ENV=()
 
 GIT=""
 CURL=""
@@ -88,6 +155,7 @@ FLOCK=""
 SYSTEMCTL=""
 PYTHON3=""
 HEALTH_PYTHON=""
+SS=""
 
 # Prints a compact status line and exits 1 unless the response is healthy.
 # A 200 response with status "degraded" is a failed health check, so this reads
@@ -141,6 +209,294 @@ if isinstance(configured, int) and configured > ready:
     )
 PY
 
+# Reads only the settings listed in CONFIG_KEYS from systemd's property formats
+# and from environment files. It never executes or sources configuration text,
+# and it never prints a value that is not in CONFIG_KEYS.
+read -r -d '' CONFIG_PARSER <<'PY' || true
+import re
+import sys
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(newline="\n")
+
+MODE = sys.argv[1] if len(sys.argv) > 1 else ""
+ALLOWED = set(sys.argv[2:])
+
+def emit(key, value):
+    if key in ALLOWED:
+        sys.stdout.write("%s\t%s\n" % (key, value))
+
+def fail(message):
+    sys.stderr.write("config: error: %s\n" % message)
+    sys.exit(2)
+
+def shell_words(text):
+    words = []
+    i = 0
+    n = len(text)
+    while i < n:
+        while i < n and text[i] in " \t\n\r":
+            i += 1
+        if i >= n:
+            break
+        buf = []
+        while i < n and text[i] not in " \t\n\r":
+            ch = text[i]
+            if ch in "'\"":
+                quote = ch
+                i += 1
+                while i < n and text[i] != quote:
+                    if quote == '"' and text[i] == "\\":
+                        i += 1
+                        if i >= n:
+                            fail("unterminated escape in a systemd property value")
+                        esc = text[i]
+                        buf.append({"n": "\n", "t": "\t", "r": "\r"}.get(esc, esc))
+                        i += 1
+                        continue
+                    buf.append(text[i])
+                    i += 1
+                if i >= n:
+                    fail("unterminated quote in a systemd property value")
+                i += 1
+                continue
+            if ch == "\\":
+                i += 1
+                if i >= n:
+                    break
+                esc = text[i]
+                buf.append({"n": "\n", "t": "\t", "r": "\r"}.get(esc, esc))
+                i += 1
+                continue
+            buf.append(ch)
+            i += 1
+        words.append("".join(buf))
+    return words
+
+def split_assignment(word):
+    if "=" not in word:
+        return None, None
+    key, value = word.split("=", 1)
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+        return None, None
+    return key, value
+
+def parse_environment(text):
+    for word in shell_words(text):
+        key, value = split_assignment(word)
+        if key is not None:
+            emit(key, value)
+
+def read_env_value(text, i, line):
+    n = len(text)
+    value = []
+    if i < n and text[i] in "'\"":
+        quote = text[i]
+        i += 1
+        while i < n:
+            ch = text[i]
+            if quote == "'":
+                if ch == "'":
+                    return "".join(value), i + 1, line
+                if ch == "\n":
+                    line += 1
+                value.append(ch)
+                i += 1
+                continue
+            if ch == '"':
+                return "".join(value), i + 1, line
+            if ch == "\\":
+                i += 1
+                if i >= n:
+                    fail("unterminated escape in the environment file (line %d)" % line)
+                esc = text[i]
+                if esc == "\n":
+                    line += 1
+                    i += 1
+                    continue
+                value.append({"n": "\n", "t": "\t", "r": "\r"}.get(esc, esc))
+                i += 1
+                continue
+            if ch == "\n":
+                line += 1
+            value.append(ch)
+            i += 1
+        fail("unterminated quote in the environment file (line %d)" % line)
+
+    while i < n and text[i] != "\n":
+        ch = text[i]
+        if ch == "\\":
+            i += 1
+            if i >= n:
+                break
+            if text[i] == "\n":
+                line += 1
+                i += 1
+                continue
+            value.append(text[i])
+            i += 1
+            continue
+        value.append(ch)
+        i += 1
+    while value and value[-1] in " \t\r":
+        value.pop()
+    return "".join(value), i, line
+
+def parse_env_file(text):
+    i = 0
+    n = len(text)
+    line = 1
+    while i < n:
+        while i < n and text[i] in " \t\r":
+            i += 1
+        if i >= n:
+            break
+        if text[i] == "\n":
+            i += 1
+            line += 1
+            continue
+        if text[i] in "#;":
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        start = i
+        while i < n and text[i] not in "=\n":
+            i += 1
+        if i >= n or text[i] == "\n":
+            if i < n:
+                i += 1
+                line += 1
+            continue
+        key = text[start:i].strip()
+        i += 1
+        while i < n and text[i] in " \t\r":
+            i += 1
+        value, i, line = read_env_value(text, i, line)
+        while i < n and text[i] in " \t\r":
+            i += 1
+        if i < n and text[i] != "\n":
+            fail("unexpected content after a value in the environment file (line %d)" % line)
+        if i < n:
+            i += 1
+            line += 1
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            if key in ALLOWED:
+                emit(key, value)
+
+def split_endpoint(text):
+    if text.startswith("["):
+        end = text.find("]")
+        if end < 0:
+            return None, None
+        host = text[1:end]
+        rest = text[end + 1:]
+        if not rest.startswith(":"):
+            return None, None
+        port = rest[1:]
+    else:
+        if ":" not in text:
+            return None, None
+        host, port = text.rsplit(":", 1)
+    host = host.split("%", 1)[0]
+    if not port.isdigit():
+        return None, None
+    return host, int(port)
+
+def parse_listeners(pid):
+    seen = set()
+    for line in sys.stdin:
+        fields = line.split()
+        if len(fields) < 6 or fields[0] != "LISTEN":
+            continue
+        process = " ".join(fields[5:])
+        if not re.search(r"(?:^|[,(])pid=%d(?:[,)]|$)" % pid, process):
+            continue
+        host, port = split_endpoint(fields[3])
+        if host is None:
+            continue
+        key = (host, port)
+        if key in seen:
+            continue
+        seen.add(key)
+        sys.stdout.write("LISTEN\t%s\t%s\n" % (host, port))
+
+def parse_exec_start(lines):
+    modes = set()
+    hosts = set()
+    ports = set()
+    sockets = False
+    for line in lines:
+        for match in re.finditer(r"argv\[\]=(.*?)(?:\s;\s|\}$)", line):
+            argv = match.group(1).split()
+            if not argv:
+                continue
+            mode = "unknown"
+            for j, arg in enumerate(argv):
+                basename = arg.rsplit("/", 1)[-1]
+                if basename == "uvicorn" or (arg == "-m" and j + 1 < len(argv) and argv[j + 1] == "uvicorn"):
+                    mode = "uvicorn"
+                elif arg.endswith("run_api.py") or arg.rsplit("/", 1)[-1] == "main.py":
+                    mode = "app"
+            modes.add(mode)
+            if mode != "uvicorn":
+                continue
+            j = 0
+            while j < len(argv):
+                arg = argv[j]
+                if arg in ("--uds", "--fd"):
+                    sockets = True
+                    j += 1
+                    continue
+                if arg in ("--host", "--port"):
+                    if j + 1 < len(argv):
+                        (hosts if arg == "--host" else ports).add(argv[j + 1])
+                    j += 2
+                    continue
+                if arg.startswith("--host="):
+                    hosts.add(arg.split("=", 1)[1])
+                elif arg.startswith("--port="):
+                    ports.add(arg.split("=", 1)[1])
+                j += 1
+    if len(modes) > 1:
+        fail("ExecStart uses more than one launcher type (%s); cannot determine the listener"
+             % ", ".join(sorted(modes)))
+    print("EXEC_MODE\t%s" % (modes.pop() if modes else "unknown"))
+    for host in sorted(hosts):
+        print("EXEC_HOST\t%s" % host)
+    for port in sorted(ports):
+        print("EXEC_PORT\t%s" % port)
+    if sockets:
+        print("EXEC_SOCKET\t1")
+
+if MODE == "environment":
+    parse_environment(sys.stdin.read())
+elif MODE == "names":
+    for word in shell_words(sys.stdin.read()):
+        name = word.split("=", 1)[0]
+        if name in ALLOWED:
+            sys.stdout.write("%s\n" % name)
+elif MODE == "envfile":
+    try:
+        text = sys.stdin.buffer.read().decode("utf-8")
+    except UnicodeDecodeError:
+        fail("the environment file is not valid UTF-8")
+    parse_env_file(text)
+elif MODE == "proc-environ":
+    for entry in sys.stdin.buffer.read().split(b"\0"):
+        if not entry:
+            continue
+        key, value = split_assignment(entry.decode("utf-8", "surrogateescape"))
+        if key is not None:
+            emit(key, value)
+elif MODE == "execstart":
+    parse_exec_start(sys.stdin.read().splitlines())
+elif MODE == "listeners":
+    parse_listeners(int(sys.argv[2]))
+else:
+    fail("unknown parser mode %r" % MODE)
+
+PY
+
 usage() {
   cat <<'EOF'
 usage: backend-deploy.sh deploy <full-commit-sha>
@@ -169,7 +525,8 @@ note() {
 
 on_exit() {
   local status=$?
-  if [ "$status" -ne 0 ] && { [ "$ACTION" = "deploy" ] || [ "$ACTION" = "rollback" ]; }; then
+  if [ "$status" -ne 0 ] && [ "$CHANGES_POSSIBLE" -eq 1 ] \
+    && { [ "$ACTION" = "deploy" ] || [ "$ACTION" = "rollback" ]; }; then
     if [ -n "$TARGET_SHA" ]; then
       note "target commit: $TARGET_SHA"
     fi
@@ -298,6 +655,687 @@ append_history() {
   chmod 0600 "$HISTORY_FILE" 2>/dev/null || true
 }
 
+# A configuration problem stops a deploy/rollback before anything is changed.
+# The status action calls the same resolution in soft mode and reports what it
+# could determine.
+config_fail() {
+  if [ "$CONFIG_STRICT" -eq 1 ]; then
+    config_report
+    die "$*"
+  fi
+  note "warning: $*"
+}
+
+prop_first() {
+  printf '%s\n' "$SERVICE_PROPERTIES" | sed -n "s/^$1=//p" | head -n 1
+}
+
+prop_all() {
+  printf '%s\n' "$SERVICE_PROPERTIES" | sed -n "s/^$1=//p"
+}
+
+# Reads the effective unit metadata and configuration sources. None of this
+# needs root: systemctl show is read-only and every value this script uses is
+# either unit metadata or one of the allowlisted variables in CONFIG_KEYS.
+load_service_properties() {
+  local output workdir
+  if ! output="$("$SYSTEMCTL" show "$SERVICE" --no-pager \
+      -p FragmentPath -p DropInPaths -p User -p Group -p WorkingDirectory \
+      -p ActiveState -p MainPID -p Environment -p EnvironmentFiles \
+      -p UnsetEnvironment -p PassEnvironment -p ExecStart 2>&1)"; then
+    config_fail "cannot read the properties of $SERVICE with systemctl show: $(printf '%s\n' "$output" | head -n 1)"
+    return 1
+  fi
+
+  SERVICE_PROPERTIES="$output"
+  SERVICE_FRAGMENT="$(prop_first FragmentPath)"
+  SERVICE_DROPINS="$(prop_all DropInPaths | paste -sd ' ' -)"
+  SERVICE_USER="$(prop_first User)"
+  SERVICE_GROUP="$(prop_first Group)"
+  SERVICE_WORKDIR="$(prop_first WorkingDirectory)"
+  SERVICE_ACTIVE="$(prop_first ActiveState)"
+  SERVICE_MAINPID="$(prop_first MainPID)"
+  if [ -z "$SERVICE_MAINPID" ]; then
+    SERVICE_MAINPID=0
+  fi
+
+  if [ -z "$SERVICE_FRAGMENT" ] || [ "$SERVICE_ACTIVE" = "not-found" ]; then
+    config_fail "systemd does not know $SERVICE (FragmentPath is empty); install the unit from deploy/eqalb-api.service first"
+    return 1
+  fi
+  if [ "$SERVICE_USER" != "$APP_USER" ]; then
+    config_fail "$SERVICE runs as user '${SERVICE_USER:-unknown}', not $APP_USER; this script deploys the $APP_USER application account"
+    return 1
+  fi
+  if [ "$SERVICE_GROUP" != "$APP_USER" ]; then
+    config_fail "$SERVICE runs as group '${SERVICE_GROUP:-unknown}', not $APP_USER; confirm the service unit before deploying"
+    return 1
+  fi
+  workdir="${SERVICE_WORKDIR#-}"
+  if [ "${workdir%/}" != "$PROJECT_DIR" ]; then
+    config_fail "$SERVICE has WorkingDirectory='${SERVICE_WORKDIR:-unset}', not $PROJECT_DIR; this script deploys the checkout in $PROJECT_DIR"
+    return 1
+  fi
+  return 0
+}
+
+# UnsetEnvironment= and PassEnvironment= are applied after Environment= and
+# EnvironmentFile=, so a key named there would make the effective value differ
+# from what this script reads. Detect that instead of guessing.
+check_unsets_and_passthrough() {
+  local prop raw names
+  for prop in UnsetEnvironment PassEnvironment; do
+    raw="$(prop_first "$prop")"
+    if [ -z "$raw" ]; then
+      continue
+    fi
+    if ! names="$(printf '%s\n' "$raw" | "$HEALTH_PYTHON" -c "$CONFIG_PARSER" names "${CONFIG_KEYS[@]}" | paste -sd ' ' -)"; then
+      config_fail "cannot parse $prop= from $SERVICE"
+      return 1
+    fi
+    if [ -n "$names" ]; then
+      config_fail "$SERVICE uses $prop for: $names. That setting is applied after Environment= and EnvironmentFile=, so this script cannot determine the effective value. Remove those names from $prop or set the EQALB_DEPLOY_* overrides."
+      return 1
+    fi
+  done
+  return 0
+}
+
+# systemd's Environment= property holds shell-quoted KEY=VALUE tokens. The
+# parser emits only the allowlisted keys; any other value is discarded unseen.
+collect_environment_property() {
+  local raw parsed key value
+  raw="$(prop_first Environment)"
+  if [ -z "$raw" ]; then
+    return 0
+  fi
+  if ! parsed="$(printf '%s\n' "$raw" | "$HEALTH_PYTHON" -c "$CONFIG_PARSER" environment "${CONFIG_KEYS[@]}")"; then
+    config_fail "cannot parse the Environment= property of $SERVICE"
+    return 1
+  fi
+  while IFS=$'\t' read -r key value; do
+    if [ -z "$key" ]; then
+      continue
+    fi
+    CONFIG_ENV["$key"]="$value"
+    CONFIG_SOURCE["$key"]="unit Environment="
+  done <<< "$parsed"
+  return 0
+}
+
+# systemd's EnvironmentFiles= property is a list of (path, ignore_errors)
+# entries. Each file is parsed as data with the documented EnvironmentFile
+# rules; it is never sourced. Settings from these files override Environment=,
+# and later files override earlier ones, which is why they are applied in order.
+collect_environment_files() {
+  local spec ignore path parsed key value
+  local -a specs=()
+  # prop_all already strips the "EnvironmentFiles=" prefix; each line is one
+  # "<path> (ignore_errors=yes|no)" entry.
+  while IFS= read -r spec; do
+    if [ -n "$spec" ]; then
+      specs+=("$spec")
+    fi
+  done < <(prop_all EnvironmentFiles)
+
+  if [ "${#specs[@]}" -eq 0 ]; then
+    return 0
+  fi
+
+  for spec in "${specs[@]}"; do
+    ignore=no
+    case "$spec" in
+      *" (ignore_errors=yes)")
+        ignore=yes
+        spec="${spec% (ignore_errors=yes)}"
+        ;;
+      *" (ignore_errors=no)")
+        spec="${spec% (ignore_errors=no)}"
+        ;;
+    esac
+    path="$spec"
+
+    case "$path" in
+      *%*)
+        config_fail "the unit declares EnvironmentFile=$path, which uses a systemd specifier. This script does not expand specifiers; make the path literal or set the EQALB_DEPLOY_* overrides."
+        return 1
+        ;;
+      /*) ;;
+      *)
+        config_fail "the unit declares a non-absolute EnvironmentFile '$path'; systemd requires an absolute path"
+        return 1
+        ;;
+    esac
+
+    if [ ! -e "$path" ]; then
+      if [ "$ignore" = "yes" ]; then
+        note "note: optional EnvironmentFile $path does not exist; systemd ignores it and so does this script"
+        continue
+      fi
+      config_fail "the unit requires EnvironmentFile $path, but it does not exist; $SERVICE would fail to start"
+      return 1
+    fi
+
+    if ! run_as_app test -r "$path"; then
+      config_fail "EnvironmentFile $path is not readable by $APP_USER. This script reads it as $APP_USER, never as root. Grant $APP_USER read access (deploy/DEPLOY.md uses root:$APP_USER 0640) or set the EQALB_DEPLOY_* overrides."
+      return 1
+    fi
+
+    if ! parsed="$(run_as_app cat -- "$path" | "$HEALTH_PYTHON" -c "$CONFIG_PARSER" envfile "${CONFIG_KEYS[@]}")"; then
+      config_fail "cannot parse EnvironmentFile $path; the parser reported the line number above. Fix its quoting or continuation before deploying."
+      return 1
+    fi
+
+    while IFS=$'\t' read -r key value; do
+      if [ -z "$key" ]; then
+        continue
+      fi
+      CONFIG_ENV["$key"]="$value"
+      CONFIG_SOURCE["$key"]="EnvironmentFile $path"
+    done <<< "$parsed"
+  done
+  return 0
+}
+
+# The running process environment is read as the service user (it owns the
+# process) from /proc/PID/environ. It is used only for the allowlisted keys and
+# only to cross-check the configuration, because it shows what is running now
+# rather than what systemd will apply on the next start.
+load_runtime_environment() {
+  RUNTIME_AVAILABLE=0
+  if [ "$SERVICE_ACTIVE" != "active" ]; then
+    return 0
+  fi
+  if ! [[ "$SERVICE_MAINPID" =~ ^[0-9]+$ ]]; then
+    return 0
+  fi
+  if [ "$SERVICE_MAINPID" -le 1 ]; then
+    return 0
+  fi
+  if ! run_as_app test -r "/proc/$SERVICE_MAINPID/environ"; then
+    note "note: /proc/$SERVICE_MAINPID/environ is not readable as $APP_USER; the running environment cannot be cross-checked"
+    return 0
+  fi
+
+  local parsed key value
+  if ! parsed="$(run_as_app cat -- "/proc/$SERVICE_MAINPID/environ" | "$HEALTH_PYTHON" -c "$CONFIG_PARSER" proc-environ "${CONFIG_KEYS[@]}")"; then
+    note "note: the running environment of $SERVICE could not be read; it is not cross-checked"
+    return 0
+  fi
+  RUNTIME_AVAILABLE=1
+  while IFS=$'\t' read -r key value; do
+    if [ -z "$key" ]; then
+      continue
+    fi
+    RUNTIME_ENV["$key"]="$value"
+  done <<< "$parsed"
+  return 0
+}
+
+# ExecStart determines which launcher runs and therefore how the listener is
+# chosen. api/main.py and api/run_api.py read EQALB_API_HOST/PORT and default
+# to 127.0.0.1:8788; a uvicorn command line reads --host/--port and
+# UVICORN_HOST/UVICORN_PORT and defaults to 127.0.0.1:8000.
+load_exec_start() {
+  EXEC_MODE="unknown"
+  EXEC_HOST=""
+  EXEC_PORT=""
+  EXEC_SOCKET=0
+
+  local raw parsed key value
+  raw="$(prop_all ExecStart)"
+  if [ -z "$raw" ]; then
+    return 0
+  fi
+  if ! parsed="$(printf '%s\n' "$raw" | "$HEALTH_PYTHON" -c "$CONFIG_PARSER" execstart)"; then
+    config_fail "cannot parse ExecStart= from $SERVICE. Make the launcher a supported uvicorn or run_api.py command, or set EQALB_DEPLOY_API_HOST/EQALB_DEPLOY_API_PORT explicitly."
+    return 1
+  fi
+  while IFS=$'\t' read -r key value; do
+    case "$key" in
+      EXEC_MODE) EXEC_MODE="$value" ;;
+      EXEC_HOST)
+        if [ -n "$EXEC_HOST" ] && [ "$EXEC_HOST" != "$value" ]; then
+          config_fail "ExecStart declares conflicting --host values ('$EXEC_HOST' and '$value')"
+          return 1
+        fi
+        EXEC_HOST="$value"
+        ;;
+      EXEC_PORT)
+        if [ -n "$EXEC_PORT" ] && [ "$EXEC_PORT" != "$value" ]; then
+          config_fail "ExecStart declares conflicting --port values ('$EXEC_PORT' and '$value')"
+          return 1
+        fi
+        EXEC_PORT="$value"
+        ;;
+      EXEC_SOCKET) EXEC_SOCKET=1 ;;
+    esac
+  done <<< "$parsed"
+
+  if [ "$EXEC_SOCKET" -eq 1 ]; then
+    config_fail "$SERVICE passes --uds/--fd to uvicorn, so it does not listen on TCP and GET /api/health cannot be used. This deployment supports a loopback TCP listener only."
+    return 1
+  fi
+  return 0
+}
+
+lookup_in_path() {
+  local name=$1 path_value=$2 candidate dir
+  local -a dirs=()
+  local found=""
+  local count=0
+
+  IFS=: read -r -a dirs <<< "$path_value"
+  for dir in "${dirs[@]}"; do
+    if [ -z "$dir" ]; then
+      dir="."
+    fi
+    candidate="${dir%/}/$name"
+    if [ -x "$candidate" ] && [ ! -d "$candidate" ]; then
+      count=$((count + 1))
+      if [ -z "$found" ]; then
+        found="$candidate"
+      fi
+    fi
+  done
+
+  if [ -z "$found" ]; then
+    return 1
+  fi
+  if [ "$count" -gt 1 ]; then
+    note "note: $count candidates for $name exist on the service PATH; using the first, $found, as shutil.which() would"
+  fi
+  printf '%s\n' "$found"
+}
+
+# Resolves the R that the service will use after the restart, not merely a
+# convenient one: EQALB_RSCRIPT when configured, otherwise the same PATH lookup
+# api/r_client.py performs. The version is checked against the target commit's
+# renv.lock later, before the service is restarted.
+resolve_rscript() {
+  local rscript="" source="" service_path="" path_source="" version_output=""
+  local lock_r=""
+
+  if [ -n "$RSCRIPT_OVERRIDE" ]; then
+    rscript="$RSCRIPT_OVERRIDE"
+    source="EQALB_DEPLOY_RSCRIPT override"
+  elif [ -n "${CONFIG_ENV[EQALB_RSCRIPT]:-}" ]; then
+    rscript="${CONFIG_ENV[EQALB_RSCRIPT]}"
+    source="${CONFIG_SOURCE[EQALB_RSCRIPT]}"
+  fi
+
+  if [ -n "${CONFIG_ENV[PATH]:-}" ]; then
+    service_path="${CONFIG_ENV[PATH]}"
+    path_source="${CONFIG_SOURCE[PATH]}"
+  elif [ -n "${RUNTIME_ENV[PATH]:-}" ]; then
+    service_path="${RUNTIME_ENV[PATH]}"
+    path_source="the running service environment"
+  fi
+
+  if [ -z "$rscript" ]; then
+    if [ -z "$service_path" ]; then
+      config_fail "EQALB_RSCRIPT is not set in the unit configuration or an environment file, and the service PATH cannot be determined (the service is not running or its environment is unreadable). Set EQALB_RSCRIPT or provide EQALB_DEPLOY_RSCRIPT."
+      return 1
+    fi
+    if ! rscript="$(lookup_in_path Rscript "$service_path")"; then
+      config_fail "EQALB_RSCRIPT is not set and no executable Rscript is on the service PATH ($service_path). Set EQALB_RSCRIPT to the R binary the project requires."
+      return 1
+    fi
+    source="service PATH ($path_source)"
+  fi
+
+  case "$rscript" in
+    /*) ;;
+    *)
+      config_fail "the resolved R executable '$rscript' is not an absolute path; api/r_client.py needs a usable absolute path on the server"
+      return 1
+      ;;
+  esac
+  if ! run_as_app test -x "$rscript"; then
+    config_fail "the resolved R executable $rscript is not executable by $APP_USER"
+    return 1
+  fi
+
+  if ! version_output="$(run_as_app "$rscript" --version 2>&1)"; then
+    config_fail "the resolved R executable $rscript could not be run as $APP_USER: $(printf '%s\n' "$version_output" | head -n 1)"
+    return 1
+  fi
+  RESOLVED_R_VERSION="$(printf '%s\n' "$version_output" \
+    | sed -n 's/.* \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n 1)"
+  if [ -z "$RESOLVED_R_VERSION" ]; then
+    config_fail "cannot determine the R version reported by $rscript"
+    return 1
+  fi
+
+  RESOLVED_RSCRIPT="$rscript"
+  RESOLVED_RSCRIPT_SOURCE="$source"
+
+  if [ "$RUNTIME_AVAILABLE" -eq 1 ] && [ -n "${RUNTIME_ENV[EQALB_RSCRIPT]:-}" ]; then
+    if [ "${RUNTIME_ENV[EQALB_RSCRIPT]}" != "$rscript" ]; then
+      config_fail "the running service uses EQALB_RSCRIPT=${RUNTIME_ENV[EQALB_RSCRIPT]}, but a restart would use $rscript ($source). Reconcile the unit or EnvironmentFile before deploying."
+    fi
+  fi
+
+  if lock_r="$(run_as_app cat -- "$PROJECT_DIR/renv.lock" 2>/dev/null \
+      | grep -m 1 -o '"Version"[[:space:]]*:[[:space:]]*"[^"]*"' \
+      | sed 's/.*"\([^"]*\)"$/\1/')" && [ -n "$lock_r" ]; then
+    if [ "$lock_r" != "$RESOLVED_R_VERSION" ]; then
+      note "warning: the current checkout's renv.lock records R $lock_r, but the service R is $RESOLVED_R_VERSION; the target commit's renv.lock is checked before the restart"
+    fi
+  fi
+  return 0
+}
+
+# Finds the TCP socket the service main process is listening on. Run as the
+# service user, ss can attribute the service's own sockets without root. This
+# is evidence about the running listener, used to cross-check the configuration
+# and to fill in a port that the configuration does not state.
+observe_listeners() {
+  local need_observation=$1
+  OBSERVED_HOSTS=()
+  OBSERVED_PORTS=()
+  if [ "$SERVICE_ACTIVE" != "active" ]; then
+    return 0
+  fi
+  if [ -z "$SS" ]; then
+    if [ "$need_observation" -eq 1 ]; then
+      config_fail "ss is not available, so the listener of the running service cannot be observed. Install iproute2 or set EQALB_DEPLOY_API_PORT explicitly."
+      return 1
+    fi
+    note "note: ss is not available; the configured listener cannot be cross-checked against the running service"
+    return 0
+  fi
+
+  local parsed tag host port
+  local -a ports=()
+  if ! parsed="$(run_as_app "$SS" -ltnp 2>/dev/null | "$HEALTH_PYTHON" -c "$CONFIG_PARSER" listeners "$SERVICE_MAINPID")"; then
+    config_fail "cannot inspect the listening sockets of PID $SERVICE_MAINPID"
+    return 1
+  fi
+  while IFS=$'\t' read -r tag host port; do
+    if [ "$tag" != "LISTEN" ]; then
+      continue
+    fi
+    OBSERVED_HOSTS+=("$host")
+    ports+=("$port")
+  done <<< "$parsed"
+
+  if [ "${#ports[@]}" -eq 0 ]; then
+    return 0
+  fi
+  mapfile -t OBSERVED_PORTS < <(printf '%s\n' "${ports[@]}" | sort -u)
+  if [ "${#OBSERVED_PORTS[@]}" -gt 1 ]; then
+    config_fail "PID $SERVICE_MAINPID holds more than one TCP listener (ports: ${OBSERVED_PORTS[*]}); set EQALB_DEPLOY_API_PORT to the port that serves /api"
+    return 1
+  fi
+  return 0
+}
+
+check_runtime_key() {
+  local severity=$1 key=$2 resolved=$3 source=$4 label=$5 runtime
+  runtime="${RUNTIME_ENV[$key]:-}"
+  if [ -z "$runtime" ]; then
+    return 0
+  fi
+  if [ "$runtime" = "$resolved" ]; then
+    return 0
+  fi
+  if [ "$severity" = "fail" ]; then
+    config_fail "the running service has $key=$runtime, but the resolved $label is $resolved ($source); a restart would change it. Reconcile the unit or set the EQALB_DEPLOY_* override."
+  else
+    note "warning: the running service has $key=$runtime, but the resolved $label is $resolved ($source); the launcher type is not recognised, so this is reported without blocking"
+  fi
+}
+
+# Resolves the listener the restarted service will use. Configuration beats
+# observation; observation fills in a value the configuration does not state;
+# a disagreement between the two is a stop, because a restart would move the
+# listener and Caddy would lose its upstream.
+resolve_listener() {
+  local host="" port="" host_source="" port_source="" observed_port=""
+
+  case "$EXEC_MODE" in
+    uvicorn)
+      if [ -n "$EXEC_HOST" ]; then
+        host="$EXEC_HOST"; host_source="ExecStart --host"
+      elif [ -n "${CONFIG_ENV[UVICORN_HOST]:-}" ]; then
+        host="${CONFIG_ENV[UVICORN_HOST]}"; host_source="${CONFIG_SOURCE[UVICORN_HOST]}"
+      else
+        host="$DEFAULT_UVICORN_HOST"; host_source="uvicorn command-line default"
+      fi
+      if [ -n "$EXEC_PORT" ]; then
+        port="$EXEC_PORT"; port_source="ExecStart --port"
+      elif [ -n "${CONFIG_ENV[UVICORN_PORT]:-}" ]; then
+        port="${CONFIG_ENV[UVICORN_PORT]}"; port_source="${CONFIG_SOURCE[UVICORN_PORT]}"
+      else
+        port="$DEFAULT_UVICORN_PORT"; port_source="uvicorn command-line default"
+      fi
+      if [ -n "${CONFIG_ENV[EQALB_API_HOST]:-}" ] || [ -n "${CONFIG_ENV[EQALB_API_PORT]:-}" ]; then
+        note "note: EQALB_API_HOST/EQALB_API_PORT are set, but the unit starts the uvicorn command line, which does not read them; --host/--port and UVICORN_HOST/UVICORN_PORT control this listener"
+      fi
+      ;;
+    app)
+      if [ -n "${CONFIG_ENV[EQALB_API_HOST]:-}" ]; then
+        host="${CONFIG_ENV[EQALB_API_HOST]}"; host_source="${CONFIG_SOURCE[EQALB_API_HOST]}"
+      else
+        host="$DEFAULT_APP_HOST"; host_source="api/main.py default"
+      fi
+      if [ -n "${CONFIG_ENV[EQALB_API_PORT]:-}" ]; then
+        port="${CONFIG_ENV[EQALB_API_PORT]}"; port_source="${CONFIG_SOURCE[EQALB_API_PORT]}"
+      else
+        port="$DEFAULT_APP_PORT"; port_source="api/main.py default"
+      fi
+      if [ -n "$EXEC_HOST$EXEC_PORT" ]; then
+        note "note: ExecStart passes --host/--port, but the run_api.py launcher ignores command-line arguments; EQALB_API_* controls this listener"
+      fi
+      ;;
+    *)
+      if [ -n "${CONFIG_ENV[EQALB_API_HOST]:-}" ]; then
+        host="${CONFIG_ENV[EQALB_API_HOST]}"; host_source="${CONFIG_SOURCE[EQALB_API_HOST]}"
+      elif [ -n "${CONFIG_ENV[UVICORN_HOST]:-}" ]; then
+        host="${CONFIG_ENV[UVICORN_HOST]}"; host_source="${CONFIG_SOURCE[UVICORN_HOST]}"
+      fi
+      if [ -n "${CONFIG_ENV[EQALB_API_PORT]:-}" ]; then
+        port="${CONFIG_ENV[EQALB_API_PORT]}"; port_source="${CONFIG_SOURCE[EQALB_API_PORT]}"
+      elif [ -n "${CONFIG_ENV[UVICORN_PORT]:-}" ]; then
+        port="${CONFIG_ENV[UVICORN_PORT]}"; port_source="${CONFIG_SOURCE[UVICORN_PORT]}"
+      fi
+      ;;
+  esac
+
+  if [ -n "$API_HOST_OVERRIDE" ]; then
+    host="$API_HOST_OVERRIDE"; host_source="EQALB_DEPLOY_API_HOST override"
+  fi
+  if [ -n "$API_PORT_OVERRIDE" ]; then
+    port="$API_PORT_OVERRIDE"; port_source="EQALB_DEPLOY_API_PORT override"
+  fi
+
+  local need_observation=0
+  if [ -z "$port" ]; then
+    need_observation=1
+  fi
+  if ! observe_listeners "$need_observation"; then
+    return 1
+  fi
+
+  if [ "${#OBSERVED_PORTS[@]}" -gt 0 ]; then
+    observed_port="${OBSERVED_PORTS[0]}"
+    if [ -n "$port" ] && [ "$port" != "$observed_port" ]; then
+      config_fail "the unit configuration resolves port $port ($port_source), but the running service listens on $observed_port. A restart would move the listener; reconcile the unit or set EQALB_DEPLOY_API_PORT=$observed_port deliberately."
+      return 1
+    fi
+    if [ -z "$port" ]; then
+      port="$observed_port"
+      port_source="observed listener (ss)"
+    fi
+    if [ -z "$host" ] && [ "${#OBSERVED_HOSTS[@]}" -gt 0 ]; then
+      host="${OBSERVED_HOSTS[0]}"
+      host_source="observed listener (ss)"
+    fi
+  fi
+
+  if [ -z "$port" ] || [ -z "$host" ]; then
+    if [ "$SERVICE_ACTIVE" = "active" ]; then
+      config_fail "cannot determine the API listener: host='${host}', port='${port}', and no single TCP listener was observed for PID $SERVICE_MAINPID. Run the read-only commands below, then set EQALB_DEPLOY_API_HOST/EQALB_DEPLOY_API_PORT explicitly."
+    else
+      config_fail "cannot determine the API listener while $SERVICE is not active: host='${host}', port='${port}'. Start the service once, or set EQALB_DEPLOY_API_HOST/EQALB_DEPLOY_API_PORT explicitly."
+    fi
+    return 1
+  fi
+
+  if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+    config_fail "the resolved API port '$port' is not a TCP port (source: $port_source)"
+    return 1
+  fi
+  case "$host" in
+    *[[:space:]]*)
+      config_fail "the resolved API host '$host' contains whitespace"
+      return 1
+      ;;
+  esac
+
+  # Only the setting that actually selects the listener is compared. For a
+  # uvicorn command line, --host/--port override the UVICORN_* variables, so an
+  # overridden variable is not a disagreement.
+  case "$EXEC_MODE" in
+    uvicorn)
+      if [ -z "$EXEC_HOST" ]; then
+        check_runtime_key fail UVICORN_HOST "$host" "$host_source" "host"
+      fi
+      if [ -z "$EXEC_PORT" ]; then
+        check_runtime_key fail UVICORN_PORT "$port" "$port_source" "port"
+      fi
+      ;;
+    app)
+      check_runtime_key fail EQALB_API_HOST "$host" "$host_source" "host"
+      check_runtime_key fail EQALB_API_PORT "$port" "$port_source" "port"
+      ;;
+    *)
+      check_runtime_key warn EQALB_API_HOST "$host" "$host_source" "host"
+      check_runtime_key warn EQALB_API_PORT "$port" "$port_source" "port"
+      check_runtime_key warn UVICORN_HOST "$host" "$host_source" "host"
+      check_runtime_key warn UVICORN_PORT "$port" "$port_source" "port"
+      ;;
+  esac
+
+  local probe_host="$host"
+  case "$host" in
+    0.0.0.0|"*"|"") probe_host="127.0.0.1" ;;
+    "::"|"[::]") probe_host="::1" ;;
+    "::ffff:127.0.0.1"|"[::ffff:127.0.0.1]") probe_host="127.0.0.1" ;;
+    \[*\])
+      probe_host="${host#\[}"
+      probe_host="${probe_host%\]}"
+      ;;
+  esac
+  case "$probe_host" in
+    127.*|::1|localhost) ;;
+    *)
+      note "warning: the service is configured to listen on $host, not loopback; deploy/DEPLOY.md expects 127.0.0.1 behind Caddy"
+      ;;
+  esac
+  case "$probe_host" in
+    *:*) HEALTH_URL="http://[${probe_host}]:${port}/api/health" ;;
+    *) HEALTH_URL="http://${probe_host}:${port}/api/health" ;;
+  esac
+
+  RESOLVED_API_HOST="$host"
+  RESOLVED_API_HOST_SOURCE="$host_source"
+  RESOLVED_API_PORT="$port"
+  RESOLVED_API_PORT_SOURCE="$port_source"
+  return 0
+}
+
+resolve_workers() {
+  local value="" source=""
+  if [ -n "${CONFIG_ENV[EQALB_R_WORKERS]:-}" ]; then
+    value="${CONFIG_ENV[EQALB_R_WORKERS]}"
+    source="${CONFIG_SOURCE[EQALB_R_WORKERS]}"
+  else
+    value="$DEFAULT_WORKERS"
+    source="application default (api/r_client.py)"
+  fi
+  if ! [[ "$value" =~ ^[0-9]+$ ]] || [ "$value" -lt 1 ]; then
+    config_fail "EQALB_R_WORKERS resolves to '$value' ($source), which is not a positive integer"
+    return 1
+  fi
+  if [ "$RUNTIME_AVAILABLE" -eq 1 ] && [ -n "${RUNTIME_ENV[EQALB_R_WORKERS]:-}" ]; then
+    if [ "${RUNTIME_ENV[EQALB_R_WORKERS]}" != "$value" ]; then
+      note "warning: the running service uses EQALB_R_WORKERS=${RUNTIME_ENV[EQALB_R_WORKERS]}, but the unit configuration resolves $value ($source); a restart will change the worker count"
+    fi
+  fi
+  RESOLVED_WORKERS="$value"
+  RESOLVED_WORKERS_SOURCE="$source"
+  return 0
+}
+
+# Prints only allowlisted setting values and unit metadata. Any other variable
+# in Environment= or an environment file is never read out.
+config_report() {
+  local names="" key
+  note "service configuration:"
+  note "  unit: ${SERVICE_FRAGMENT:-unknown}"
+  note "  drop-ins: ${SERVICE_DROPINS:-none}"
+  note "  user/group: ${SERVICE_USER:-unknown}/${SERVICE_GROUP:-unknown}, working directory ${SERVICE_WORKDIR:-unknown}"
+  note "  state: ${SERVICE_ACTIVE:-unknown}, main PID ${SERVICE_MAINPID:-unknown}"
+  for key in "${CONFIG_KEYS[@]}"; do
+    if [ -n "${CONFIG_ENV[$key]:-}" ]; then
+      names="$names $key"
+    fi
+  done
+  note "  variables read from Environment=/EnvironmentFiles=:${names:- none}"
+  note "  launcher: $EXEC_MODE"
+  note "  R: ${RESOLVED_RSCRIPT:-unresolved} (${RESOLVED_RSCRIPT_SOURCE:-unknown source}), version ${RESOLVED_R_VERSION:-unknown}"
+  note "  listener: ${RESOLVED_API_HOST:-unresolved}:${RESOLVED_API_PORT:-unresolved} (${RESOLVED_API_HOST_SOURCE:-unknown} / ${RESOLVED_API_PORT_SOURCE:-unknown})"
+  note "  workers: ${RESOLVED_WORKERS:-unresolved} (${RESOLVED_WORKERS_SOURCE:-unknown})"
+  note "  observed TCP listeners: hosts ${OBSERVED_HOSTS[*]:-none}; ports ${OBSERVED_PORTS[*]:-none}"
+}
+
+config_diagnostics() {
+  note "read-only commands to confirm an unresolved setting (they may contain server-local values; do not paste them into a public issue):"
+  note "  systemctl show $SERVICE -p FragmentPath -p DropInPaths -p User -p Group -p WorkingDirectory -p ActiveState -p MainPID -p Environment -p EnvironmentFiles -p UnsetEnvironment -p PassEnvironment -p ExecStart"
+  note "  systemctl cat $SERVICE"
+  note "  sudo -u $APP_USER ss -ltnp"
+}
+
+resolve_service_configuration() {
+  load_service_properties || true
+  check_unsets_and_passthrough || true
+  collect_environment_property || true
+  collect_environment_files || true
+  load_runtime_environment || true
+  load_exec_start || true
+  resolve_rscript || true
+  resolve_listener || true
+  resolve_workers || true
+  config_report
+}
+
+# The service is running before the deployment, so its listener must answer
+# before anything is checked out. A degraded response is reported but does not
+# block: a deployment may be the recovery. A listener that does not answer is a
+# stop, because the resolved endpoint would be unproven.
+probe_current_health() {
+  if [ "$SERVICE_ACTIVE" != "active" ]; then
+    note "note: $SERVICE is not active; the pre-restart health probe is skipped"
+    return 0
+  fi
+  local out="" status=0
+  out="$(health_probe)" || status=$?
+  case "$status" in
+    0) note "current deployment health: $out" ;;
+    1) note "warning: the current deployment is running but degraded: $out"; note "the deployment continues; the post-restart health check must pass" ;;
+    3)
+      config_diagnostics
+      config_fail "the service is active but GET $HEALTH_URL did not respond ($out). The resolved listener is unproven, so the deployment stops before checkout, dependency installation and restart."
+      ;;
+    *)
+      config_diagnostics
+      config_fail "GET $HEALTH_URL answered, but not with a valid health document ($out). The resolved listener is unproven, so the deployment stops before checkout, dependency installation and restart."
+      ;;
+  esac
+}
+
 preflight() {
   [ "$(id -u)" -ne 0 ] \
     || die "run this script as the SSH deploy user, not root (the state directory must stay owned by that user)"
@@ -313,8 +1351,6 @@ preflight() {
   if [ -f "$PENDING_FILE" ] && [ ! -r "$PENDING_FILE" ]; then
     die "$PENDING_FILE is not readable by $(id -un); fix its ownership before deploying"
   fi
-  [ -x "$RSCRIPT" ] \
-    || die "$RSCRIPT is not executable; the R 4.5.1 source build from deploy/DEPLOY.md is required"
 
   sudo -n -u "$APP_USER" -- true 2>/dev/null \
     || die "passwordless sudo as $APP_USER is required; see deploy/BACKEND_DEPLOY.md"
@@ -328,42 +1364,15 @@ preflight() {
     die "EQALB_DEPLOY_HEALTH_INTERVAL must be a positive integer"
   fi
 
-  run_as_app test -r /etc/eqalb/api.env \
-    || die "/etc/eqalb/api.env is not readable by $APP_USER"
   run_as_app test -w "$PROJECT_DIR" \
     || die "$APP_USER cannot write $PROJECT_DIR"
 
-  # The service's own R path must be the one this script restores with, and the
-  # health probe must use the host/port the service actually binds.
-  local configured_rscript configured_host configured_port
-  configured_rscript="$(run_as_app sed -n \
-    's/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}EQALB_RSCRIPT=//p' \
-    /etc/eqalb/api.env | tail -n 1)"
-  configured_rscript="${configured_rscript%\"}"
-  configured_rscript="${configured_rscript#\"}"
-  [ -n "$configured_rscript" ] \
-    || die "EQALB_RSCRIPT is not set in /etc/eqalb/api.env"
-  [ "$configured_rscript" = "$RSCRIPT" ] \
-    || die "EQALB_RSCRIPT in /etc/eqalb/api.env is '$configured_rscript', not '$RSCRIPT'"
+  # Everything below is read-only and happens before checkout, dependency
+  # installation or restart. A failure here changes nothing on the server.
+  resolve_service_configuration
+  probe_current_health
 
-  configured_host="$(run_as_app sed -n \
-    's/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}EQALB_API_HOST=//p' \
-    /etc/eqalb/api.env | tail -n 1)"
-  configured_port="$(run_as_app sed -n \
-    's/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}EQALB_API_PORT=//p' \
-    /etc/eqalb/api.env | tail -n 1)"
-  [ -n "$configured_host" ] \
-    || die "EQALB_API_HOST is not set in /etc/eqalb/api.env"
-  [ -n "$configured_port" ] \
-    || die "EQALB_API_PORT is not set in /etc/eqalb/api.env"
-  if [ "$configured_host" != "$API_HOST" ]; then
-    die "EQALB_API_HOST is '$configured_host' in /etc/eqalb/api.env, but the health check uses '$API_HOST'; set EQALB_DEPLOY_API_HOST"
-  fi
-  if [ "$configured_port" != "$API_PORT" ]; then
-    die "EQALB_API_PORT is '$configured_port' in /etc/eqalb/api.env, but the health check uses '$API_PORT'; set EQALB_DEPLOY_API_PORT"
-  fi
-
-  if "$SYSTEMCTL" is-active --quiet "$SERVICE"; then
+  if [ "$SERVICE_ACTIVE" = "active" ]; then
     note "$SERVICE is active before the deployment"
   else
     note "warning: $SERVICE is not active before the deployment; there is no running previous process to keep"
@@ -435,32 +1444,44 @@ sync_python() {
 
 sync_r() {
   local required_r actual_r
+  if [ -z "$RESOLVED_RSCRIPT" ]; then
+    die "no R executable was resolved for $SERVICE; the deployment cannot restore renv"
+  fi
   required_r="$(run_as_app cat "$PROJECT_DIR/renv.lock" \
     | grep -m 1 -o '"Version"[[:space:]]*:[[:space:]]*"[^"]*"' \
     | sed 's/.*"\([^"]*\)"$/\1/')"
   [ -n "$required_r" ] || die "could not read the R version from renv.lock"
-  actual_r="$(run_as_app "$RSCRIPT" --version 2>&1 \
+  actual_r="$(run_as_app "$RESOLVED_RSCRIPT" --version 2>&1 \
     | sed -n 's/.* \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' \
     | head -n 1)"
   [ "$actual_r" = "$required_r" ] \
-    || die "R is ${actual_r:-unknown}, but renv.lock requires $required_r ($RSCRIPT)"
+    || die "R is ${actual_r:-unknown}, but renv.lock requires $required_r ($RESOLVED_RSCRIPT)"
 
-  note "restoring the renv library with R $actual_r"
-  ( cd "$PROJECT_DIR" && run_as_app "$RSCRIPT" -e 'renv::restore(prompt = FALSE)' ) \
+  note "restoring the renv library with R $actual_r from $RESOLVED_RSCRIPT"
+  ( cd "$PROJECT_DIR" && run_as_app "$RESOLVED_RSCRIPT" -e 'renv::restore(prompt = FALSE)' ) \
     || die "renv::restore failed; do not restart the service over an incomplete restore"
   note "checking that renv.lock and the project library are synchronized"
-  ( cd "$PROJECT_DIR" && run_as_app "$RSCRIPT" -e \
+  ( cd "$PROJECT_DIR" && run_as_app "$RESOLVED_RSCRIPT" -e \
     'status <- renv::status(); if (!isTRUE(status[["synchronized"]])) { print(status); quit(status = 1) }' ) \
     || die "renv::status reports that the library is not synchronized with renv.lock"
 }
 
-health_once() {
+# Returns 0 for a healthy response, 1 for a response that is not healthy, and 3
+# when the endpoint did not answer at all. Callers treat "no answer" and
+# "degraded" differently: a deployment can recover a degraded service, but it
+# must not restart one whose listener it cannot prove.
+health_probe() {
   local body
+  if [ -z "$HEALTH_URL" ]; then
+    printf 'no health URL was resolved'
+    return 3
+  fi
   if ! body="$("$CURL" -sS --max-time 15 --connect-timeout 5 "$HEALTH_URL" 2>/dev/null)"; then
     printf 'GET %s failed' "$HEALTH_URL"
-    return 1
+    return 3
   fi
   printf '%s' "$body" | "$HEALTH_PYTHON" -c "$HEALTH_PARSER" 2>&1
+  return "${PIPESTATUS[1]}"
 }
 
 diagnose_service() {
@@ -479,10 +1500,12 @@ restart_and_wait() {
     die "$SYSTEMCTL restart $SERVICE failed"
   fi
 
-  local deadline message last_error=""
+  local deadline message last_error="" status=0
   deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
   while :; do
-    if message="$(health_once)"; then
+    status=0
+    message="$(health_probe)" || status=$?
+    if [ "$status" -eq 0 ]; then
       note "$message"
       return 0
     fi
@@ -515,17 +1538,9 @@ deploy_sha() {
   TARGET_SHA="$target"
   note "$action: target $target; recorded current ${CURRENT_SHA:-none}, previous ${PREVIOUS_SHA:-none}"
 
-  # Read the current health before changing anything. This is informational: a
-  # deployment can be used to recover an unhealthy backend, but the operator
-  # should know that the recorded previous commit was not healthy either.
-  local pre_health
-  if pre_health="$(health_once)"; then
-    note "current deployment health: $pre_health"
-  else
-    note "warning: the current deployment is not healthy (${pre_health:-no response}); the recorded previous may not be known-good"
-  fi
-
-  # All dependency work happens before the restart, so a failed install leaves
+  # The current health was probed, and the listener proven to answer, in the
+  # read-only preflight. All dependency work happens before the restart, so a
+  # failed install leaves
   # the previously running process untouched.
   fetch_and_checkout "$target"
 
@@ -566,7 +1581,7 @@ deploy_sha() {
 }
 
 show_status() {
-  local head="" active="unknown" body="" message=""
+  local head="" active="unknown" message="" status=0
 
   read_state
   read_pending
@@ -578,10 +1593,17 @@ show_status() {
   else
     active="inactive"
   fi
-  if body="$("$CURL" -sS --max-time 10 --connect-timeout 5 "$HEALTH_URL" 2>/dev/null)"; then
-    message="$(printf '%s' "$body" | "$HEALTH_PYTHON" -c "$HEALTH_PARSER" 2>&1 || true)"
+
+  CONFIG_STRICT=0
+  resolve_service_configuration || true
+  if [ -n "$HEALTH_URL" ]; then
+    status=0
+    message="$(health_probe)" || status=$?
+    if [ "$status" -eq 3 ] && [ -z "$message" ]; then
+      message="no response"
+    fi
   else
-    message="GET $HEALTH_URL failed"
+    message="not resolved"
   fi
 
   printf 'CURRENT_SHA=%s\n' "${CURRENT_SHA:-none}"
@@ -594,6 +1616,13 @@ show_status() {
   printf 'PENDING_BASE_SHA=%s\n' "${PENDING_BASE_SHA:-none}"
   printf 'CHECKOUT_HEAD=%s\n' "${head:-unknown}"
   printf 'SERVICE=%s\n' "$active"
+  printf 'SERVICE_UNIT=%s\n' "${SERVICE_FRAGMENT:-unknown}"
+  printf 'R_SCRIPT=%s\n' "${RESOLVED_RSCRIPT:-unresolved}"
+  printf 'R_VERSION=%s\n' "${RESOLVED_R_VERSION:-unknown}"
+  printf 'LISTENER=%s\n' "$(printf '%s:%s' "${RESOLVED_API_HOST:-unresolved}" "${RESOLVED_API_PORT:-unresolved}")"
+  printf 'LISTENER_SOURCE=%s\n' "${RESOLVED_API_HOST_SOURCE:-unknown}/${RESOLVED_API_PORT_SOURCE:-unknown}"
+  printf 'WORKERS=%s\n' "${RESOLVED_WORKERS:-unresolved}"
+  printf 'HEALTH_URL=%s\n' "${HEALTH_URL:-unresolved}"
   printf 'HEALTH=%s\n' "$message"
   printf 'STATE_FILE=%s\n' "$STATE_FILE"
   printf 'HISTORY_FILE=%s\n' "$HISTORY_FILE"
@@ -611,8 +1640,11 @@ main() {
       SYSTEMCTL="$(require_command systemctl)"
       PYTHON3="$(require_command python3)"
       HEALTH_PYTHON="$PYTHON3"
+      SS="$(command -v ss || true)"
+      CONFIG_STRICT=1
       ACTION="deploy"
       preflight
+      CHANGES_POSSIBLE=1
       acquire_lock
       deploy_sha deploy "$2"
       ;;
@@ -624,8 +1656,11 @@ main() {
       SYSTEMCTL="$(require_command systemctl)"
       PYTHON3="$(require_command python3)"
       HEALTH_PYTHON="$PYTHON3"
+      SS="$(command -v ss || true)"
+      CONFIG_STRICT=1
       ACTION="rollback"
       preflight
+      CHANGES_POSSIBLE=1
       acquire_lock
       # Choose the default target under the lock, so a concurrent deployment
       # cannot change the recorded state between the choice and the checkout.
@@ -654,9 +1689,11 @@ main() {
       CURL="$(command -v curl || true)"
       SYSTEMCTL="$(command -v systemctl || true)"
       HEALTH_PYTHON="$(command -v python3 || true)"
+      SS="$(command -v ss || true)"
       if [ -z "$GIT" ] || [ -z "$CURL" ] || [ -z "$SYSTEMCTL" ] || [ -z "$HEALTH_PYTHON" ]; then
         die "status requires git, curl, systemctl and python3 on PATH"
       fi
+      CONFIG_STRICT=0
       show_status
       ;;
     help|--help|-h)

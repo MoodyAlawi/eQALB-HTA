@@ -1525,9 +1525,12 @@ explicitly documented otherwise.
   20 s). The 1,000-draw default is only run when a full default PSA is explicitly
   requested, because it takes about three minutes.
 - Backend deployment automation (2026-10-17): implemented and locally validated,
-  but not yet run against the VPS. The `backend-production` environment, its five
-  secrets, the CI SSH key and the server sudoers/state-directory setup are
-  outstanding, and the workflow is manual-only until a live deploy and a live
+  but no live deployment has completed. The first manual run failed in the old
+  preflight before any change because it required `/etc/eqalb/api.env`, which the
+  host does not have; the rewritten preflight resolves the inline systemd
+  configuration or a genuine `EnvironmentFile`. SSH login, pinned host-key login
+  and the application-account sudo grant for `eqalb-backend-deploy` are confirmed
+  on the host; the workflow stays manual-only until a live deploy and a live
   rollback both pass. The live host reports two R workers while
   `deploy/api.env.example` records one; the workflow deliberately leaves that
   server-local setting unchanged.
@@ -2005,37 +2008,42 @@ explicitly documented otherwise.
   instead of rotating.
 
 ## Current task
-Uncommitted (2026-10-17): **backend production deployment automation** (deployment
-files and documentation only; no R model, API, frontend, analysis or default
-changed).
+Uncommitted (2026-10-17): **backend deployment preflight fixed for the live
+systemd configuration** (deployment script and documentation only; no R model,
+API, frontend, analysis, default or production unit changed).
 
-- `.github/workflows/deploy-backend.yml`: manual `workflow_dispatch` workflow with
-  `deploy` and `rollback` modes, a full-SHA checkout, the `backend-production`
-  environment, SSH key/host-key preparation, the remote deployment call, a public
-  `/api/health` check and a deployment summary. The `push` trigger is deliberately
-  commented out until a live deploy and rollback are verified.
-- `deploy/backend-deploy.sh`: server-side `deploy`, `rollback` and `status`
-  actions. It records the current/previous SHA and time plus an in-flight
-  `pending.env` in `/var/lib/eqalb-backend-deploy`, fetches and checks out the
-  target SHA, syncs `api/requirements.lock.txt` and `renv.lock` with R 4.5.1,
-  restarts `eqalb-api.service` (which restarts its R worker children) and polls
-  `http://127.0.0.1:8000/api/health` for up to 180 s. It does not roll back
-  automatically.
-- `deploy/BACKEND_DEPLOY.md`: secrets, one-time SSH/sudoers/state-directory
-  bootstrap, first-run steps, rollback, health/failure behaviour, risks and what
-  remains unverified. `deploy/DEPLOY.md` section 6 and `readme.md` now point to it.
-- Findings: `eqalb-api.service` is the only process-manager unit; `api/r_client.py`
-  starts the R workers as its children, so there is no separate R service.
-  Production uses `/opt/eqalb`, loopback `127.0.0.1:8000`, `/opt/R/4.5.1/bin/Rscript`
-  and the pinned `api/requirements.lock.txt`. The live host reports 2 configured
-  and ready R workers, while `deploy/api.env.example` records 1; the workflow does
-  not change that server-local setting and accepts any positive ready count.
-- Verified locally: `bash -n`, `shellcheck -x -S style`, `actionlint` (with
-  shellcheck), YAML parsing, the health parser against the live production
-  response and synthetic degraded/invalid responses, and dry runs of the
-  workflow's resolve, secrets, key-preparation, SSH-command, result and summary
-  steps. Not verified: the live SSH/secrets/sudoers path, the first deploy and
-  the first rollback; these require the VPS and the GitHub environment.
+- Root cause: the first manual workflow run stopped before checkout because the
+  preflight unconditionally read `/etc/eqalb/api.env` as `eqalb`. The live host
+  has no `/etc/eqalb` directory: `eqalb-api.service` sets
+  `EQALB_RSCRIPT=/opt/R/4.5.1/bin/Rscript` inline, declares no
+  `EnvironmentFile=`, runs two workers and is healthy.
+- `deploy/backend-deploy.sh`: configuration is resolved read-only, in systemd's
+  order: inline `Environment=` (with drop-ins), then each `EnvironmentFile=` in
+  order (later wins, `-` optional, missing required or unreadable is a stop),
+  then `ExecStart` (uvicorn: `--host`/`--port`, then `UVICORN_*`, then
+  `127.0.0.1:8000`; `run_api.py`/`main.py`: `EQALB_API_*`, else
+  `127.0.0.1:8788`; unrecognised launcher: explicit settings, else the observed
+  listener), then `EQALB_RSCRIPT` or a service-`PATH` lookup, with
+  `EQALB_R_WORKERS` defaulting to 2. Files are parsed as data, never sourced;
+  only allowlisted values are printed. The running process is cross-checked: an
+  R-path or listener mismatch stops before any change, a worker-count difference
+  warns. `EQALB_DEPLOY_RSCRIPT/API_HOST/API_PORT` overrides cover a host that
+  cannot be resolved read-only. The `status` action prints the resolved unit, R,
+  listener, workers and health URL.
+- `.github/workflows/deploy-backend.yml` is unchanged and remains manual-only;
+  the `push` trigger is still commented out.
+- `deploy/BACKEND_DEPLOY.md`: records the first-run failure, the two supported
+  configuration sources and their precedence, the `eqalb-backend-deploy` account
+  with its two sudo grants, the read-only inspection commands, the
+  `Environment=` vs `EnvironmentFiles=` caveat, and the remaining open question
+  about the live launcher and port.
+- Verified locally: `bash -n`, `shellcheck -x -S style` and `actionlint` (with
+  shellcheck) clean; 30 configuration-parser tests and 30 stubbed-systemd
+  resolver scenarios pass (inline-only, EnvironmentFile override, missing,
+  optional and unreadable files, unset/conflicting settings, R and listener
+  mismatches, unknown launchers, IPv6/wildcard/UDS listeners, worker warning,
+  fail-before-change ordering). Not verified: the live host and the first
+  successful deploy.
 
 Uncommitted (2026-10-16): **browser-tab title changed to "OpenHealth"** (frontend,
 two lines of source).
@@ -5448,10 +5456,12 @@ page's header and the Home screen's pinned theme button exactly where they are.
 
 ## Next planned task
 
-The backend deployment automation is implemented and locally validated. The next
-step is the first live run: create the `backend-production` environment, add its
-five secrets, install the CI key and the documented sudoers/state-directory
-entries on the VPS, run one manual `deploy`, run one manual `rollback`, and only
+The backend deployment preflight now supports the live inline-systemd
+configuration (no `/etc/eqalb/api.env`) and is locally validated. The next step is
+the first live run: keep the `backend-production` environment and its five
+secrets, install the CI key and the documented sudoers/state-directory entries on
+the VPS, run `backend-deploy.sh status` over SSH to confirm the resolved R path,
+listener and workers, then one manual `deploy` and one manual `rollback`, and only
 then uncomment the `push` trigger. See `deploy/BACKEND_DEPLOY.md`. The live host
 reports two R workers while `deploy/api.env.example` records one; confirm the
 intended server-local setting separately.
@@ -5628,6 +5638,7 @@ another post beyond writing it and listing it in `posts.ts`.
 
 | Date | Change | Verified? |
 |---|---|---|
+| 2026-10-17 | Backend deployment preflight fixed for the live systemd configuration, deployment script and documentation only. The first manual run failed before checkout with `error: /etc/eqalb/api.env is not readable by eqalb`; the host has no `/etc/eqalb`, keeps `EQALB_RSCRIPT` inline in `eqalb-api.service`, declares no `EnvironmentFile=` and runs two workers. `deploy/backend-deploy.sh` now resolves settings read-only in systemd's order — inline `Environment=` and drop-ins, then each `EnvironmentFile=` (later wins, `-` optional, missing required or unreadable stops), then `ExecStart` (uvicorn `--host`/`--port` → `UVICORN_*` → 8000; `run_api.py`/`main.py` → `EQALB_API_*` → 8788; unknown launcher → observed listener), then `EQALB_RSCRIPT` or a service-`PATH` lookup, with `EQALB_R_WORKERS` defaulting to 2 — parses environment files as data (never sourced), prints only allowlisted values, cross-checks the running process (R-path and listener mismatches stop, worker count warns) and exposes `EQALB_DEPLOY_RSCRIPT/API_HOST/API_PORT` overrides plus the resolved values in `status`. `deploy/BACKEND_DEPLOY.md` documents both configuration sources and their precedence, the dedicated `eqalb-backend-deploy` account and its two sudo grants, the `Environment=` vs `EnvironmentFiles=` caveat and the read-only inspection commands. The workflow is unchanged and remains manual-only. No R model, API behaviour, frontend, analysis, production unit, Caddy or default was changed | Partial - locally validated only. `bash -n`, `shellcheck -x -S style`, `actionlint` (with shellcheck) and `git diff --check` pass; 30 parser tests and 30 stubbed-systemd resolver scenarios pass (inline-only, EnvironmentFile override, missing/optional/unreadable file, unset/conflicting config, R and listener mismatch, unknown launchers, IPv6/wildcard/UDS listeners, worker warning, fail-before-change ordering). Not verified: the live host, the first successful deploy and the first rollback |
 | 2026-10-17 | Backend production deployment automation added, deployment files only. New `.github/workflows/deploy-backend.yml` (manual `workflow_dispatch`, `deploy`/`rollback` modes, `backend-production` environment, pinned SSH host key, public `/api/health` check, SHA/time summary; `push` trigger commented out), `deploy/backend-deploy.sh` (server-side deploy/rollback/status, current/previous/pending SHA state in `/var/lib/eqalb-backend-deploy`, Python lock sync, `renv::restore`/`renv::status` with R 4.5.1, `eqalb-api.service` restart, 180 s loopback health poll, no automatic rollback) and `deploy/BACKEND_DEPLOY.md` (secrets, one-time SSH/sudoers/state-directory setup, first run, rollback, risks). `deploy/DEPLOY.md` section 6 and `readme.md` point to the new guide. No R model, API, frontend, analysis or default was changed | Partial - locally validated only. `bash -n`, `shellcheck -x -S style`, `actionlint` (with shellcheck) and YAML parsing pass; the health parser accepted the live production response and rejected degraded/zero-worker/startup-error/invalid-JSON responses; workflow resolve/secrets/key/SSH-command/result/summary steps were dry-run locally. Not verified: live SSH and secrets, sudoers/state directory, first deploy, first rollback, public health after a real deploy. `backend-production` and its five secrets are outstanding; the workflow remains manual-only |
 | 2026-10-16 | Browser-tab title changed to "OpenHealth", frontend only. The static `<title>` in `frontend/index.html` was `eQalb — an interactive introduction to health-economic modelling`; it is now `OpenHealth`. The two entries of `PAGE_TITLES` in `frontend/src/composables/useAppView.ts` that would have overwritten it are now `OpenHealth` as well — the landing address `/` (which carried the old title) and the application address `/app`, which every in-app screen shares (Home, tutorial, project description, download view and the dashboard), so the tab reads "OpenHealth" throughout the product rather than switching to "eQalb — illustrative HTA model" on the workspace. The comment above the table now records that. `/about` ("About OpenHealth"), `/blog` ("Blog — OpenHealth") and an open blog post (titled by the post in `BlogPostView.vue`) are unchanged, as are the metadata description, the favicons, the landing copy, the in-app eQalb branding, the tutorial content, the model naming, the API, the R files, the exports and every analysis behaviour | Yes - frontend, local review first. `npm run typecheck`, `npm run lint`, `npm run build` (`index-DwadKxDr.js`, 934.73 kB) and `git diff --check` pass; `frontend/dist/index.html` carries `<title>OpenHealth</title>` and the description untouched. Browser at 127.0.0.1:5173: the tab showed exactly "OpenHealth" on `/`, on `/app` before and after the menu's explanation overlay, on all nine analysis tabs, on the Home screen, the tutorial, the Project description and the Download results views, with a presentation overlay open and after Escape; `/about` read "About OpenHealth", `/blog` read "Blog — OpenHealth" and the published post read "Release of eQalb & The introduction of OpenHealth! — OpenHealth". No regression: the base case ran to €2,439, the chart export produced `base-case-cost-effectiveness-plane.png` with one canvas, the only requests during the pass were the app's own health/defaults load and that one analysis run, presentation mode opened and closed cleanly, and `/api/health` returned `ok`. Limitation: verified in the Vite dev server and the production build output; the hosted deployment was not redeployed |
 | 2026-10-16 | Presentation-mode wording follow-up to the audit, frontend copy only. Two internal identifiers that were still visible in an overlay now read as the reader's word for them. (1) The HTA summary's settings disclosure listed the endpoint's own request-field names under "Request fields not supplied" (`probability_cost_effective`, `evpi`, and `icer`, `cumulative_budget_impact`, `readiness` when those are the missing ones); the row is now "Values not supplied" and each field is named with the workspace's own wording through a new `availabilityFieldLabel` in `components/presentation/settings.ts` ("Probability cost-effective", "EVPI per patient", "ICER", "Cumulative net budget impact", "DHT readiness", with an unknown future field written with its underscores removed rather than left as an identifier), so every field R reports is still listed and none is guessed. (2) The value-of-information overlay's EVPPI table carried the workspace's "Model argument" column, whose cells are R's own call arguments (`scenario_rrr`, …); the overlay now uses a `presentedColumns` set derived from the panel's columns with that one column left out, since the parameter column already names each row in words — same nine rows, three reader-facing columns. Both changes are presentation-only: the HTA summary's "Availability of the upstream analyses" disclosure and the tab's own EVPPI table (four columns) are unchanged, and no figure, table value, notice, layout, transition, focus behaviour or chart-export control was touched | Yes - frontend, local review first. `npm run typecheck`, `npm run lint`, `npm run build` (`index-Dg4e6nwv.js`, 934.81 kB) and `git diff --check` pass. Browser at 127.0.0.1:5173 with all nine results stored: all nine overlays opened with every disclosure expanded and scanned for `[a-z]+(_[a-z]+)+` identifiers — zero in all nine, and no "Request fields" phrase — while each still showed its own metrics, tables and settings rows (4/17, 4/4, 4/20, 4/9, 4/4, 4/4 with its 9-row EVPPI table, 4/15, 3/18, 1/7); the VOI overlay table read Parameter | EVPPI per patient | Unclamped estimate with the same nine parameters while the workspace table kept all four columns including "Model argument"; the HTA summary overlay showed "Values not supplied: Probability cost-effective, EVPI per patient, DHT readiness" in the partial state (2 of 5 domains) and no such row when all five were included; a fetch spy recorded no request while opening or closing any overlay, and Close/Escape returned focus to Present with 0 overlays and 0 `[inert]`; no overlay contained a chart-export control (0 in all nine) and a workspace PNG export still produced a valid 163 KB image; at 390 px the VOI overlay had no page or panel overflow and its table scrolled locally (488 px in 297 px). Limitation: Chromium only; the workspace's own request-field list and model-argument column were deliberately left as they are, since the request scoped this to presentation mode |
