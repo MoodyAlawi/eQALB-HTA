@@ -1527,14 +1527,15 @@ explicitly documented otherwise.
 - Backend deployment automation (2026-10-17): deploy and rollback are
   live-verified. A `deploy` of `dcb664c`, an explicit `rollback` to `eaad7c1`, a
   `deploy` of `main`, an ordinary **empty-target** `rollback` and a final
-  `deploy` of `main` all completed and passed `/api/health`.
+  `deploy` of `main` all completed and passed `/api/health`, and a fresh
+  base-case browser analysis smoke test against that deployment then completed
+  with the result and the chart rendering successfully.
   `/var/lib/eqalb-backend-deploy/state.env` ends at `CURRENT_SHA=dcb664c…`
   (`2026-10-17T17:45:47Z`) with `PREVIOUS_SHA=eaad7c1…`
   (`2026-10-17T17:43:28Z`), the server checkout matches `CURRENT_SHA`, and the
   public endpoint reported `status=ok`, `model_ready=true`, 2 of 2 workers and
-  `r_model_error=null`. Automatic deployment stays disabled. Still outstanding: a
-  fresh base-case browser smoke test against the deployed backend, and the
-  `pending.env` interrupted-deployment recovery path, which has not been
+  `r_model_error=null`. Automatic deployment stays disabled. Still outstanding:
+  the `pending.env` interrupted-deployment recovery path, which has not been
   live-tested. The live host reports two R workers while
   `deploy/api.env.example` records one; the workflow deliberately leaves that
   server-local setting unchanged.
@@ -2012,9 +2013,24 @@ explicitly documented otherwise.
   instead of rotating.
 
 ## Current task
-Committed (2026-10-17): **backend deployment live verification recorded in the
-documentation** (documentation only; no application code, deployment behaviour,
-server configuration, secret or workflow trigger changed).
+Committed (2026-10-17): **base-case browser smoke test recorded** (documentation
+only; no application code, deployment behaviour, server configuration, secret or
+workflow trigger changed). It is a separate commit from `8e9543d` below.
+
+- A fresh base-case browser analysis smoke test against the live deployment
+  completed on 2026-10-17 (recorded at `17:54Z`): the base case ran against
+  `dcb664c…` and its result and chart rendered successfully.
+- Only that outcome is recorded. No value-by-value check of the result, no
+  per-tab pass and no export test is claimed.
+- `deploy/BACKEND_DEPLOY.md` status, §6 step 6, §10, §11 and §12 now treat the
+  browser smoke test as verified, leaving the `pending.env` recovery path as the
+  only untested behaviour. `deploy/DEPLOY.md` §6 records the same.
+- Automatic deployment remains disabled: the `push` trigger is still commented
+  out, and enabling it is a separate decision that was not taken.
+
+Previously, committed as `8e9543d`: **backend deployment live verification
+recorded in the documentation** (documentation only; no application code,
+deployment behaviour, server configuration, secret or workflow trigger changed).
 
 - Live-verified sequence: a manual `deploy` of
   `dcb664c157f5998f1e63bd1b41e6c7c1d07ca0f1`, an explicit `rollback` to
@@ -2036,9 +2052,6 @@ server configuration, secret or workflow trigger changed).
   rollback succeeded once that state existed.
 - Automatic deployment remains disabled: the `push` trigger in
   `.github/workflows/deploy-backend.yml` is still commented out.
-- Not recorded, and deliberately not claimed: a fresh base-case browser analysis
-  smoke test against this deployment, and the `pending.env`
-  interrupted-deployment recovery path (not live-tested).
 - `deploy/BACKEND_DEPLOY.md` gained the live status, §6.1 (the recorded
   sequence), the §7 first-run rollback note, §9.1 (first-run state
   initialisation), a §11 split into live, local and outstanding checks, and
@@ -5473,16 +5486,18 @@ page's header and the Home screen's pinned theme button exactly where they are.
 ## Next planned task
 
 The backend deployment automation is live-verified for deploy → explicit rollback
-→ deploy → empty-target rollback → deploy, and the workflow stays manual-only.
-Before the `push` trigger is enabled (which needs explicit approval), two things
-remain: take a fresh base-case browser analysis smoke test against the deployed
-backend, and exercise a failed/interrupted attempt so the `pending.env` recovery
-path is proven on the host. A reported but unimplemented improvement is to record
-the pre-existing checkout on a first deployment (preferably as a separate
-`INITIAL_SHA` fallback), so a bare rollback works immediately; it needs approval
-before any change. See `deploy/BACKEND_DEPLOY.md` §6.1, §9.1 and §12. The live
-host reports two R workers while `deploy/api.env.example` records one; confirm the
-intended server-local setting separately.
+→ deploy → empty-target rollback → deploy, plus a base-case browser analysis
+smoke test against the live deployment, and the workflow stays manual-only. The
+only untested behaviour is the `pending.env` interrupted-deployment recovery path,
+which needs a deliberately failed or interrupted attempt on the host; exercising
+it is the next optional verification. Enabling the `push` trigger is no longer
+blocked by a verification gap but remains a separate decision that has not been
+taken. A reported but unimplemented improvement is to record the pre-existing
+checkout on a first deployment (preferably as a separate `INITIAL_SHA` fallback),
+so a bare rollback works immediately; it needs approval before any change. See
+`deploy/BACKEND_DEPLOY.md` §6.1, §9.1 and §12. The live host reports two R workers
+while `deploy/api.env.example` records one; confirm the intended server-local
+setting separately.
 
 The animation work, the interaction-polish pass, the page-entry fade and the dialog
 focus containment are implemented, verified locally, merged into `main` as `ea192dd`
@@ -5656,7 +5671,8 @@ another post beyond writing it and listing it in `posts.ts`.
 
 | Date | Change | Verified? |
 |---|---|---|
-| 2026-10-17 | Backend deployment live verification recorded, documentation only. The full sequence succeeded on `openhealth.ngo`: `deploy` of `dcb664c157f5998f1e63bd1b41e6c7c1d07ca0f1`, explicit `rollback` to `eaad7c133999bbe12b49d9de3835df687c4b5881`, `deploy` of `main`, an ordinary **empty-target** `rollback` that resolved the recorded previous release itself, and a final `deploy` of `main`, each passing `GET /api/health`. `state.env` ends at `CURRENT_SHA=dcb664c…` (`2026-10-17T17:45:47Z`) with `PREVIOUS_SHA=eaad7c1…` (`2026-10-17T17:43:28Z`), the server checkout matches `CURRENT_SHA`, and the public endpoint returned `status=ok`, `model_ready=true`, 2 of 2 workers and `r_model_error=null`. All runs used the dedicated account `eqalb-backend-deploy`, which exercised its `sudo -u eqalb` grant and its single root grant, `/usr/bin/systemctl restart eqalb-api.service`. The first empty-target `rollback`, before any previous release was recorded, was refused safely (`error: no previous deployment is recorded; pass the full SHA to roll back to`) before any checkout, `pending.env` write or restart, because the first deployment leaves `PREVIOUS_SHA` empty. Automatic deployment remains disabled (the `push` trigger is still commented out). Not claimed: a fresh base-case browser analysis smoke test against the deployment and the `pending.env` interrupted-deployment recovery path are not recorded, and the recovery path has not been live-tested. `deploy/BACKEND_DEPLOY.md` gained the live status, §6.1 (the recorded sequence), the §7 first-run rollback note, §9.1 (first-run state initialisation), a §11 split into live, local and outstanding checks, and updated risks; `deploy/DEPLOY.md` §3 now records that the live host keeps its settings inline with no `/etc/eqalb/api.env`, and its §6 the live-verified status and deploy account; `readme.md` points at the same state. Also reported, not implemented: the first successful deployment does not retain the pre-existing healthy checkout as `PREVIOUS_SHA`, because the new previous is the recorded current release and `pending.env` (which holds the pre-existing `HEAD`) is deleted on success; the recommendation is a guarded record of that base, preferably as a separate `INITIAL_SHA` used only as an empty-target fallback rather than redefining `PREVIOUS_SHA`. No application code, deployment behaviour, server configuration, secret, production unit, Caddy file or workflow trigger was changed | Yes - live, and it supersedes the "Not verified: ... first successful deploy ... first rollback" note in the two rows below. The reported state, the checkout `HEAD` and the public health responses were quoted from the operator's verified server output; the documentation changes are text only, so no local test suite applies |
+| 2026-10-17 | Base-case browser analysis smoke test against the live backend recorded, documentation only. A fresh run of the base case in the browser against the deployment of `dcb664c157f5998f1e63bd1b41e6c7c1d07ca0f1` completed on 2026-10-17 (recorded at `17:54Z`) with the result and the chart rendering successfully. Only that outcome is recorded: no value-by-value check of the result, no per-tab pass and no export test is claimed. `deploy/BACKEND_DEPLOY.md` now lists the browser test among the live-verified items (status, §6 step 6, §10, §11, §12) and leaves the `pending.env` interrupted-deployment recovery path as the only untested behaviour; `deploy/DEPLOY.md` §6 records the same. Automatic deployment remains disabled and the `push` trigger stays commented out: enabling it is a separate decision that was not taken. No application code, deployment behaviour, server configuration, secret, production unit, Caddy file or workflow trigger was changed | Yes - recorded from the operator's confirmation of the browser run against the live deployment; the documentation changes are text only, so no local test suite applies. Not claimed: any further browser interaction beyond the base-case result and its chart, and the `pending.env` recovery path, which remains untested |
+| 2026-10-17 | Backend deployment live verification recorded, documentation only. The full sequence succeeded on `openhealth.ngo`: `deploy` of `dcb664c157f5998f1e63bd1b41e6c7c1d07ca0f1`, explicit `rollback` to `eaad7c133999bbe12b49d9de3835df687c4b5881`, `deploy` of `main`, an ordinary **empty-target** `rollback` that resolved the recorded previous release itself, and a final `deploy` of `main`, each passing `GET /api/health`. `state.env` ends at `CURRENT_SHA=dcb664c…` (`2026-10-17T17:45:47Z`) with `PREVIOUS_SHA=eaad7c1…` (`2026-10-17T17:43:28Z`), the server checkout matches `CURRENT_SHA`, and the public endpoint returned `status=ok`, `model_ready=true`, 2 of 2 workers and `r_model_error=null`. All runs used the dedicated account `eqalb-backend-deploy`, which exercised its `sudo -u eqalb` grant and its single root grant, `/usr/bin/systemctl restart eqalb-api.service`. The first empty-target `rollback`, before any previous release was recorded, was refused safely (`error: no previous deployment is recorded; pass the full SHA to roll back to`) before any checkout, `pending.env` write or restart, because the first deployment leaves `PREVIOUS_SHA` empty. Automatic deployment remains disabled (the `push` trigger is still commented out). Not claimed at that point: a fresh base-case browser analysis smoke test against the deployment (recorded later the same day, see the row above) and the `pending.env` interrupted-deployment recovery path, which has not been live-tested. `deploy/BACKEND_DEPLOY.md` gained the live status, §6.1 (the recorded sequence), the §7 first-run rollback note, §9.1 (first-run state initialisation), a §11 split into live, local and outstanding checks, and updated risks; `deploy/DEPLOY.md` §3 now records that the live host keeps its settings inline with no `/etc/eqalb/api.env`, and its §6 the live-verified status and deploy account; `readme.md` points at the same state. Also reported, not implemented: the first successful deployment does not retain the pre-existing healthy checkout as `PREVIOUS_SHA`, because the new previous is the recorded current release and `pending.env` (which holds the pre-existing `HEAD`) is deleted on success; the recommendation is a guarded record of that base, preferably as a separate `INITIAL_SHA` used only as an empty-target fallback rather than redefining `PREVIOUS_SHA`. No application code, deployment behaviour, server configuration, secret, production unit, Caddy file or workflow trigger was changed | Yes - live, and it supersedes the "Not verified: ... first successful deploy ... first rollback" note in the two rows below. The reported state, the checkout `HEAD` and the public health responses were quoted from the operator's verified server output; the documentation changes are text only, so no local test suite applies |
 | 2026-10-17 | Backend deployment preflight fixed for the live systemd configuration, deployment script and documentation only. The first manual run failed before checkout with `error: /etc/eqalb/api.env is not readable by eqalb`; the host has no `/etc/eqalb`, keeps `EQALB_RSCRIPT` inline in `eqalb-api.service`, declares no `EnvironmentFile=` and runs two workers. `deploy/backend-deploy.sh` now resolves settings read-only in systemd's order — inline `Environment=` and drop-ins, then each `EnvironmentFile=` (later wins, `-` optional, missing required or unreadable stops), then `ExecStart` (uvicorn `--host`/`--port` → `UVICORN_*` → 8000; `run_api.py`/`main.py` → `EQALB_API_*` → 8788; unknown launcher → observed listener), then `EQALB_RSCRIPT` or a service-`PATH` lookup, with `EQALB_R_WORKERS` defaulting to 2 — parses environment files as data (never sourced), prints only allowlisted values, cross-checks the running process (R-path and listener mismatches stop, worker count warns) and exposes `EQALB_DEPLOY_RSCRIPT/API_HOST/API_PORT` overrides plus the resolved values in `status`. `deploy/BACKEND_DEPLOY.md` documents both configuration sources and their precedence, the dedicated `eqalb-backend-deploy` account and its two sudo grants, the `Environment=` vs `EnvironmentFiles=` caveat and the read-only inspection commands. The workflow is unchanged and remains manual-only. No R model, API behaviour, frontend, analysis, production unit, Caddy or default was changed | Partial - locally validated only. `bash -n`, `shellcheck -x -S style`, `actionlint` (with shellcheck) and `git diff --check` pass; 30 parser tests and 30 stubbed-systemd resolver scenarios pass (inline-only, EnvironmentFile override, missing/optional/unreadable file, unset/conflicting config, R and listener mismatch, unknown launchers, IPv6/wildcard/UDS listeners, worker warning, fail-before-change ordering). Not verified: the live host, the first successful deploy and the first rollback |
 | 2026-10-17 | Backend production deployment automation added, deployment files only. New `.github/workflows/deploy-backend.yml` (manual `workflow_dispatch`, `deploy`/`rollback` modes, `backend-production` environment, pinned SSH host key, public `/api/health` check, SHA/time summary; `push` trigger commented out), `deploy/backend-deploy.sh` (server-side deploy/rollback/status, current/previous/pending SHA state in `/var/lib/eqalb-backend-deploy`, Python lock sync, `renv::restore`/`renv::status` with R 4.5.1, `eqalb-api.service` restart, 180 s loopback health poll, no automatic rollback) and `deploy/BACKEND_DEPLOY.md` (secrets, one-time SSH/sudoers/state-directory setup, first run, rollback, risks). `deploy/DEPLOY.md` section 6 and `readme.md` point to the new guide. No R model, API, frontend, analysis or default was changed | Partial - locally validated only. `bash -n`, `shellcheck -x -S style`, `actionlint` (with shellcheck) and YAML parsing pass; the health parser accepted the live production response and rejected degraded/zero-worker/startup-error/invalid-JSON responses; workflow resolve/secrets/key/SSH-command/result/summary steps were dry-run locally. Not verified: live SSH and secrets, sudoers/state directory, first deploy, first rollback, public health after a real deploy. `backend-production` and its five secrets are outstanding; the workflow remains manual-only |
 | 2026-10-16 | Browser-tab title changed to "OpenHealth", frontend only. The static `<title>` in `frontend/index.html` was `eQalb — an interactive introduction to health-economic modelling`; it is now `OpenHealth`. The two entries of `PAGE_TITLES` in `frontend/src/composables/useAppView.ts` that would have overwritten it are now `OpenHealth` as well — the landing address `/` (which carried the old title) and the application address `/app`, which every in-app screen shares (Home, tutorial, project description, download view and the dashboard), so the tab reads "OpenHealth" throughout the product rather than switching to "eQalb — illustrative HTA model" on the workspace. The comment above the table now records that. `/about` ("About OpenHealth"), `/blog` ("Blog — OpenHealth") and an open blog post (titled by the post in `BlogPostView.vue`) are unchanged, as are the metadata description, the favicons, the landing copy, the in-app eQalb branding, the tutorial content, the model naming, the API, the R files, the exports and every analysis behaviour | Yes - frontend, local review first. `npm run typecheck`, `npm run lint`, `npm run build` (`index-DwadKxDr.js`, 934.73 kB) and `git diff --check` pass; `frontend/dist/index.html` carries `<title>OpenHealth</title>` and the description untouched. Browser at 127.0.0.1:5173: the tab showed exactly "OpenHealth" on `/`, on `/app` before and after the menu's explanation overlay, on all nine analysis tabs, on the Home screen, the tutorial, the Project description and the Download results views, with a presentation overlay open and after Escape; `/about` read "About OpenHealth", `/blog` read "Blog — OpenHealth" and the published post read "Release of eQalb & The introduction of OpenHealth! — OpenHealth". No regression: the base case ran to €2,439, the chart export produced `base-case-cost-effectiveness-plane.png` with one canvas, the only requests during the pass were the app's own health/defaults load and that one analysis run, presentation mode opened and closed cleanly, and `/api/health` returned `ok`. Limitation: verified in the Vite dev server and the production build output; the hosted deployment was not redeployed |

@@ -552,11 +552,12 @@ procedure and the rollback fallback.
 Status: the automated path is live-verified. On 2026-10-17 a manual deployment of
 `dcb664c`, an explicit rollback to `eaad7c1`, a return to `main`, an ordinary
 empty-target rollback and a final return to `main` all completed and passed
-`GET /api/health`, with `state.env` recording the current and previous SHAs. The
-workflow remains manual-only: the `push` trigger is still disabled, and a fresh
-base-case browser smoke test is the remaining verification. The deploy account is
-`eqalb-backend-deploy`, which can act as `eqalb` and restart `eqalb-api.service`,
-and nothing more.
+`GET /api/health`, with `state.env` recording the current and previous SHAs. A
+fresh base-case browser analysis smoke test against that deployment then completed
+with the result and the chart rendering successfully. The workflow remains
+manual-only: the `push` trigger is still disabled, and enabling it is a separate
+decision. The deploy account is `eqalb-backend-deploy`, which can act as `eqalb`
+and restart `eqalb-api.service`, and nothing more.
 
 ```bash
 # --- Status and logs ---------------------------------------------------------

@@ -5,10 +5,12 @@ deployment is still disabled.** On 2026-10-17 the workflow, on the live host,
 deployed `dcb664c157f5998f1e63bd1b41e6c7c1d07ca0f1`, rolled back explicitly to
 `eaad7c133999bbe12b49d9de3835df687c4b5881`, deployed `main` again, **rolled back
 successfully with an empty target**, and deployed `main` once more — with a
-healthy `/api/health` at every step. The workflow remains manual-only: the `push`
-trigger stays commented out until a fresh base-case browser smoke test is recorded
-and enabling it is an explicit decision. [`DEPLOY.md`](./DEPLOY.md) remains the
-host runbook (packages, R, the API service, DNS, Caddy) and the manual fallback.
+healthy `/api/health` at every step. A fresh base-case browser analysis smoke test
+against that deployment then completed with the result and the chart rendering
+successfully (section 11). The workflow remains manual-only: the `push` trigger
+stays commented out, and enabling it is a separate, explicit decision that has not
+been taken. [`DEPLOY.md`](./DEPLOY.md) remains the host runbook (packages, R, the
+API service, DNS, Caddy) and the manual fallback.
 
 The first live run, before the configuration fix, reached the server and stopped
 before checkout with `/etc/eqalb/api.env is not readable by eqalb`. Live
@@ -408,9 +410,10 @@ but it will not recreate `/opt/R/4.5.1` or install R packages outside `renv`.
    ```
 
 6. Run a manual rollback to the recorded previous commit (next section), confirm
-   it passes health, then deploy `main` again. Only after the remaining cases in
-   section 11 are recorded should the automatic `push` trigger be enabled
-   (section 10).
+   it passes health, then deploy `main` again, and finish with a browser smoke
+   test of the base case (section 11). The runbook steps end there: enabling the
+   automatic `push` trigger is a separate decision (section 10), not part of a
+   first deployment.
 
 ### 6.1 What the live deployment and rollback runs actually did
 
@@ -612,11 +615,12 @@ it is a full SHA, differs from the target and is reachable from a fetched
 ## 10. Enabling automatic deployment
 
 The workflow intentionally has no `push` trigger yet. Deploy, explicit rollback,
-an ordinary empty-target rollback and the return to the latest revision have all
-been verified (section 6.1); before uncommenting the block under `on:`, the
-remaining case in section 11 must be recorded — a fresh base-case browser smoke
-test against the deployed backend — and enabling it must be an explicit decision.
-Uncomment:
+an ordinary empty-target rollback, the return to the latest revision and a fresh
+base-case browser analysis smoke test have all been verified (sections 6.1 and
+11). Enabling automatic deployment is therefore now a decision rather than an
+unfinished verification: it is **not** enabled here, the `pending.env` recovery
+path in section 11 is still untested, and uncommenting the block below must be an
+explicit choice. If it is taken, the block to uncomment under `on:` is:
 
 ```yaml
   push:
@@ -665,6 +669,11 @@ Verified on the live host (`openhealth.ngo`), 2026-10-17:
 - An empty-target `rollback` before any previous release was recorded failed
   safely (section 6.1, step 2): non-zero exit, no checkout, no `pending.env`, no
   restart and no state change.
+- A fresh base-case browser analysis smoke test against the deployed backend
+  completed on 2026-10-17 (recorded at `17:54Z`): the base case ran against the
+  deployed API, its result was produced and its chart rendered successfully. The
+  run was performed by the operator in the browser; only the outcome above is
+  recorded, not a value by value re-check of the result.
 
 Verified in the repository, without a VPS or GitHub secrets:
 
@@ -698,9 +707,6 @@ Verified in the repository, without a VPS or GitHub secrets:
 
 Not verified, or not yet recorded:
 
-- A fresh base-case browser smoke test after the deployed backend. The API and
-  its health endpoint are verified; a full interactive run of the base case in
-  the browser against this deployment has **not** been confirmed as completed.
 - The `pending.env` recovery path (a deployment interrupted or failed after the
   checkout) on the live host. It has **not** been live-tested.
 - The automatic `push` trigger, which remains commented out and disabled.
@@ -713,18 +719,19 @@ was then deployed and exercised by the runs above.
 
 ## 12. Risks and open deployment information
 
-- **The deploy and rollback paths are verified; two cases are not.** Deploy,
-  explicit rollback, an ordinary empty-target rollback and the return to the
-  latest revision all succeeded on 2026-10-17. The `pending.env` recovery path
-  and a fresh base-case browser smoke test are still unrecorded.
+- **The deploy and rollback paths are verified; the recovery path is not.**
+  Deploy, explicit rollback, an ordinary empty-target rollback, the return to the
+  latest revision and a fresh base-case browser analysis smoke test all succeeded
+  on 2026-10-17. The `pending.env` interrupted-deployment recovery path is still
+  unrecorded and has **not** been live-tested.
 - **A first deployment records no previous release.** `state.env` starts empty,
   so the first successful deployment writes an empty `PREVIOUS_SHA` and a bare
   rollback is refused until a second revision has been recorded (section 9.1).
   Supply the pre-existing SHA explicitly. Whether to seed it automatically is an
   open decision, not implemented.
-- **Automatic deployment is disabled.** The `push` trigger stays commented out
-  until the remaining cases above are verified and enabling it is an explicit
-  decision (section 10).
+- **Automatic deployment is disabled.** The `push` trigger stays commented out.
+  Its verification track is now complete, so enabling it is a deliberate decision
+  that has not been taken (section 10).
 - **Git access holds on the live host.** Every successful run fetched `origin`
   non-interactively and checked out the requested SHA, so the public HTTPS path
   needs no credentials and no server-side key. A future private `origin` would
