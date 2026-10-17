@@ -436,6 +436,17 @@ Expect `"status":"ok"`, `"model_ready":true`, `"r_model":{"configured_workers":1
 begin. If it is not, follow the checkpoint's stop procedure - nothing is public
 yet, and §4 is what makes it public.
 
+> **Configuration source: template versus live host.** §3.5 and §3.6 describe the
+> template model in `deploy/api.env.example` and `deploy/eqalb-api.service`: one
+> server-local environment file, no R path in the unit. The live host deviates.
+> `/etc/eqalb` and `/etc/eqalb/api.env` do not exist there, and
+> `/etc/systemd/system/eqalb-api.service` sets
+> `Environment=EQALB_RSCRIPT=/opt/R/4.5.1/bin/Rscript` inline. Do not create the
+> environment file on that host; changing the R path or the listener there means
+> editing the unit and running `systemctl daemon-reload`. The automated
+> deployment reads whichever source the unit actually declares, so both shapes
+> are supported; see [`BACKEND_DEPLOY.md`](./BACKEND_DEPLOY.md) §2.1.
+
 ## 4. DNS and Caddy
 
 **Prerequisite: the §3.2 checkpoint is green.** Everything from here on creates
@@ -537,6 +548,15 @@ added later once real RSS figures are known.
 For the automated backend release path, see
 [`BACKEND_DEPLOY.md`](./BACKEND_DEPLOY.md). The commands below remain the manual
 procedure and the rollback fallback.
+
+Status: the automated path is live-verified. On 2026-10-17 a manual deployment of
+`dcb664c`, an explicit rollback to `eaad7c1`, a return to `main`, an ordinary
+empty-target rollback and a final return to `main` all completed and passed
+`GET /api/health`, with `state.env` recording the current and previous SHAs. The
+workflow remains manual-only: the `push` trigger is still disabled, and a fresh
+base-case browser smoke test is the remaining verification. The deploy account is
+`eqalb-backend-deploy`, which can act as `eqalb` and restart `eqalb-api.service`,
+and nothing more.
 
 ```bash
 # --- Status and logs ---------------------------------------------------------
@@ -654,7 +674,7 @@ is the supported one.
   API's `notice` field remains in the JSON as before.
 * **Do not** put the domain, an IP address, a certificate, a key or a token in a
   tracked file. `deploy/*.example` files are templates; the real values live in
-  `/etc/eqalb/api.env` and `/etc/caddy/Caddyfile`.
+  the server's unit or `/etc/eqalb/api.env`, and `/etc/caddy/Caddyfile`.
 * The R worker has no listener, so there is no R service to firewall, supervise
   or restart separately. Restarting `eqalb-api` restarts it.
 * **Do not** add the CRAN apt repository to this host, and do not point apt at

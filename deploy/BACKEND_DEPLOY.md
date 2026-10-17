@@ -1,22 +1,25 @@
 # Backend production deployment (GitHub Actions, manual first version)
 
-Status: **implemented in the repository; the first live run failed in preflight
-and that failure is fixed, but no live deployment has succeeded yet.** The
-workflow is manual-only. The first successful live deploy and the first live
-rollback are still outstanding; until they have been done, treat this automation
-as unverified. [`DEPLOY.md`](./DEPLOY.md) remains the host runbook (packages, R,
-the API service, DNS, Caddy) and the manual fallback.
+Status: **the manual deploy and rollback paths are live-verified; automatic
+deployment is still disabled.** On 2026-10-17 the workflow, on the live host,
+deployed `dcb664c157f5998f1e63bd1b41e6c7c1d07ca0f1`, rolled back explicitly to
+`eaad7c133999bbe12b49d9de3835df687c4b5881`, deployed `main` again, **rolled back
+successfully with an empty target**, and deployed `main` once more — with a
+healthy `/api/health` at every step. The workflow remains manual-only: the `push`
+trigger stays commented out until a fresh base-case browser smoke test is recorded
+and enabling it is an explicit decision. [`DEPLOY.md`](./DEPLOY.md) remains the
+host runbook (packages, R, the API service, DNS, Caddy) and the manual fallback.
 
-The first live run reached the server and stopped before checkout with
-`/etc/eqalb/api.env is not readable by eqalb`. SSH login, the pinned host key and
-the application-account sudo grant for `eqalb-backend-deploy` were confirmed on
-the host during that investigation. Live inspection found that
-`/etc/eqalb` and `/etc/eqalb/api.env` do not exist: this host keeps its settings
-inline in the systemd unit (`Environment=EQALB_RSCRIPT=/opt/R/4.5.1/bin/Rscript`,
-no `EnvironmentFiles=`) and runs two R workers. The script now reads the
-effective configuration from systemd and its environment files and only requires
-an environment file when the unit actually declares one. Section 2.1 records the
-resolution rules.
+The first live run, before the configuration fix, reached the server and stopped
+before checkout with `/etc/eqalb/api.env is not readable by eqalb`. Live
+inspection found that `/etc/eqalb` and `/etc/eqalb/api.env` do not exist: this
+host keeps its settings inline in the systemd unit
+(`Environment=EQALB_RSCRIPT=/opt/R/4.5.1/bin/Rscript`, no `EnvironmentFiles=`)
+and runs two R workers. The script now reads the effective configuration from
+systemd and its environment files and only requires an environment file when the
+unit actually declares one; section 2.1 records the resolution rules. Every live
+run used the dedicated deploy account `eqalb-backend-deploy`, and every
+successful one exercised its `systemctl restart eqalb-api.service` grant.
 
 This document covers only the FastAPI backend and its R workers. The frontend has
 its own automation in [`FRONTEND_DEPLOY.md`](./FRONTEND_DEPLOY.md), and neither
@@ -76,6 +79,12 @@ Observed on the live host: `/api/health` reports `status: ok`,
 configuration and is **not** changed by this workflow. The health check accepts
 any positive number of ready workers and warns when fewer than configured are
 ready, so it works with either setting.
+
+The live preflight resolved the R executable, the listener and the worker count
+with no `EQALB_DEPLOY_*` override, and the deployment that used those values
+restarted the service and passed the health check. The launcher/port question
+left open by earlier revisions of this document is therefore closed for this
+host; the resolved values are printed by `status` and in each deployment log.
 
 ### 2.1 How the script resolves the service configuration
 
@@ -162,9 +171,10 @@ Workflow: [`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-b
    - only then restarts `eqalb-api.service` and polls the resolved
      `http://<listener>/api/health` (3 s interval, 180 s timeout);
    - on success writes the deployed SHA, deployment time and previous known-good
-     SHA to `/var/lib/eqalb-backend-deploy/state.env`, appends a line to
-     `history.log`, and prints `DEPLOYED_SHA=`, `DEPLOYED_AT=`, `PREVIOUS_SHA=`,
-     `ACTION=` and `HEALTH=ok`.
+     SHA to `/var/lib/eqalb-backend-deploy/state.env` (the previous SHA is empty
+     on a first deployment; section 9.1), appends a line to `history.log`, and
+     prints `DEPLOYED_SHA=`, `DEPLOYED_AT=`, `PREVIOUS_SHA=`, `ACTION=` and
+     `HEALTH=ok`.
 6. The workflow checks the server-reported SHA/time, then verifies the public
    `https://openhealth.ngo/api/health` response with the same health rules. The
    job summary records the commit, deployment time, previous known-good commit
@@ -285,8 +295,9 @@ and nothing else; `/opt/eqalb` stays owned by `eqalb`.
 
 The SSH key is installed for this account with the `restrict` prefix described
 in section 4. `BACKEND_DEPLOY_SSH_USER` is already set to
-`eqalb-backend-deploy`. SSH login, the pinned host key, the application-account
-sudo grant and the systemctl restart grant have been tested on the host.
+`eqalb-backend-deploy`. SSH login with the pinned host key, the
+application-account sudo grant and the systemctl restart grant have all been
+exercised by the successful live deployments and the live rollback.
 
 The workflow uses `ssh -T` and `sudo -n`, so no TTY is available. Do not set
 `Defaults requiretty` for this account; Ubuntu's default does not. The preflight
@@ -369,9 +380,8 @@ but it will not recreate `/opt/R/4.5.1` or install R packages outside `renv`.
 
 1. Confirm the `backend-production` environment exists and its secrets are set
    (three are mandatory; the port has a default and the user secret is already
-   set to `eqalb-backend-deploy`). The first run reached the deployment job, so
-   the connection path is in place; the remaining question is whether the
-   preflight resolves the live listener.
+   set to `eqalb-backend-deploy`). This path is live-verified: the environment and
+   every successful run in section 6.1 worked, including the deployment job.
 2. In GitHub: **Actions → Deploy backend → Run workflow**.
    - `mode`: `deploy`
    - `ref`: `main` (or the exact commit/tag you want)
@@ -398,8 +408,33 @@ but it will not recreate `/opt/R/4.5.1` or install R packages outside `renv`.
    ```
 
 6. Run a manual rollback to the recorded previous commit (next section), confirm
-   it passes health, then deploy `main` again. Only after both directions have
-   been verified should the automatic `push` trigger be enabled.
+   it passes health, then deploy `main` again. Only after the remaining cases in
+   section 11 are recorded should the automatic `push` trigger be enabled
+   (section 10).
+
+### 6.1 What the live deployment and rollback runs actually did
+
+Recorded on the live host on 2026-10-17, in this order:
+
+| Step | Run | Result |
+|---|---|---|
+| 1 | `deploy` `dcb664c157f5998f1e63bd1b41e6c7c1d07ca0f1` | healthy; `state.env` recorded `CURRENT_SHA=dcb664c…` and an **empty** `PREVIOUS_SHA` (section 9.1) |
+| 2 | `rollback` with an empty target | **failed safely**: `backend-deploy: error: no previous deployment is recorded; pass the full SHA to roll back to`. No checkout, no `pending.env`, no restart, no state change |
+| 3 | `rollback` `eaad7c133999bbe12b49d9de3835df687c4b5881` (explicit) | healthy; `CURRENT_SHA=eaad7c1…` at `17:22:19Z`, `PREVIOUS_SHA=dcb664c…` |
+| 4 | `deploy` `main` (`dcb664c…`) | healthy; `CURRENT_SHA=dcb664c…` at `17:29:03Z`, `PREVIOUS_SHA=eaad7c1…` |
+| 5 | `rollback` with an **empty target**, now that a previous release was recorded | healthy; the server resolved the target itself, restored `eaad7c1…` without a hand-supplied SHA, and recorded `CURRENT_SHA=eaad7c1…` at `17:43:28Z` |
+| 6 | `deploy` `main` (`dcb664c…`) | healthy; final `CURRENT_SHA=dcb664c…` at `17:45:47Z`, `PREVIOUS_SHA=eaad7c1…` at `17:43:28Z` |
+
+Final verified server state: `/opt/eqalb` HEAD equals
+`dcb664c157f5998f1e63bd1b41e6c7c1d07ca0f1`; public
+`https://openhealth.ngo/api/health` returned `status=ok`, `model_ready=true`,
+`configured_workers=2`, `ready_workers=2`, `r_model_error=null`.
+
+Step 2 is expected on a first deployment, not a fault in the run: there was no
+recorded previous release yet, so the script refused instead of guessing. The
+explicit SHA in step 3 supplied the target, exactly as section 7 describes, and
+populated `PREVIOUS_SHA`. Step 5 then exercised the documented empty-target path
+successfully, and step 6 left the latest revision live.
 
 The first run can take longer than later ones because `pip` and `renv` may need
 to download or compile changed packages. The 180-second health timeout starts
@@ -437,6 +472,15 @@ With an empty target, the server chooses:
 - the **last recorded successful deployment** (or, on a first run, the checkout
   that was in place before the attempt) when the last attempt did **not**
   complete. This is what the `pending.env` state file is for.
+
+An empty target is **not** available on a first deployment: with no recorded
+previous release the script stops with
+`error: no previous deployment is recorded; pass the full SHA to roll back to`
+before it changes anything. Pass the pre-existing commit SHA explicitly in that
+case; section 9.1 explains why the checkout found before the first deployment is
+not seeded as `PREVIOUS_SHA`. This happened on the live host (section 6.1,
+step 2) and failed safely; the ordinary empty-target rollback was then performed
+successfully (section 6.1, step 5).
 
 The `ref` input for a rollback selects the copy of `deploy/backend-deploy.sh`
 that is piped to the server; it does not select the rollback target.
@@ -534,10 +578,45 @@ its lockfiles remain in the server checkout's Git history, so the rollback can
 reconstruct that deployment. The server's Git fetch may need to unshallow a
 shallow checkout the first time; the script does that automatically.
 
+### 9.1 First-run initialisation (current, recorded behaviour)
+
+`state.env` does not exist before the first deployment, so the first successful
+deployment records `CURRENT_SHA` (the target) and an **empty** `PREVIOUS_SHA`:
+the new state sets the previous release to the *previously recorded* current
+release, and there is none yet. The checkout that was in place before the
+deployment is recorded only as `PENDING_BASE_SHA` in `pending.env` (from the
+`HEAD` observed at checkout time), and that file is removed once the health check
+passes. It therefore does not survive as a rollback target.
+
+Observed consequences on the live host (2026-10-17):
+
+- an empty-target `rollback` immediately after the first deployment was refused
+  before any change; the operator supplied the pre-existing SHA explicitly;
+- the first `history.log` line records `-` in the previous column;
+- the pre-existing base was still recoverable afterwards, but only through the
+  operator's explicit target: rolling back to `eaad7c1` made it the recorded
+  current release, and deploying `main` again then recorded it as
+  `PREVIOUS_SHA=eaad7c1…`. A first deployment followed only by later deployments
+  leaves no record of the checkout that preceded it;
+- once a previous release was recorded, an empty-target `rollback` resolved it
+  and succeeded (section 6.1, step 5).
+
+Whether the first deployment should record the pre-existing checkout is an open
+decision; this document records the behaviour, not a plan to change it. If it is
+changed, the safe form is to record the base once, on the first successful
+deployment, taking `PENDING_BASE_SHA` when an interrupted attempt is recorded and
+the `HEAD` observed at the start of this attempt otherwise, accepting it only if
+it is a full SHA, differs from the target and is reachable from a fetched
+`origin/*` ref, and never failing the deployment when that guard rejects it.
+
 ## 10. Enabling automatic deployment
 
-The workflow intentionally has no `push` trigger yet. After a manual deploy and
-a manual rollback have both been verified, uncomment the block under `on:`:
+The workflow intentionally has no `push` trigger yet. Deploy, explicit rollback,
+an ordinary empty-target rollback and the return to the latest revision have all
+been verified (section 6.1); before uncommenting the block under `on:`, the
+remaining case in section 11 must be recorded — a fresh base-case browser smoke
+test against the deployed backend — and enabling it must be an explicit decision.
+Uncomment:
 
 ```yaml
   push:
@@ -560,7 +639,32 @@ even for automatic runs; without it, a push to `main` deploys immediately.
 Do not include `frontend/**`; the frontend has its own workflow and deployment
 account. Do not include `app.R`; it is not part of the browser-stack backend.
 
-## 11. What was verified locally, and what needs a live run
+## 11. Verification: live, local, and outstanding
+
+Verified on the live host (`openhealth.ngo`), 2026-10-17:
+
+- A manual `deploy` of `dcb664c157f5998f1e63bd1b41e6c7c1d07ca0f1` completed:
+  checkout, Python lock sync, `renv` restore, `eqalb-api.service` restart and the
+  health poll all passed, and the workflow reported the deployed SHA and time.
+- An explicit `rollback` to `eaad7c133999bbe12b49d9de3835df687c4b5881` completed
+  and passed the health check.
+- A second `deploy` of `main` returned to `dcb664c…`.
+- An **empty-target** `rollback` with a populated state completed: the server
+  resolved the recorded previous release itself, restored `eaad7c1…` without a
+  hand-supplied SHA and passed the health check.
+- A final `deploy` of `main` returned to `dcb664c…`.
+- `state.env` ends at `CURRENT_SHA=dcb664c…` (`2026-10-17T17:45:47Z`) with
+  `PREVIOUS_SHA=eaad7c1…` (`2026-10-17T17:43:28Z`), so current/previous tracking
+  is populated and the server checkout `HEAD` matches `CURRENT_SHA`.
+- Public `GET https://openhealth.ngo/api/health` returned `status=ok`,
+  `model_ready=true`, `configured_workers=2`, `ready_workers=2` and
+  `r_model_error=null`.
+- Every run used the dedicated account `eqalb-backend-deploy`: SSH login with the
+  pinned host key, `sudo -u eqalb` for the application commands, and the
+  `systemctl restart eqalb-api.service` grant for the restarts.
+- An empty-target `rollback` before any previous release was recorded failed
+  safely (section 6.1, step 2): non-zero exit, no checkout, no `pending.env`, no
+  restart and no state change.
 
 Verified in the repository, without a VPS or GitHub secrets:
 
@@ -588,44 +692,43 @@ Verified in the repository, without a VPS or GitHub secrets:
   uvicorn CLI arguments overriding `UVICORN_*`, and a worker-count warning.
 - Preflight ordering was tested: a configuration failure exits non-zero with no
   checkout, `pip`, `renv` or restart call.
-- The health parser was run against the **live** production
-  `https://openhealth.ngo/api/health` response: it accepted the healthy
-  response (`status=ok`, `model_ready=true`, 2 of 2 workers) and rejected
-  synthetic degraded, zero-worker, startup-error and invalid-JSON responses.
-- The current live health response confirms the field names, the R path and the
-  worker-count shape used by the checks.
+- The health parser was validated locally against the live production
+  `/api/health` payload, and it rejects synthetic degraded, zero-worker,
+  startup-error and invalid-JSON responses.
 
-Not verified locally, because they require the live host and the GitHub
-environment:
+Not verified, or not yet recorded:
 
-- The SSH key, pinned host key, port, user and network path (SSH, pinned
-  host-key login and application-account sudo were tested by the operator on
-  the host, not from this repository).
-- The `eqalb-backend-deploy` sudoers grants, the state directory ownership and
-  the absence of a sudo password prompt.
-- The server's `origin` URL and non-interactive fetch (reported as passing by
-  the operator; not re-run here).
-- The current `renv` consistency and the Python environment.
-- The actual checkout, `pip install`, `renv::restore`, service restart, health
-  polling, state write and rollback.
-- The `backend-production` approval rule, and a workflow run that completes
-  (SSH and the deployment job did run; the preflight, not the connection, failed).
-- The public health path after a real deployment.
+- A fresh base-case browser smoke test after the deployed backend. The API and
+  its health endpoint are verified; a full interactive run of the base case in
+  the browser against this deployment has **not** been confirmed as completed.
+- The `pending.env` recovery path (a deployment interrupted or failed after the
+  checkout) on the live host. It has **not** been live-tested.
+- The automatic `push` trigger, which remains commented out and disabled.
+- The `backend-production` required-reviewer rule, if one is configured; the runs
+  that succeeded needed no manual approval.
 
 The first live run failed at the old preflight, before any change, so no
-deployment state was written and no service was restarted. This fix is local
-only. The first re-run should therefore be treated as the integration test:
-inspect the `status` output and workflow log; do not enable the `push` trigger
-first.
+deployment state was written and no service was restarted. The configuration fix
+was then deployed and exercised by the runs above.
 
 ## 12. Risks and open deployment information
 
-- **No successful live run yet.** The first run failed in preflight before any
-  change; the fix is locally tested only. The next run is the integration test.
-- **The live host's Git access is not re-verified here.** The repository is
-  public, so an HTTPS checkout needs no credentials, and the operator reports a
-  non-interactive fetch passing. The script disables interactive prompts, so a
-  missing credential fails fast rather than hanging.
+- **The deploy and rollback paths are verified; two cases are not.** Deploy,
+  explicit rollback, an ordinary empty-target rollback and the return to the
+  latest revision all succeeded on 2026-10-17. The `pending.env` recovery path
+  and a fresh base-case browser smoke test are still unrecorded.
+- **A first deployment records no previous release.** `state.env` starts empty,
+  so the first successful deployment writes an empty `PREVIOUS_SHA` and a bare
+  rollback is refused until a second revision has been recorded (section 9.1).
+  Supply the pre-existing SHA explicitly. Whether to seed it automatically is an
+  open decision, not implemented.
+- **Automatic deployment is disabled.** The `push` trigger stays commented out
+  until the remaining cases above are verified and enabling it is an explicit
+  decision (section 10).
+- **Git access holds on the live host.** Every successful run fetched `origin`
+  non-interactively and checked out the requested SHA, so the public HTTPS path
+  needs no credentials and no server-side key. A future private `origin` would
+  need its own read-only credential for `eqalb`.
 - **The configuration must be resolvable without root.** The script reads
   `systemctl show`, `/proc/PID/environ` and any declared environment files as
   `eqalb`. An environment file that `eqalb` cannot read is a stop, not an
@@ -672,7 +775,9 @@ first.
   deployment fetches full history before checking out an older SHA. This is
   expected and one-time.
 - **Python lock portability.** `api/requirements.lock.txt` was resolved under
-  Python 3.14; the host's Python 3 may need to build a package that has no wheel.
+  Python 3.14. The live deployments installed it on the host without a build
+  failure, so the risk did not materialise for this revision; a future
+  dependency that has no wheel for the host's Python 3 would need to compile.
   This is the same compatibility condition as `DEPLOY.md` sections 3.2 and 3.3,
   not a new requirement introduced by the automation. A build failure stops the
   deployment before the service is restarted.

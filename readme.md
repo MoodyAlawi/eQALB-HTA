@@ -214,10 +214,12 @@ edits a deployment needs are the two `YOUR_DOMAIN` occurrences and the server's
 own environment file. [`deploy/DEPLOY.md`](./deploy/DEPLOY.md) is the runbook:
 packages, server baseline, install, DNS/Caddy, validation and rollback. Backend
 releases can be deployed from GitHub Actions with
-[`deploy/BACKEND_DEPLOY.md`](./deploy/BACKEND_DEPLOY.md); the workflow is manual
-until its first live deploy and rollback are verified. The legacy Shiny
-application is not part of that deployment: `app.R` and `run_app.R` stay a
-reference implementation for the existing Posit Connect demo.
+[`deploy/BACKEND_DEPLOY.md`](./deploy/BACKEND_DEPLOY.md); the workflow is
+manual-only, and its deploy, explicit rollback, empty-target rollback and return
+to `main` are live-verified, while automatic deployment on push is still
+disabled. The legacy Shiny application is not part of that deployment: `app.R`
+and `run_app.R` stay a reference implementation for the existing Posit Connect
+demo.
 
 ## Limitations
 
