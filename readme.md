@@ -2,6 +2,8 @@
 
 An interactive Shiny application for exploring health technology assessment methods, built around a simplified assessment of a fictional digital health technology called eQalb.
 
+**eQalb is an OpenHealth application.** OpenHealth is the platform, public brand and landing site; eQalb is one independent application within it, and the platform is intended to host further independent applications.
+
 ## Overview
 
 This repository contains an interactive Shiny application that works through a simplified health technology assessment (HTA) of eQalb.
@@ -22,11 +24,14 @@ What you can do with it:
 - Download every result available in the session as a single ZIP package.
 - Switch between a light and a dark colour mode.
 
-## Live demo
+## Hosted application
 
-A hosted copy of the Shiny application may be available; this repository does not
-publish a demo address. To run it yourself, see [Running locally](#running-locally)
-and the browser stack section below.
+The browser build of eQalb is published as part of the OpenHealth platform. This
+repository deliberately contains no hosting addresses, server details or
+deployment records; everything under `deploy/` is a generic template.
+
+To run the application yourself, see [Running locally](#running-locally) and
+[Deploying it yourself](#deploying-it-yourself).
 
 ## Analyses included
 
@@ -119,7 +124,7 @@ The default assumptions are illustrative starting values, for example an annual 
 | Reproducibility | renv, with a committed renv.lock recording the exact package versions |
 | Editor tooling | VS Code tasks that launch the application on 127.0.0.1:7788 and, optionally, the browser stack below |
 
-### Optional browser frontend (experimental)
+### Browser application (optional interface)
 
 The Shiny application is the reference implementation and stays complete on its
 own. An additive second interface reuses the same R model through an HTTP API, so
@@ -138,6 +143,9 @@ and value of information. See `api/api_contract.md` and `frontend/README.md`, an
 `FRONTEND_PLAN.md` for what is still planned. Everything it shows is simulated
 illustrative data, exactly as in the Shiny application.
 
+The browser build also carries the public OpenHealth shell: the landing page, the
+About page and the blog for news and updates.
+
 Repository layout:
 
 | File | Purpose |
@@ -151,7 +159,7 @@ Repository layout:
 | frontend/ | The optional Vue 3 + Vite interface for the API. |
 | .vscode/tasks.json | The VS Code tasks that run the Shiny app, the model API and the frontend dev server. |
 | renv.lock, .Rprofile, renv/ | The reproducible package environment. |
-| manifest.json | The deployment manifest used by the hosted Shiny demo. |
+| manifest.json | The Posit Connect deployment manifest for the Shiny application. The browser deployment does not use it. |
 | deploy/ | Generic, placeholder-only templates and deployment automation for the browser stack: `Caddyfile`, `eqalb-api.service`, `api.env.example`, the `DEPLOY.md` self-hosting runbook, and the optional `BACKEND_DEPLOY.md` and `FRONTEND_DEPLOY.md` automation guides. No host values. |
 | agents.md | The project rules and conventions followed while developing the application. |
 | CONTRIBUTING.md | How to build, run, test and propose changes, and the one Git command never to run. |
@@ -213,17 +221,17 @@ recorded in [`deploy/DEPLOY.md`](./deploy/DEPLOY.md), which is the runbook:
 packages, the R build, server baseline, install, DNS/Caddy, validation, routine
 operations and rollback.
 
-Two optional GitHub Actions automations are documented separately, and both are
-off by default:
+Two optional GitHub Actions automations are documented separately:
 
 - [`deploy/BACKEND_DEPLOY.md`](./deploy/BACKEND_DEPLOY.md) — deploys the API and
   its R workers, with a manual `workflow_dispatch` trigger, a SHA-pinned checkout,
-  a health check and recorded state for rollback. The `push` trigger is commented
-  out until you decide to enable it, and the workflow needs a
+  a health check and recorded state for rollback. It runs only when dispatched:
+  the `push` trigger is commented out, and the workflow needs a
   `PUBLIC_HEALTH_URL` repository or environment variable.
 - [`deploy/FRONTEND_DEPLOY.md`](./deploy/FRONTEND_DEPLOY.md) — ships only the
   static bundle into an immutable release directory behind a symlink that Caddy
-  serves.
+  serves. It publishes on a push to `main` that touches `frontend/**` or
+  `deploy/**`; a manual dispatch only rolls back to a retained release.
 
 The legacy Shiny application is not part of that deployment: `app.R` and
 `run_app.R` are a reference implementation that runs under `shiny::runApp()` or on
