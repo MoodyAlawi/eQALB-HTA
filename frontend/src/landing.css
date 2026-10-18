@@ -370,6 +370,30 @@ html[data-landing-theme] body {
   text-align: center;
 }
 
+/* Both slides share the same three bands - label, title, body - and each band is
+   a single grid cell, so the hero keeps the height of its taller slide and
+   switching never moves the arrows, the title or the sections below. Only the
+   active slide is visible; the inactive one is also inert in the markup, so its
+   link cannot be reached or clicked. */
+.landing__labels,
+.landing__titles,
+.landing__bodies {
+  display: grid;
+  width: 100%;
+}
+
+.landing__labels,
+.landing__bodies {
+  justify-items: center;
+}
+
+.landing__label,
+.landing__title,
+.landing__sql-logo,
+.landing__slide-body {
+  grid-area: 1 / 1;
+}
+
 .landing__label {
   margin: 0;
   color: var(--landing-muted);
@@ -378,8 +402,20 @@ html[data-landing-theme] body {
   text-transform: uppercase;
 }
 
+/* The title band is the positioning context for the arrows: they sit against
+   its left and right edges, vertically centred on the taller of the two titles,
+   while the title itself keeps the hero's centre axis. The padding is the room
+   the arrows need, so the text can never run underneath them. */
+.landing__titles {
+  position: relative;
+  margin-top: 1.5rem;
+  padding-inline: clamp(2.75rem, 6vw, 5rem);
+  justify-items: center;
+  align-items: center;
+}
+
 .landing__title {
-  margin: 1.5rem 0 0;
+  margin: 0;
   color: var(--landing-text);
   font-family: var(--landing-serif);
   font-size: clamp(3.6rem, 15vw, 11rem);
@@ -388,11 +424,201 @@ html[data-landing-theme] body {
   letter-spacing: -0.015em;
 }
 
+/* The SQL teaser's mark. Its colours are the sampled reference palette, scoped
+   to this one lockup so no landing token or global accent changes; the page
+   background stays the landing page's own. The height is exactly the eQalb
+   title's line box, so the shared title band keeps its height and the default
+   hero never moves.
+
+   Every internal size is a fraction of that height, so the lockup scales as one
+   piece and its width is whatever the typography needs: the query grid and the
+   "SQL" wordmark share the first row, and "for Healthcare Managers" spans the
+   row beneath in ordinary text, with no stretched or forced width. */
+html[data-landing-theme='light'] .landing__sql-logo {
+  --sql-logo-ink: #181e2d;
+  --sql-logo-grid: #6172b8;
+  --sql-logo-cell-active: #527ffb;
+  --sql-logo-support: #5869a8;
+}
+
+html[data-landing-theme='dark'] .landing__sql-logo {
+  --sql-logo-ink: #f3f6fc;
+  --sql-logo-grid: #7793f6;
+  --sql-logo-cell-active: #74a7fb;
+  --sql-logo-support: #9cabd2;
+}
+
+.landing__sql-logo {
+  --sql-logo-height: calc(clamp(3.6rem, 15vw, 11rem) * 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--sql-logo-height);
+  margin: 0;
+}
+
+.landing__sql-lockup {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-items: center;
+  /* Three quarters of a grid-cell width between the icon and the wordmark, and
+     a slightly wider gap before the supporting line. */
+  column-gap: calc(var(--sql-logo-height) * 0.1125);
+  row-gap: calc(var(--sql-logo-height) * 0.05);
+}
+
+.landing__sql-grid {
+  display: block;
+  width: auto;
+  /* The grid keeps its measured size. The wordmark was reduced by a tenth to
+     stop it dominating, so the icon now stands a hair above the cap height and
+     leads the mark instead of trailing it. */
+  height: calc(var(--sql-logo-height) * 0.547);
+  /* Centring puts the grid on the wordmark's line-box centre, but the ink sits
+     a little below that because the line box keeps room for descenders; this
+     nudges the grid down until the two visual centres meet. */
+  transform: translateY(calc(var(--sql-logo-height) * 0.0485));
+}
+
+.landing__sql-grid rect {
+  fill: var(--sql-logo-grid);
+}
+
+.landing__sql-grid .landing__sql-cell--active {
+  fill: var(--sql-logo-cell-active);
+}
+
+/* The page's own sans, at semibold, which is the weight that carries a
+   wordmark without looking heavy; the sizes are optical, not stretched. The
+   wordmark no longer competes with the grid: it is a tenth smaller than the
+   version that did, and the grid keeps its size. */
+.landing__sql-word {
+  color: var(--sql-logo-ink);
+  font-family: var(--landing-sans);
+  font-size: calc(var(--sql-logo-height) * 0.765);
+  font-weight: 600;
+  /* The caps are what is seen, so the line box is tightened to the type's own
+     proportions instead of reserving a descender the word never uses. */
+  line-height: 0.85;
+  letter-spacing: normal;
+}
+
+.landing__sql-support {
+  grid-column: 1 / -1;
+  color: var(--sql-logo-support);
+  font-family: var(--landing-sans);
+  font-size: calc(var(--sql-logo-height) * 0.189);
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: normal;
+  white-space: nowrap;
+}
+
+/* Only the hero's own labels are slide content; the label rule is scoped to the
+   hero so the OpenHealth and About me labels keep their ordinary visibility. */
+.landing__hero .landing__label,
+.landing__title,
+.landing__sql-logo,
+.landing__slide-body {
+  visibility: hidden;
+  opacity: 0;
+}
+
+.landing__hero .landing__label.is-active,
+.landing__title.is-active,
+.landing__sql-logo.is-active,
+.landing__slide-body.is-active {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Only the arriving content fades; the content leaving is hidden at once, so
+   two slides never cross-fade on top of each other. Reduced motion removes the
+   fade altogether. */
+@media (prefers-reduced-motion: no-preference) {
+  .landing__hero .landing__label.is-active,
+  .landing__title.is-active,
+  .landing__sql-logo.is-active,
+  .landing__slide-body.is-active {
+    transition: opacity 180ms ease;
+  }
+}
+
+/* The arrows: thin artwork with no visible frame, on a comfortably large
+   transparent hit area. Only the artwork is subdued, so the hero itself keeps
+   its full strength; hover and keyboard focus bring the artwork back to full
+   contrast, and the page's own focus ring marks the button. */
+.landing__hero-arrow {
+  position: absolute;
+  top: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  color: var(--landing-text);
+  cursor: pointer;
+}
+
+.landing__hero-arrow--prev {
+  left: 0;
+}
+
+.landing__hero-arrow--next {
+  right: 0;
+}
+
+.landing__hero-arrow svg {
+  width: 1.55rem;
+  height: 1.55rem;
+  opacity: 0.42;
+  transition: opacity 160ms ease;
+}
+
+.landing__hero-arrow:hover svg,
+.landing__hero-arrow:focus-visible svg {
+  opacity: 1;
+}
+
+.landing__slide-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .landing__lede {
   max-width: 32rem;
   margin: 1.6rem 0 0;
   font-size: clamp(1rem, 1.5vw, 1.16rem);
   line-height: 1.55;
+}
+
+/* The teaser's status sits where the action sits on eQalb: a quiet text label,
+   not a control, and never styled to look like a disabled button. */
+.landing__coming {
+  margin: 2.3rem 0 0;
+  color: var(--landing-muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.landing__visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 .landing__cta {
@@ -643,6 +869,36 @@ html[data-landing-theme] body {
 
   .landing__scroll {
     bottom: 1.4rem;
+  }
+
+  /* The teaser's longer label needs a little less tracking to stay on one line
+     in a narrow window; the eQalb label keeps its original setting. */
+  .landing__label--sql {
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+  }
+}
+
+/* On the narrowest windows the whole lockup is only as tall as the eQalb title's
+   line box, so the supporting line would otherwise fall to about 9px. It takes a
+   slightly larger share of that box instead; the wordmark keeps its size, and
+   the shared band is untouched. */
+@media (max-width: 400px) {
+  .landing__sql-support {
+    font-size: calc(var(--sql-logo-height) * 0.207);
+  }
+}
+
+/* The narrowest windows: the arrows and the room reserved for them shrink a
+   little together, so the SQL lockup keeps clear space on both sides. */
+@media (max-width: 400px) {
+  .landing__titles {
+    padding-inline: 2.5rem;
+  }
+
+  .landing__hero-arrow {
+    width: 2.5rem;
+    height: 2.5rem;
   }
 }
 

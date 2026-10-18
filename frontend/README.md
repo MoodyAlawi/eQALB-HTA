@@ -83,12 +83,15 @@ src/
     useModalFocus.ts       # a dialog's keyboard containment: focus moved in on open, a Tab loop inside, the page behind it inert (through the dialog's relatives, each element's prior state restored), focus returned to the opener when it closes
     usePageEntrance.ts    # the page-entry fade: one 160 ms opacity animation on the page wrapper, once per entry (page + post slug), skipped on a first paint, on Back/Forward, during the launch, while a dialog is open and on a scrolled arrival
   views/
-    OpenHealthHomeView.vue      # the landing page at / : one scrolling page in three panels - eQalb
-                                # (the hero, and "Open the app"), OpenHealth, About me (with the
-                                # portrait) - under a floating section navigation, with the landing
-                                # page's own theme, a scroll-spy and the per-panel entrance reveal; it
-                                # hands over to the app through LaunchTransition rather than swapping
-                                # the page straight away
+    OpenHealthHomeView.vue      # the landing page at / : one scrolling page in three panels - the eQalb
+                                # hero (its large centred title, subtitle and "Open the app", plus two
+                                # side arrows that reveal an SQL for Healthcare Managers teaser with
+                                # its SVG-grid and typographic logo lockup), OpenHealth, About me
+                                # (with the portrait)
+                                # - under a floating section navigation, with the landing page's own
+                                # theme, a scroll-spy and the per-panel entrance reveal; it hands over
+                                # to the app through LaunchTransition rather than swapping the page
+                                # straight away
     AboutView.vue               # About OpenHealth at /about : the founder, the motivation, and how to get involved
     BlogIndexView.vue           # the blog at /blog : every published post, newest first, as text with a rule
                                 # between the entries - no cards, no thumbnails
@@ -336,8 +339,17 @@ src/
 - **The landing page is a page of its own.** `/` is one scrolling page whose three
   panels (eQalb, then OpenHealth, then About me) are reached through its floating
   navigation, which smooth-scrolls, tracks the visible panel with an
-  `IntersectionObserver` and marks it with `aria-current`. The page keeps its own
-  light/dark choice in [`landing.css`](./src/landing.css) and
+  `IntersectionObserver` and marks it with `aria-current`. The first panel keeps
+  its `#eqalb` anchor and its original centred hero composition: the small
+  section label, the very large title, one short subtitle and the "Open the app"
+  action. Two discreet side arrows — thin, subdued artwork on a transparent hit
+  area, with no visible button frame — cycle to an SQL for Healthcare Managers
+  teaser and back, wrapping in both directions. eQalb is shown on first load,
+  nothing rotates on a timer, there is no visible counter, and the inactive
+  slide is inert and hidden, so its link or action has no focusable controls;
+  switching keeps focus on the arrow that was pressed. The hero keeps the
+  taller slide's height, so the arrows and the content below never move. The page
+  keeps its own light/dark choice in [`landing.css`](./src/landing.css) and
   [`useLandingTheme.ts`](./src/composables/useLandingTheme.ts), which publish it
   as `<html data-landing-theme>` and take that attribute away when the page
   unmounts: the app's `eqalb.theme` and `<html data-theme>` are neither read nor
@@ -345,8 +357,28 @@ src/
   browser's own and nothing is snapped, trapped or hijacked — scroll snapping was
   removed because it pulled small wheel notches back to a panel boundary and made
   an intermediate position impossible to hold — and the one action that matters,
-  "Open the app", is the
-  existing `/app` address.
+  "Open the app", is the existing `/app` address.
+- **The SQL teaser carries a typographic logo lockup.** The 3×3 query grid is
+  inline SVG; "SQL" and "for Healthcare Managers" are ordinary HTML text in the
+  page's existing sans stack, at semibold and regular weights, so the letterforms
+  come from a real typeface rather than drawn paths and the lockup's width
+  follows the typography. In the accepted composition the grid stands marginally
+  taller than the wordmark's cap height (measured at about 1.02×), about
+  three-quarters of a grid-cell of clear space sits before the wordmark, and the
+  two visual centres are aligned; the supporting line is not stretched or
+  width-forced. Its blue accent, dark/pale lettering and one highlighted grid
+  cell come from colours sampled from the approved reference, declared as
+  `--sql-logo-*` custom properties on `.landing__sql-logo` only; no global
+  accent, typography or page background changes. Every internal size is a
+  fraction of the eQalb title's line box, which is what keeps the shared title
+  band and the default hero unchanged.
+  This mark is an **accepted provisional teaser identity, not a final
+  cross-platform brand asset**. Two considerations were deferred rather than
+  resolved: the text resolves through the system sans stack, so the exact
+  letterforms and widths vary by operating system (a bundled webfont would make
+  them identical everywhere), and the supporting line measures about 11 px on
+  viewports 384 px wide and below, which stays readable but is small. Both were
+  left as they are deliberately; changing either would be a separate decision.
 - **The landing page's three sections are centred, and the two below the hero
   fade with the scroll.** Each panel's content is a centred block —
   the hero centres its own text, the OpenHealth column takes a `40rem` measure

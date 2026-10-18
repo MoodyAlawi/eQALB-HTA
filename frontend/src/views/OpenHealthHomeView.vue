@@ -2,11 +2,18 @@
 /**
  * OpenHealth landing page: the public front door, shown at "/".
  *
- * One scrolling page in three panels - eQalb, OpenHealth, About me - beneath a
- * compact floating navigation panel. It is presentation only: no input, no
- * result and no API call is involved, and the one action that matters, "Open the
- * app", is a link to the application's own address, /app. Arriving here or
- * leaving again never disturbs a run.
+ * One scrolling page in three panels - eQalb, OpenHealth, About me -
+ * beneath a compact floating navigation panel. It is presentation only: no
+ * input, no result and no API call is involved, and the one action that matters,
+ * "Open the app" on the eQalb panel, is a link to the application's own address,
+ * /app. Arriving here or leaving again never disturbs a run.
+ *
+ * The first panel is the eQalb hero, unchanged in composition: the small label,
+ * the very large centred title, its one-line subtitle and the centred "Open the
+ * app" action. Two discreet arrows sit at its left and right edges and cycle
+ * between eQalb and a teaser for SQL for Healthcare Managers. Nothing rotates
+ * on a timer, and the inactive slide is inert and hidden, so it contributes no
+ * focusable controls.
  *
  * The landing page is meant to read as a portfolio rather than as the app. Its
  * palette, typography and light/dark choice live in `landing.css` and
@@ -21,16 +28,18 @@
  * entrance animation, the scroll hint's pulse, smooth scrolling and the snapping
  * together, leaving the same content in the same order.
  *
- * The copy is honest about what exists: eQalb is described as an illustrative
- * teaching model, OpenHealth as a personal project with one tool released rather
- * than as an organisation, and the three contact links are the email address,
+ * The copy is honest about what exists: eQalb opens the illustrative teaching
+ * model, SQL for Healthcare Managers is a planned application marked "Coming
+ * soon" with no link, button, signup or date to follow, OpenHealth is a personal
+ * project with one tool released rather than an organisation, and the three
+ * contact links are the email address,
  * repository and profile already used elsewhere in the project. The page carries
  * no simulated-data notice of its own: that belongs inside the application,
  * which presents the educational and simulated-data wording where the results
  * are, and repeating a shortened version here would only duplicate it.
  */
 
-import { defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { followLink, pagePath, useAppView } from '../composables/useAppView'
 import { useLandingTheme } from '../composables/useLandingTheme'
 import { useAppLaunch } from '../composables/useAppLaunch'
@@ -61,12 +70,42 @@ const { launching, startLaunch } = useAppLaunch()
 
 type SectionId = 'eqalb' | 'openhealth' | 'about-me'
 
-/** The three panels, in order: the navigation and both observers read this list. */
+/**
+ * The three panels, in order: the navigation and both observers read this list.
+ *
+ * The first panel keeps the id `eqalb`: `/#eqalb` is an address the page has
+ * published, so the anchor stays put and the visible label stays "eQalb" too.
+ */
 const SECTIONS: readonly { id: SectionId; label: string }[] = [
   { id: 'eqalb', label: 'eQalb' },
   { id: 'openhealth', label: 'OpenHealth' },
   { id: 'about-me', label: 'About me' },
 ]
+
+/**
+ * The two hero slides, in order, with the name the live announcement reads out.
+ * The markup is written out for each, because their content differs; only the
+ * name and the count are shared.
+ */
+const SLIDES = ['eQalb', 'SQL for Healthcare Managers'] as const
+
+const activeSlide = ref(0)
+
+const slideAnnouncement = computed(
+  () => `Slide ${activeSlide.value + 1} of ${SLIDES.length}: ${SLIDES[activeSlide.value]}`,
+)
+
+/**
+ * Cycle one place in either direction, wrapping at both ends. The activated
+ * button keeps focus, including in browsers that do not focus a button on a
+ * mouse click, so the next press needs no further Tab and switching never
+ * moves the keyboard away from the arrows.
+ */
+function stepSlide(step: number, event: MouseEvent): void {
+  activeSlide.value = (activeSlide.value + step + SLIDES.length) % SLIDES.length
+  const button = event.currentTarget
+  if (button instanceof HTMLElement) button.focus()
+}
 
 /** The contact details already used elsewhere in the project. */
 const EMAIL = 'smalawi2018@gmail.com'
@@ -558,19 +597,164 @@ onBeforeUnmount(() => {
     </header>
 
     <main>
-      <!-- 1. eQalb, the doorway: the title, one line of description, one action,
-           and one quiet line saying what the model actually is. It carries no
-           reveal: the hero is fully visible from the first paint, so the app is
-           never behind a scroll. -->
-      <section id="eqalb" class="landing__panel" aria-labelledby="eqalb-title">
+      <!-- 1. eQalb, the doorway, with the original hero composition: the small
+           label, the very large centred title, one line of description, one
+           action. Two arrows at the hero's left and right edges cycle to an SQL
+           teaser and back; the inactive slide is inert and hidden, and there is
+           no counter and no automatic rotation. The panel carries no reveal: it
+           is fully visible from the first paint, so the app is never behind a
+           scroll. -->
+      <section
+        id="eqalb"
+        class="landing__panel"
+        :aria-labelledby="activeSlide === 0 ? 'eqalb-title' : 'sql-title'"
+      >
         <div class="landing__inner landing__hero">
-          <p class="landing__label">01 / eQalb</p>
-          <h1 id="eqalb-title" ref="heading" class="landing__title" tabindex="-1">eQalb</h1>
-          <p class="landing__lede">An interactive introduction to health-economic modelling.</p>
-          <a class="landing__cta" :href="pagePath('home')" @click="openApp($event)">
-            Open the app
-            <span aria-hidden="true">↗</span>
-          </a>
+          <div class="landing__labels">
+            <p
+              class="landing__label"
+              :class="{ 'is-active': activeSlide === 0 }"
+              :aria-hidden="activeSlide === 0 ? undefined : 'true'"
+            >
+              01 / eQalb
+            </p>
+            <p
+              class="landing__label landing__label--sql"
+              :class="{ 'is-active': activeSlide === 1 }"
+              :aria-hidden="activeSlide === 1 ? undefined : 'true'"
+            >
+              01 / SQL for Healthcare Managers
+            </p>
+          </div>
+
+          <div class="landing__titles">
+            <h1
+              id="eqalb-title"
+              ref="heading"
+              class="landing__title"
+              :class="{ 'is-active': activeSlide === 0 }"
+              :aria-hidden="activeSlide === 0 ? undefined : 'true'"
+              tabindex="-1"
+            >
+              eQalb
+            </h1>
+            <!-- The SQL teaser's title: the query grid as inline SVG, with the
+                 wordmark and the supporting line as real text in the page's own
+                 sans, so the letterforms are a typeface rather than drawn paths
+                 and the lockup's width follows the typography. Its height is the
+                 eQalb title's line box, so the shared band never grows. The
+                 artwork is a label, so the accessible name is the visually
+                 hidden full title inside the heading. -->
+            <h1
+              id="sql-title"
+              class="landing__sql-logo"
+              :class="{ 'is-active': activeSlide === 1 }"
+              :aria-hidden="activeSlide === 1 ? undefined : 'true'"
+              tabindex="-1"
+            >
+              <span class="landing__visually-hidden">SQL for Healthcare Managers</span>
+              <span class="landing__sql-lockup" aria-hidden="true">
+                <svg
+                  class="landing__sql-grid"
+                  viewBox="0 0 154.5 123"
+                  preserveAspectRatio="xMidYMid meet"
+                  focusable="false"
+                >
+                  <rect x="0" y="0" width="45.5" height="35" rx="6" />
+                  <rect x="54.5" y="0" width="45.5" height="35" rx="6" />
+                  <rect x="109" y="0" width="45.5" height="35" rx="6" />
+                  <rect x="0" y="44" width="45.5" height="35" rx="6" />
+                  <rect x="54.5" y="44" width="45.5" height="35" rx="6" />
+                  <rect
+                    class="landing__sql-cell--active"
+                    x="109"
+                    y="44"
+                    width="45.5"
+                    height="35"
+                    rx="6"
+                  />
+                  <rect x="0" y="88" width="45.5" height="35" rx="6" />
+                  <rect x="54.5" y="88" width="45.5" height="35" rx="6" />
+                  <rect x="109" y="88" width="45.5" height="35" rx="6" />
+                </svg>
+                <span class="landing__sql-word">SQL</span>
+                <span class="landing__sql-support">for Healthcare Managers</span>
+              </span>
+            </h1>
+
+            <button
+              type="button"
+              class="landing__hero-arrow landing__hero-arrow--prev"
+              aria-label="Previous slide"
+              @click="stepSlide(-1, $event)"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.25"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M19.5 12H4.5" />
+                <path d="M10.5 6 4.5 12l6 6" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="landing__hero-arrow landing__hero-arrow--next"
+              aria-label="Next slide"
+              @click="stepSlide(1, $event)"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.25"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M4.5 12h15" />
+                <path d="M13.5 6l6 6-6 6" />
+              </svg>
+            </button>
+
+            <p class="landing__visually-hidden" role="status" aria-atomic="true">
+              {{ slideAnnouncement }}
+            </p>
+          </div>
+
+          <div class="landing__bodies">
+            <div
+              class="landing__slide-body"
+              :class="{ 'is-active': activeSlide === 0 }"
+              :aria-hidden="activeSlide === 0 ? undefined : 'true'"
+              :inert="activeSlide === 0 ? undefined : true"
+            >
+              <p class="landing__lede">An interactive introduction to health-economic modelling.</p>
+              <a class="landing__cta" :href="pagePath('home')" @click="openApp($event)">
+                Open the app
+                <span aria-hidden="true">↗</span>
+              </a>
+            </div>
+
+            <div
+              class="landing__slide-body"
+              :class="{ 'is-active': activeSlide === 1 }"
+              :aria-hidden="activeSlide === 1 ? undefined : 'true'"
+              :inert="activeSlide === 1 ? undefined : true"
+            >
+              <p class="landing__lede">
+                Turn healthcare questions into data queries—and use the answers to inform
+                decisions.
+              </p>
+              <p class="landing__coming">Coming soon</p>
+            </div>
+          </div>
         </div>
 
         <a
