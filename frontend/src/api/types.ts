@@ -134,6 +134,44 @@ export interface ModelMeta {
   perspective: string
 }
 
+/**
+ * One module's method note, for the "How this is calculated" control beside the
+ * module's section title.
+ *
+ * R owns every word and every figure in it: the function named is the one the
+ * module calls, and the numbers quoted are the model's own constants and
+ * defaults. `label` is "How this is calculated" where the module computes an
+ * economic result and "How this works" where it does not. `table` is present only
+ * where the module's result is assembled from named parts, so the panel shows a
+ * breakdown rather than a second paragraph.
+ */
+/**
+ * One module's method note, as R publishes it.
+ *
+ * The reader is assumed to know mathematics and nothing about this codebase, so a
+ * note carries the mathematics and no implementation. Only `label`, `summary` and
+ * `steps` are always present: a note carries the formula, definitions, reading and
+ * assumptions that add something, and omits the rest rather than padding a template.
+ */
+export interface ModuleMethodNote {
+  label: string
+  /** The lead: the question the module answers, in one or two sentences. */
+  summary: string
+  /** The one relation worth seeing, as a short line of symbols. */
+  formula?: string
+  /** The computation, in order. */
+  steps: string[]
+  definitions_title?: string
+  /** Symbol → what it means, with its unit and the scope it refers to. */
+  definitions?: { symbol: string; meaning: string }[]
+  /** How to read the number the module produces. */
+  interpretation?: string
+  /** Only the assumptions that change how the result reads. */
+  assumptions?: string[]
+  table_title?: string
+  table?: { label: string; value: string }[]
+}
+
 export interface DefaultsResponse extends Notice {
   parameters: ParameterSpec[]
   owsa_parameters: OwsaBound[]
@@ -165,6 +203,13 @@ export interface DefaultsResponse extends Notice {
    * run arrives with POST /api/owsa.
    */
   owsa_prerun_note: string
+  /**
+   * One method note per analysis module, keyed by the module id the interface
+   * already uses for its own tab, from MODULE_METHOD_NOTES in eqalb_ui_copy.R.
+   * The journey republishes the same dictionary, so both screens describe a
+   * method identically. A module absent here shows no control.
+   */
+  module_methods: Record<string, ModuleMethodNote>
   model: ModelMeta
 }
 
@@ -777,10 +822,17 @@ export interface HtaSummaryAvailability {
  * Request of /api/hta-summary. Every field is optional: an omitted value means
  * that analysis has not been run, and R reports the not-yet-available wording.
  * Values the other endpoints already produced are passed through unchanged
- * (icer from /api/base-case, probability_cost_effective, mean_incremental_nmb,
- * evpi and evppi_table from /api/psa and /api/value-of-information, the budget
- * impact values from /api/budget-impact), and `readiness` carries the same
- * inputs as /api/readiness. Domain statuses are deliberately not accepted.
+ * (icer, incremental_cost and incremental_qalys from /api/base-case;
+ * probability_cost_effective and mean_incremental_nmb, evpi and evppi_table
+ * from /api/psa and /api/value-of-information; the budget impact values from
+ * /api/budget-impact), and `readiness` carries the same inputs as
+ * /api/readiness. Domain statuses are deliberately not accepted.
+ *
+ * `incremental_cost` and `incremental_qalys` are what R's economic rule reads:
+ * the decision test is the incremental net monetary benefit, whose sign holds in
+ * every quadrant of cost and effect, whereas a negative ICER is ambiguous
+ * between a dominant and a dominated option. `icer` is still sent because the
+ * summary reports it when it is interpretable.
  * The scenario fields are the evidence-priority signals; like every other
  * endpoint's inputs they fall back to the model's base-case constants in R, so
  * they are optional here.
@@ -789,6 +841,8 @@ export interface HtaSummaryInputs extends Partial<ScenarioInputs> {
   /** Reference WTP threshold; may also be sent as the `wtp` query parameter. */
   wtp?: number
   icer?: number
+  incremental_cost?: number
+  incremental_qalys?: number
   probability_cost_effective?: number
   mean_incremental_nmb?: number
   evpi?: number
@@ -1053,9 +1107,9 @@ export interface TutorialInputs {
 }
 
 /** One control, exactly as R describes it (label, unit, range, step, help). */
-export interface TutorialControl {
-  id: keyof TutorialInputs
-  /** The tutorial step the control belongs to, 1-based. */
+export interface ControlDescriptor {
+  id: string
+  /** The screen the control belongs to, 1-based. */
   step_index: number
   type: 'slider' | 'checkbox'
   label: string
@@ -1069,6 +1123,11 @@ export interface TutorialControl {
   min?: number
   max?: number
   step?: number
+}
+
+/** A tutorial control, whose ids are the tutorial request's own keys. */
+export interface TutorialControl extends ControlDescriptor {
+  id: keyof TutorialInputs
 }
 
 /**
@@ -1260,6 +1319,1177 @@ export interface TutorialPart1Response extends Notice {
   bia: TutorialBia
   readiness: TutorialReadiness
   summary: TutorialSummary
+}
+
+// --- Guided Tutorial journey ------------------------------------------------
+//
+// The journey is the redesigned teaching sequence. Like the tutorial it is a
+// presentation layer over R: the case, the chapter wording, every expected
+// answer and its feedback, the price lever and the interpretation of a result
+// all arrive from eqalb_tutorial_journey.R. The client renders R's words and
+// sends the one value the learner moves; it derives nothing.
+
+/** One option in the opening drawing, with R's short name for its role. */
+export interface JourneyCaseOption {
+  id: string
+  label: string
+  role: string
+}
+
+/**
+ * The fixed case as the opening drawing needs it: one line of context, then the
+ * labels the figure uses. Every number and every word is R's, so the drawing
+ * cannot describe a case the model is not running.
+ */
+export interface JourneyCase {
+  case_id: string
+  case_version: number
+  title: string
+  intro: string
+  payer_label: string
+  funds_label: string
+  population_label: string
+  population_arrow_label: string
+  option_labels: JourneyCaseOption[]
+  comparison_label: string
+  price_lead: string
+  price_unit: string
+  /** The amount alone ("€360.00"), so the drawing can set it larger than its unit. */
+  price_amount: string
+  /** The whole price tag, composed and formatted by R. */
+  price_display: string
+  proposed_price: number
+  task: string
+  start_label: string
+  /** One quiet disclosure: perspective, horizon and discounting. */
+  assumptions: { title: string; lines: string[] }
+  fixed_assumptions: Record<string, number | string | boolean>
+}
+
+/**
+ * The bridge between the first two chapters: what the learner has just done, and
+ * the question the next chapter answers. Copy only — nothing here is a result.
+ */
+export interface JourneyRecap {
+  lines: string[]
+  question: string
+  advance_label: string
+}
+
+/** One answer, with R's feedback for choosing it. */
+export interface JourneyAnswerOption {
+  id: string
+  label: string
+  correct: boolean
+  feedback: string
+}
+
+export interface JourneyQuestion {
+  stem: string
+  options: JourneyAnswerOption[]
+}
+
+/** The graph's own labels, so the chart never invents one. */
+export interface JourneyGraph {
+  title: string
+  x_label: string
+  y_label: string
+  origin_label: string
+  point_label: string
+  cost_leg_label: string
+  health_leg_label: string
+  select_hint: string
+}
+
+/**
+ * The labels the plane itself draws. Both chapters publish these, so the one plane
+ * can be driven by either of them; the four names only the first chapter gives its
+ * differences are optional, and an unnamed difference is drawn without a label.
+ */
+export interface JourneyPlaneLabels {
+  x_label: string
+  y_label: string
+  origin_label: string
+  point_label: string
+  cost_leg_label?: string
+  health_leg_label?: string
+}
+
+
+/** The graphical element a stage highlights, as R names it. */export type JourneySpot = 'origin' | 'eqalb' | 'health' | 'cost' | 'both'
+
+/**
+ * One state of the chapter's single graph. `caption` is the one sentence the
+ * state says; `note_key` names which of the response's own value sentences the
+ * state shows under the graph, because that sentence carries a number only the
+ * model can produce.
+ */
+/**
+ * Which part of the same plane a state asks the learner to look at. R names the
+ * region; the interface lights it. A cue carries no value.
+ *
+ * The first four are Chapter 1's: the starting point, the move between the two
+ * points, the health difference and the cost difference. The next four are
+ * Chapter 2's: the whole cloud of repeats, its centre, its spread, and the two
+ * sides of usual care. The last four are Chapter 3's: one bar, the two ends of
+ * that bar, the group of bars an outcome did not respond to, and a state with no
+ * cut-out at all.
+ */
+export type JourneyFocus =
+  | 'origin'
+  | 'lead'
+  | 'health'
+  | 'cost'
+  | 'cloud'
+  | 'centre'
+  | 'spread'
+  | 'sides'
+  | 'bar_top'
+  | 'bar_ends'
+  | 'flat'
+  | 'choice_now'
+  | 'choice_resolved'
+  | 'evpi_gap'
+  | 'evppi_bars'
+  | 'price_proposal'
+  | 'price_learner'
+  | 'balance_bar'
+  | 'price_solved'
+  | 'budget_intro'
+  | 'budget_annual'
+  | 'budget_programme'
+  | 'budget_setup'
+  | 'budget_savings'
+  | 'budget_net'
+  | 'budget_cumulative'
+  | 'ready_chips'
+  | 'ready_interop'
+  | 'ready_governance'
+  | 'ready_workflow'
+  | 'ready_language'
+  | 'ready_counts'
+  | 'none'
+
+export interface JourneyStage {
+  id: string
+  caption: string
+  note_key?: string
+  /** The region of the plane this state brings forward. */
+  focus: JourneyFocus
+  /**
+   * The directional cue, when the state leads attention from one region to
+   * another. R names the pair; the interface draws the connection.
+   */
+  lead?: JourneyLead
+  /**
+   * One sentence explaining something the state introduces: the measure in the
+   * first chapter, the method's name in the second. R writes it, and only the
+   * state that introduces it carries one.
+   */
+  aside?: string
+  /** A state's own name for the way forward, when it differs from the chapter's. */
+  advance_label?: string
+  /**
+   * Whether this state's own control is the way forward, so activating the graph
+   * must not skip past it. The base case's QALY illustration and its price state
+   * both carry their own control.
+   */
+  interactive?: boolean
+  /** The price state's closing observation, which is content and not a question. */
+  observation?: string
+  /** Chapter 3 only: which of the two rankings this state shows. */
+  view?: 'cost' | 'health'
+  /**
+   * How much of the chapter's figure this state draws: one bar or the whole
+   * ranking in Chapter 3, in Chapter 4 the first choice bar, both bars, the gap
+   * between them, or the EVPPI rows, and in Chapter 5 the price track, the balance
+   * alone, or both with the crossing marked.
+   */
+  /** The reveal values this stage uses. Chapter 7 adds `chips`. */
+  reveal?: 'top' | 'all' | 'now' | 'both' | 'gap' | 'evppi' | 'track' | 'balance' | 'full' | 'intro' | 'annual' | 'cumulative' | 'chips'
+  /** Chapter 3 only: whether the single bar's two ends are annotated. */
+  ends?: boolean
+  /**
+   * Chapter 6 only: how many of the component figures this state has revealed, so the
+   * breakdown is built up one element at a time rather than arriving as a paragraph.
+   */
+  components_shown?: number
+  /**
+   * Chapter 7 only: which of the four questions this state asks. The state's own
+   * control is that question's answers, so activating the figure must not skip it.
+   */
+  question_id?: string
+  /**
+   * Chapter 8 only: which beat of the lesson this state is — reading a time point,
+   * understanding a downward movement, or comparing the two estimates at that time.
+   */
+  beat?: 'time' | 'step' | 'compare'
+}
+
+/**
+ * A direction the guide draws across the plane: from one named region to another,
+ * as R names them. The interface turns the pair into pixels and nothing else.
+ */
+export type JourneyLead =
+  | 'point_to_cloud'
+  | 'cloud_to_centre'
+  | 'centre_to_spread'
+  | 'spread_to_zero'
+
+/**
+ * Chapter 1's copy: six states of the same graph, and the accessible name of the
+ * activation that moves between them.
+ */
+export interface JourneyBaseCaseCopy {
+  title: string
+  stages: JourneyStage[]
+  advance_label: string
+  advance_hint: string
+  price_label: string
+}
+
+/** Chapter 2's copy: six states of the same plane, driven by the repeats. */
+export interface JourneyUncertaintyCopy {
+  title: string
+  /** The title of the quiet disclosure listing what the simulation varied. */
+  variation_title: string
+  stages: JourneyStage[]
+  advance_label: string
+}
+
+/** One chapter in the journey's own navigation. */
+export interface JourneyChapter {
+  id: string
+  title: string
+  progress: string
+}
+
+/** Chapter 2's own names for the two things the repeats add to the plane. */
+export interface JourneyUncertaintyGraph {
+  x_label: string
+  y_label: string
+  origin_label: string
+  point_label: string
+  cloud_label: string
+  mean_label: string
+}
+
+/** Chapter 3's copy: seven states of the ranked charts. */
+export interface JourneySensitivityCopy {
+  title: string
+  stages: JourneyStage[]
+  advance_label: string
+}
+
+/** The labels the ranked chart draws, one set for both views. */
+export interface JourneySensitivityGraph {
+  cost_axis_label: string
+  health_axis_label: string
+  reference_label: string
+  low_end_label: string
+  high_end_label: string
+}
+
+/** Chapter 4's copy: six states of the choice comparison and the EVPPI rows. */
+export interface JourneyVoiCopy {
+  title: string
+  stages: JourneyStage[]
+  advance_label: string
+}
+
+/**
+ * The labels the chapter's two panels draw. The two choice bars share one axis and
+ * the EVPPI bars have their own, so a bar in the lower panel is never read against
+ * the upper panel's scale.
+ */
+export interface JourneyVoiGraph {
+  axis_label: string
+  evppi_axis_label: string
+  now_label: string
+  perfect_label: string
+  gap_label: string
+  evppi_title: string
+}
+
+/**
+ * The base case's one-year QALY line: R's copy, the score control and the two
+ * utility values the model holds fixed during that interaction.
+ *
+ * The score is a model input, not a demonstration: moving it re-runs the scenario.
+ * The formula is the illustration — one year in one state at that score — and is
+ * labelled as such, so the arithmetic on screen is never read as the model's result.
+ */
+export interface JourneyQalyIllustration {
+  heading: string
+  control: {
+    id: string
+    label: string
+    min: number
+    max: number
+    step: number
+    /** The model's own no-event utility, so the slider starts where the model is. */
+    default: number
+    default_display: string
+  }
+  /** The illustration's own label, so its one-year arithmetic is not read as a result. */
+  formula_label: string
+  /** The formula's own words, so the interface composes rather than invents one. */
+  formula: { year: string; times: string; equals: string; unit: string }
+  fixed_title: string
+  fixed: { label: string; value: number; display: string }[]
+  /**
+   * The information button's heading and text: what the scale means, what the score is
+   * used for, and how the model turns scores into QALYs. R's words, shown on demand so
+   * the panel keeps only the sentence, the slider and the two held values.
+   */
+  info_title: string
+  info: string
+  reset_label: string
+  /** Shown only at the one score the uncertainty analysis cannot draw exactly. */
+  ceiling_note: string
+}
+
+export interface JourneyContractResponse extends Notice {
+  journey: {
+    title: string
+    kicker: string
+    progress: { total: number; step_template: string }
+    navigation: { back: string; forward: string; exit: string; restart: string }
+    /**
+     * The end of the journey as it stands: R's one sentence about the case and the
+     * three actions that hand the learner over. Shown only when the chapter list has
+     * nothing after the chapter on screen, and never inside a standalone explainer.
+     */
+    end: {
+      /** The overlay's heading and its one line. */
+      title: string
+      body: string
+      sentence: string
+      note: string
+      open_label: string
+      restart_label: string
+      exit_label: string
+    }
+    /**
+     * One method note per analysis module, the same dictionary the analysis app
+     * reads from /api/defaults, so a chapter can show its module's method without
+     * a second request and the two screens can never disagree.
+     */
+    methods: Record<string, ModuleMethodNote>
+    chapters: JourneyChapter[]
+  }
+  case: JourneyCase
+  base_case: {
+    copy: JourneyBaseCaseCopy
+    graph: JourneyGraph
+    controls: ControlDescriptor[]
+    table_headings: TutorialContract['table_headings']
+    /** The one-year QALY illustration shown before the price is moved. */
+    qaly: JourneyQalyIllustration
+  }
+  /**
+   * Every bridge, keyed by the chapter it opens. Looking one up by the next
+   * chapter's id keeps the bridges following the journey's order.
+   */
+  recaps: Record<string, JourneyRecap>
+  /** The one-at-a-time chapter's copy, chart labels and its methodological notes. */
+  sensitivity: {
+    copy: JourneySensitivityCopy
+    graph: JourneySensitivityGraph
+    /**
+     * The notes the chapter keeps out of the panel: the method's name, what a flat
+     * bar means and what a long bar does not mean. R's sentences, moved rather than
+     * rewritten.
+     */
+    disclosure: { title: string; lines: string[] }
+  }
+  /** The uncertainty chapter's copy and chart labels. */
+  uncertainty: {
+    copy: JourneyUncertaintyCopy
+    graph: JourneyUncertaintyGraph
+  }
+  /** The value-of-information chapter's copy and chart labels. */
+  voi: {
+    copy: JourneyVoiCopy
+    graph: JourneyVoiGraph
+    /** The reference value R publishes, so the client echoes rather than chooses it. */
+    threshold: number
+    threshold_display: string
+  }
+  /**
+   * The price chapter's copy, chart labels and its own price lever. `scenario_key`
+   * names every input the price solve depends on, so a stored solve is reused only
+   * while it still describes this case at this reference.
+   */
+  price: {
+    copy: JourneyPriceCopy
+    graph: JourneyPriceGraph
+    control: ControlDescriptor
+    threshold: number
+    threshold_display: string
+    scenario_key: string
+  }
+  /**
+   * The budget chapter's copy, chart labels, its own coverage lever and the case
+   * figures its sentences are built from.
+   */
+  budget: {
+    copy: JourneyBudgetCopy
+    graph: JourneyBudgetGraph
+    control: ControlDescriptor
+    population: number
+    horizon_years: number
+    assumptions: JourneyBudgetResult['assumptions']
+    /** What this module publishes so its panel can open the lesson standalone. */
+    module: JourneyBudgetModuleIdentity
+  }
+  /**
+   * The readiness chapter's copy, its figure's labels, the four questions with their
+   * scenario-worded answers, and the case's own non-editable inputs.
+   */
+  readiness: {
+    copy: JourneyReadinessCopy
+    graph: JourneyReadinessGraph
+    questions: JourneyReadinessQuestion[]
+    defaults: JourneyReadinessAnswers
+    fixed: {
+      target_population: number
+      digital_access: number
+      digital_suitability: number
+      readiness_year1_engagement: number
+      readiness_followup_engagement: number
+      accessibility_features: boolean
+    }
+    inputs: Record<string, number | boolean | string>
+    /**
+     * What the readiness module publishes so its own panel can open this chapter as
+     * a standalone explainer: R's name for the module, the one orientation sentence
+     * a learner arriving from the module needs, and the two control labels.
+     */
+    module: JourneyModuleIdentity
+  }
+  /**
+   * The last chapter's copy, its figure's labels, and the key naming every input its
+   * simulation reads. It is a different view of the same effect assumption: no price
+   * and no score is in that key, so the chapter neither reads nor moves the scenario.
+   */
+  survival: {
+    copy: JourneySurvivalCopy
+    graph: JourneySurvivalGraph
+    /** Every input and setting the simulation reads, composed in R. */
+    inputs_key: string
+    /** What this module publishes so its panel can open the lesson standalone. */
+    module: JourneyModuleIdentity
+  }
+}
+
+/**
+ * One chapter as its dashboard module sees it.
+ *
+ * `orientation` is the one sentence a reader who arrived from the module needs, and
+ * the two labels are the control that opens the lesson and the one that leaves it. A
+ * chapter that publishes no such block cannot be opened on its own.
+ */
+export interface JourneyModuleIdentity {
+  label: string
+  orientation: string
+  enter_label: string
+  return_label: string
+}
+
+/**
+ * The budget module's identity, plus the fixed tutorial price its standalone lesson
+ * charges. The price is the case's own proposal, so the explainer cannot be read as
+ * the learner's selected scenario.
+ */
+export interface JourneyBudgetModuleIdentity extends JourneyModuleIdentity {
+  price: number
+}
+
+/** R's teaching status and its interpretation of it. */
+export interface JourneyStatus {
+  domain: string
+  code: TutorialStatus
+  interpretation: string
+}
+
+/** R's plain-language reading of the result the same response carries. */
+export interface JourneyReading {
+  code: string
+  sentence: string
+}
+
+export interface JourneyBaseCaseResult {
+  incremental_cost: number
+  incremental_qalys: number
+  icer: Num
+  icer_display: string
+  table: TutorialCeTableRow[]
+  chart: TutorialCe['chart']
+  status: JourneyStatus
+  reading: JourneyReading
+  /** R's sentences for the individual reveals, each carrying its own value. */
+  notes: { cost: string; health: string; ratio: string }
+  /** R's sentence tying the incremental QALYs to the score on screen. */
+  utility_note: string
+  /** R's note for the one score the simulation cannot draw exactly, else null. */
+  ceiling_note: string | null
+}
+
+export interface JourneyBaseCaseResponse extends Notice {
+  /** The two lever values the request carried, after R applied its own defaults. */
+  inputs: {
+    price: number
+    price_display: string
+    utility_no_event: number
+    utility_display: string
+    utility_at_ceiling: boolean
+  }
+  base_case: JourneyBaseCaseResult
+}
+
+/** One repeat of the comparison: what it added, and what it cost. */
+export interface JourneyRepeat {
+  cost: number
+  qalys: number
+}
+
+/**
+ * One successful simulation as the value-of-information chapter needs it: the two
+ * outcome columns plus every sampled parameter column the analysis stored. The
+ * values are R's; the client posts them back untouched.
+ */
+export interface JourneyPsaDraw {
+  simulation: number
+  incremental_cost: number
+  incremental_qalys: number
+  [parameter: string]: number
+}
+
+/**
+ * What the simulation actually varied, and what it held fixed. Both lists are
+ * derived from the analysis's own parameter table, and the sentences are R's, so
+ * the quiet disclosure under the chart cannot describe a simulation that is not
+ * the one that ran.
+ */
+export interface JourneyPsaVariation {
+  varied_count: number
+  tested_count: number
+  varied: string[]
+  held: string[]
+  /** The method's name, which opens the disclosure rather than the panel. */
+  method_sentence: string
+  varied_sentence: string
+  held_sentence: string
+  ranges_sentence: string
+  /** R's sentence for the one score the simulation cannot draw exactly, else ''. */
+  utility_sentence: string
+}
+
+/**
+ * Chapter 2's result. Every number and every sentence is R's: the repeats, their
+ * average, the deterministic point they centre on, the range they ran over, the
+ * counts either side of usual care, which assumptions varied, and the words for
+ * each state.
+ */
+export interface JourneyUncertaintyResult {
+  n_repeats: number
+  seed: number
+  cloud: JourneyRepeat[]
+  /**
+   * The successful simulation rows themselves, with the sampled parameter columns
+   * R stored, so the value-of-information chapter can value better evidence on
+   * exactly these comparisons instead of simulating them again. R's own rows,
+   * unchanged.
+   */
+  draws: JourneyPsaDraw[]
+  mean: { incremental_cost: number; incremental_qalys: number }
+  base_case: { incremental_cost: number; incremental_qalys: number }
+  spread: {
+    cost_low: number
+    cost_high: number
+    qalys_low: number
+    qalys_high: number
+  }
+  sides: { total: number; cost_below: number; health_no_gain: number }
+  /** The quiet disclosure's contents. */
+  variation: JourneyPsaVariation
+  /** R's sentences for the individual reveals, each carrying its own values. */
+  notes: { repeats: string; mean: string; spread: string; sides: string }
+}
+
+export interface JourneyUncertaintyResponse extends Notice {
+  inputs: { price: number; price_display: string }
+  uncertainty: JourneyUncertaintyResult
+}
+
+/**
+ * One assumption's tested range in one ranking. R returns both tested inputs and
+ * both outcomes they produced, so the interface never pairs a bound with a value
+ * itself, and it flags the rows this outcome did not respond to.
+ */
+export interface JourneySensitivityRow {
+  parameter_id: string
+  /** R's full parameter name. */
+  label: string
+  /** R's short name for the chart's category axis. */
+  plot_label: string
+  available: boolean
+  /** The two tested ends produced the same outcome. */
+  flat: boolean
+  /** The second tested end produced the lower outcome. */
+  reversed: boolean
+  low_input: string
+  high_input: string
+  low_outcome: number
+  high_outcome: number
+  impact: number
+  low_display: string
+  high_display: string
+  impact_display: string
+}
+
+/** One ranking: R's rows, its counts and the base case they start from. */
+export interface JourneySensitivityOutcome {
+  kind: 'cost' | 'health'
+  outcome: string
+  outcome_label: string
+  value_kind: 'money' | 'qalys'
+  base_outcome: number
+  base_display: string
+  /** R's rows in R's order: ranked by how far each moves the outcome. */
+  rows: JourneySensitivityRow[]
+  /** Assumptions R could not vary here, which are therefore not ranked. */
+  unavailable: { parameter_id: string; label: string }[]
+  tested: number
+  moving: number
+  flat: number
+  flat_labels: string[]
+  top: JourneySensitivityRow | null
+  second: JourneySensitivityRow | null
+}
+
+export interface JourneySensitivityResult {
+  outcomes: { cost: JourneySensitivityOutcome; health: JourneySensitivityOutcome }
+  /** R's sentences for the states that carry a number. */
+  notes: Record<string, string>
+}
+
+export interface JourneySensitivityResponse extends Notice {
+  inputs: { price: number; price_display: string }
+  sensitivity: JourneySensitivityResult
+}
+
+/**
+ * One assumption's value of resolving it on its own. `zero` and `small` are R's own
+ * findings: a row can be exactly zero, or positive but too small to print, and the
+ * chapter says which.
+ */
+export interface JourneyVoiRow {
+  parameter_id: string
+  /** R's full parameter name. */
+  label: string
+  /** R's short name for the chart's category axis. */
+  plot_label: string
+  value: number
+  value_display: string
+  zero: boolean
+  small: boolean
+}
+
+/** R's EVPPI result. When it is unavailable, `reason` is R's own explanation. */
+export interface JourneyVoiEvppi {
+  available: boolean
+  reason: string
+  rows: JourneyVoiRow[]
+  largest: JourneyVoiRow | null
+  zero: number
+  small: number
+  clamped: boolean
+  exceeds: boolean
+}
+
+export interface JourneyVoiEvpi {
+  /** EVPI per person, over the model's horizon. */
+  per_person: number
+  display: string
+  /**
+   * The balance of choosing on today's information, relative to usual care: usual
+   * care's own net benefit is the axis's zero.
+   */
+  choose_now: number
+  choose_now_display: string
+  /** The balance if the included parameter uncertainty were resolved. */
+  perfect: number
+  perfect_display: string
+  mean_nmb: number
+  /** R's name for the option ahead on average, or an empty string. */
+  preferred: string
+}
+
+export interface JourneyVoiResult {
+  n: number
+  rows_posted: number
+  threshold: number
+  threshold_display: string
+  evpi: JourneyVoiEvpi
+  evppi: JourneyVoiEvppi
+  axis: { max: number; evppi_max: number }
+  /** The quiet disclosure's contents. */
+  disclosure: { title: string; lines: string[] }
+  /** R's sentences for the states that carry a word or a number. */
+  notes: {
+    reference: string
+    choose_now: string
+    resolved: string
+    evpi: string
+    evppi: string
+    limits: string
+  }
+}
+
+export interface JourneyVoiResponse extends Notice {
+  inputs: {
+    price: number
+    price_display: string
+    threshold: number
+    threshold_display: string
+  }
+  voi: JourneyVoiResult
+}
+
+/**
+ * Chapter 5's copy: six states of one price comparison, drawn as two scales.
+ */
+export interface JourneyPriceCopy {
+  title: string
+  stages: JourneyStage[]
+  advance_label: string
+}
+
+/**
+ * The labels the chapter's two displays draw. The price track and the balance are
+ * separate scales, and each names what it measures and in which unit, so a balance
+ * is never read off the price axis.
+ */
+export interface JourneyPriceGraph {
+  track_label: string
+  proposal_label: string
+  learner_label: string
+  solved_label: string
+  balance_title: string
+  balance_label: string
+  zero_label: string
+}
+
+/** One tick on the price track, in R's own money formatting. */
+export interface JourneyPriceTick {
+  value: number
+  display: string
+}
+
+/**
+ * R's solved price: whether it exists, what it is, whether it falls inside the
+ * track's range, and which side of the track it falls on when it does not. When it
+ * is unavailable, `reason` is R's own explanation and no marker is drawn.
+ */
+export interface JourneyPriceSolved {
+  available: boolean
+  price: Num
+  display: string
+  within_range: boolean
+  outside: '' | 'above' | 'below'
+  method: string
+  verified: boolean
+  reason: string
+}
+
+/**
+ * The solve object posted back to R. It is R's own result, echoed unchanged: the
+ * client never inspects it, ranks it or derives a price from it.
+ */
+export interface JourneyPriceSolvePayload {
+  scenario_key: string
+  threshold: number
+  available: boolean
+  /** Present only when `available` is true. */
+  max_acceptable_price?: number
+  method: string
+  verified: boolean
+  reason: string
+}
+
+/** The balance at the price on the slider, on its own axis around usual care's zero. */
+export interface JourneyPriceBalance {
+  nmb: number
+  display: string
+  positive: boolean
+  incremental_cost: number
+  incremental_qalys: number
+  axis: { min: number; max: number }
+}
+
+export interface JourneyPriceResult {
+  scenario_key: string
+  price: number
+  price_display: string
+  /** The price's unit as a sentence reads it: "per person per year". */
+  unit: string
+  /** The same unit in the control's label form: "EUR per person per year". */
+  unit_label: string
+  range: { min: number; max: number }
+  ticks: JourneyPriceTick[]
+  proposal: { value: number; display: string }
+  solved: JourneyPriceSolved
+  balance: JourneyPriceBalance
+  /** R's sentences for the states that carry an amount. The chapter's limits are in
+   *  its disclosure rather than beside the figure. */
+  notes: { learner: string; balance: string; crossover: string }
+  limitation: string
+  /** The quiet disclosure's contents. */
+  disclosure: { title: string; lines: string[] }
+}
+
+export interface JourneyPriceResponse extends Notice {
+  inputs: {
+    price: number
+    price_display: string
+    utility_no_event: number
+    utility_display: string
+    threshold: number
+    threshold_display: string
+    scenario_key: string
+  }
+  price: JourneyPriceResult
+}
+
+// --- Chapter 6: the budget ---------------------------------------------------
+//
+// Every figure is calculate_budget_impact()'s. The journey does not decide what is
+// annual and what is cumulative: R returns both, and each panel is labelled by R.
+
+/** One year of the budget, with R's formatted amounts. */
+export interface JourneyBudgetYear {
+  year: number
+  key: string
+  year_label: string
+  enrolled: number
+  enrolled_display: string
+  new_users: number
+  new_users_display: string
+  active_users: number
+  active_users_display: string
+  uptake_pct: number
+  gross_intervention_cost: number
+  implementation_cost: number
+  healthcare_savings: number
+  avoided_event_savings: number
+  net: number
+  net_display: string
+  /** The running sum through this year, not an annual amount. */
+  cumulative: number
+  cumulative_display: string
+}
+
+/** The five-year totals of each component, in R's own formatting. */
+export interface JourneyBudgetTotals {
+  gross_display: string
+  gross: number
+  implementation_display: string
+  implementation: number
+  savings_display: string
+  savings: number
+  avoided_display: string
+  avoided: number
+  net_display: string
+  net: number
+}
+
+/**
+ * One component of the five-year total, labelled in R's words with its own period and
+ * unit. A component worth exactly zero is never sent, so no card stands for something
+ * that did not happen.
+ */
+export interface JourneyBudgetComponent {
+  key: 'programme' | 'setup' | 'savings' | 'net'
+  label: string
+  sub: string
+  amount_display: string
+  amount: number
+  tone: 'cost' | 'saving' | 'net'
+}
+
+/** One coverage step: the rows the figure draws and the sentences that describe them. */
+export interface JourneyBudgetCoverage {
+  coverage: number
+  coverage_display: string
+  covered_population: number
+  covered_display: string
+  rows: JourneyBudgetYear[]
+  years: number
+  /** The last cumulative value: the running total, not a second sum. */
+  cumulative: number
+  cumulative_display: string
+  totals: JourneyBudgetTotals
+  /** The breakdown, in the order the calculation applies it. */
+  components: JourneyBudgetComponent[]
+  /** The period every component covers, so a five-year amount is never read as annual. */
+  components_period: string
+  /** R's sentences for this exact cap. */
+  notes: { population: string; cumulative: string }
+}
+
+/** The one price the journey carries, with the whole coverage sweep R computed. */
+export interface JourneyBudgetCandidate {
+  key: 'journey'
+  /** R's label naming where the price came from. */
+  label: string
+  price: number
+  price_display: string
+  coverages: JourneyBudgetCoverage[]
+}
+
+export interface JourneyBudgetResult {
+  population: number
+  population_display: string
+  horizon_years: number
+  coverage_control: ControlDescriptor
+  coverage_steps: number[]
+  coverage_default: number
+  assumptions: {
+    year1_uptake_pct: number
+    annual_uptake_increase_pp: number
+    followup_engagement_pct: number
+    implementation_cost: number
+    healthcare_savings: number
+    avoided_event_savings: number
+  }
+  candidates: JourneyBudgetCandidate[]
+  /** Fixed from the whole sweep, so changing the cap never rescales a figure. */
+  axis: {
+    annual: { min: number; max: number }
+    cumulative: { min: number; max: number }
+  }
+  /** The one sentence that depends on neither the cap nor the price. The chapter's
+   *  limits are in its disclosure. */
+  notes: { adoption: string }
+  disclosure: { title: string; lines: string[] }
+}
+
+export interface JourneyBudgetResponse extends Notice {
+  inputs: {
+    price: number
+    price_display: string
+    population: number
+    horizon_years: number
+    scenario_key: string
+  }
+  budget: JourneyBudgetResult
+}
+
+export interface JourneyBudgetCopy {
+  title: string
+  stages: JourneyStage[]
+  advance_label: string
+  coverage_note: string
+  horizon_note: string
+}
+
+/** The labels the chapter's two panels draw, each naming its own scale. */
+export interface JourneyBudgetGraph {
+  annual_title: string
+  annual_axis_label: string
+  cumulative_title: string
+  cumulative_axis_label: string
+  year_label: string
+  eligible_label: string
+  covered_label: string
+  enrolled_label: string
+  active_label: string
+  new_label: string
+  zero_label: string
+}
+
+// --- Chapter 7: readiness ----------------------------------------------------
+
+/**
+ * The four implementation choices the chapter asks about. Each id is R's, and each
+ * answer carries the string `calculate_readiness()` already accepts, so the interface
+ * never maps a choice onto an input.
+ */
+export type JourneyReadinessAnswerKey =
+  | 'interoperability'
+  | 'governance'
+  | 'workflow'
+  | 'languages'
+
+/** One answer set: the chosen option id for each question. */
+export type JourneyReadinessAnswers = Record<JourneyReadinessAnswerKey, string>
+
+export interface JourneyReadinessOption {
+  id: string
+  /** A short scenario describing what this choice means in practice. */
+  label: string
+  /** The input this choice becomes, shown beside the selected answer. */
+  input_display: string
+  /** The value handed to `calculate_readiness()`. Published, never sent back. */
+  input: number | string
+}
+
+export interface JourneyReadinessQuestion {
+  id: JourneyReadinessAnswerKey
+  /** The domain this question moves, named as the assessment names it. */
+  domain: string
+  /** The figure region this question brings forward. */
+  focus: JourneyFocus
+  caption: string
+  /** The question itself, in R's words. */
+  label: string
+  options: JourneyReadinessOption[]
+}
+
+/** One area of the assessment, as R judged it. */
+export interface JourneyReadinessDomain {
+  domain: string
+  status: 'Green' | 'Amber' | 'Red'
+  input_display: string
+  /** The assessment's own sentence explaining why this status follows. */
+  explanation: string
+  /** The question this area belongs to, or null when it is held fixed. */
+  question_id: JourneyReadinessAnswerKey | null
+  focus: JourneyFocus | null
+}
+
+/** One answer as the response echoes it, so the interface prints R's wording. */
+export interface JourneyReadinessEcho extends JourneyReadinessQuestion {
+  option_id: string
+  option_label: string
+  input_display: string
+}
+
+export interface JourneyReadinessResult {
+  questions: JourneyReadinessQuestion[]
+  answers: JourneyReadinessEcho[]
+  domains: JourneyReadinessDomain[]
+  /** A summary of the seven judgements, never a score. */
+  counts: { green: number; amber: number; red: number; total: number }
+  /** The area the answer on screen changed, or null when nothing differs. */
+  changed: JourneyReadinessEcho | null
+  numbers: { measure: string; value: string; basis: string }[]
+  fixed: { label: string; value_display: string }[]
+  /** The assessment's own summary text. */
+  assessment: string
+  /** R's summary of the seven judgements; the chapter's limits are in its
+   *  disclosure. */
+  notes: { statuses: string }
+  disclosure: { title: string; lines: string[] }
+}
+
+export interface JourneyReadinessResponse extends Notice {
+  inputs: {
+    answers: JourneyReadinessAnswers
+    /** Every input the assessment received, so a client can cache against all ten. */
+    readiness_key: string
+  }
+  readiness: JourneyReadinessResult
+}
+
+export interface JourneyReadinessCopy {
+  title: string
+  stages: JourneyStage[]
+  advance_label: string
+}
+
+export interface JourneyReadinessGraph {
+  chips_title: string
+  chips_note: string
+  counts_title: string
+  green_label: string
+  amber_label: string
+  red_label: string
+  fixed_title: string
+  fixed_note: string
+  options_title: string
+}
+
+// --- Chapter 8: time to a first event ---------------------------------------
+
+/**
+ * One of the three times the chapter can be read at, with R's reading of both curves
+ * at it. One request returns all three, so choosing another time asks R for nothing.
+ */
+export interface JourneySurvivalRead {
+  id: string
+  years: number
+  label: string
+  /** The two event-free estimates at this time, in R's order and wording. */
+  arms: { treatment: string; estimate: Num; display: string }[]
+  /** R's sentence reading both curves at this time. */
+  reading: string
+  /** The gap in percentage points of the event-free estimate, eQalb minus usual care. */
+  difference_points: Num
+  /** R's sentence comparing the two estimates at this one time. */
+  compare: string
+  /** The movement in the usual-care curve over the year ending at this time. */
+  step: {
+    /** The arm the sentence describes, so the figure shades the curve it names. */
+    treatment: string
+    /** The year the interval starts and ends at, and the level it ends at, in R's own
+     *  numbers: the figure marks exactly the interval the sentence states. */
+    from_years: number
+    to_years: number
+    to_estimate: Num
+    from_label: string
+    to_label: string
+    from_display: string
+    to_display: string
+    events: number
+    note: string
+  }
+}
+
+export interface JourneySurvivalResult {
+  followup_years: number
+  /** The two step sets the shared Kaplan-Meier chart draws, from R's own estimator. */
+  steps: KmStep[]
+  reads: JourneySurvivalRead[]
+  /** What the curves estimate, and what they do not. R's sentences. */
+  disclosure: { title: string; lines: string[] }
+  /** R's note on the event definition and the competing-death treatment. */
+  note: string
+}
+
+export interface JourneySurvivalResponse extends Notice {
+  inputs: {
+    n_per_arm: number
+    followup_years: number
+    seed: number
+    rrr: number
+    engagement_year1: number
+    engagement_followup: number
+    p_mi: number
+    p_stroke: number
+    p_other_death: number
+    /** The same key the contract publishes, so a stored answer names its simulation. */
+    survival_key: string
+  }
+  survival: JourneySurvivalResult
+}
+
+export interface JourneySurvivalCopy {
+  title: string
+  stages: JourneyStage[]
+  advance_label: string
+}
+
+/**
+ * The last chapter's figure labels. `qualifier` is the short visible line under the
+ * title: the curves are simulated, and other-cause deaths are censored.
+ */
+export interface JourneySurvivalGraph {
+  title: string
+  qualifier: string
+  times_title: string
 }
 
 // --- Guided Tutorial Part 2 --------------------------------------------------

@@ -35,6 +35,7 @@ import DataTable from './DataTable.vue'
 import ButtonLabel from './ButtonLabel.vue'
 import ChartDownload from './ChartDownload.vue'
 import InfoTip from './InfoTip.vue'
+import MethodInfo from './MethodInfo.vue'
 import MetricCard from './MetricCard.vue'
 import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
@@ -318,7 +319,10 @@ function presentedCellPrice(row: PriceScanLevel, column: PriceScanLevel): string
   <section class="panel">
     <header class="panel__header">
       <div>
-        <h2>Value-based price</h2>
+        <div class="panel__title-row">
+          <h2>Value-based price</h2>
+          <MethodInfo module="price" />
+        </div>
         <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
           What annual price would the model support at the reference threshold, and how does the

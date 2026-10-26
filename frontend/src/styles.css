@@ -53,6 +53,60 @@
   --ease-move: cubic-bezier(0.22, 0.61, 0.36, 1);
   --chart-height: 320px;
   --chart-height-tall: 420px;
+  /* The journey's guidance wash. It is the chart panel's own surface colour, held
+     back far enough that the softened region still shows its shapes while its axis
+     titles, ticks, units and labels stay legible: the learner reads those to make
+     sense of the feature being pointed at, so the wash dims without hiding. */
+  --spot-veil: rgba(238, 242, 246, 0.42);
+  /* The recap's own wash: deeper than the guidance veil, because the recap is a
+     surface the learner reads rather than a region they look past. */
+  --recap-veil: rgba(238, 242, 246, 0.86);
+  /* The keyboard focus ring on the journey's way forward. One value, because the
+     control draws a visible outline rather than a halo: an outline sits outside the
+     control's own box, so it can never paint over a label. */
+  --next-focus-ring: rgba(23, 107, 115, 0.85);
+  /* The journey's way forward. A filled green pill, distinct from the teal accent so
+     "carry on" reads as an action rather than as another highlight. The fill carries
+     white text at better than 5:1, and the darker hover state raises that further. */
+  --next-fill: #15653f;
+  --next-fill-strong: #0f5133;
+  --next-ink: #ffffff;
+  /* The breath's two ends: a barely-there ring at rest and a soft one at its peak.
+     Both are the pill's own green, so the halo reads as the control glowing rather
+     than as a separate effect painted behind it. */
+  --next-halo-rest: rgba(21, 101, 63, 0.28);
+  --next-halo-peak: rgba(21, 101, 63, 0.42);
+  /* The method control ("How this is calculated"). A muted periwinkle blue, chosen
+     so it reads as documentation: it is neither the teal accent the app uses for
+     navigation and primary actions nor the green the journey's way forward uses, so
+     a reader never mistakes the method note for the next thing to do. The three
+     values are the control's ink, its soft fill, and the tint its panel's surface
+     takes. */
+  --method-ink: #4d5b9a;
+  --method-soft: rgba(77, 91, 154, 0.1);
+  --method-panel: rgba(77, 91, 154, 0.06);
+  /* The teaching beat's callout: a blue-tinted surface with an accent edge, so the
+     changing lesson sentence reads as the lesson's own voice rather than as body
+     copy. The edge is the same periwinkle the method control uses. */
+  --beat-bg: rgba(77, 91, 154, 0.08);
+  --beat-edge: #4d5b9a;
+  --beat-ink: #2f3a6b;
+  /* The journey's completion overlay: a dark blue panel and the light its frame is
+     traced with. The panel is deliberately darker than either theme's surface, so
+     the overlay reads as the end of the journey rather than as another card. */
+  --journey-veil: rgba(8, 17, 32, 0.62);
+  --journey-panel: #10203a;
+  --journey-panel-edge: rgba(127, 209, 216, 0.22);
+  --journey-frame-ink: #eaf4f8;
+  --journey-frame-muted: #a9c2d3;
+  /* The ECG frame every overlay runs along its edge: the still track, the travelling
+     dash, and the dash's own glow. It is the Home screen's signal — a low track and a
+     short glowing dash on an endless cycle — so an overlay is bordered by the same
+     light the wordmark is. The pulse is a brighter tint than the app's ink so it reads
+     as light rather than as a second border on a white surface. */
+  --ecg-line: rgba(23, 107, 115, 0.5);
+  --ecg-signal: #1aa5b3;
+  --ecg-glow: rgba(26, 165, 179, 0.55);
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
@@ -83,6 +137,37 @@
   --info-border: #2f4b57;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.28), 0 4px 14px rgba(0, 0, 0, 0.22);
   --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.55);
+  /* The journey's guidance wash, over the dark chart panel. */
+  --spot-veil: rgba(30, 48, 57, 0.55);
+  --recap-veil: rgba(30, 48, 57, 0.9);
+  --next-focus-ring: rgba(127, 209, 216, 0.9);
+  /* On the dark panel the pill is a light green with dark ink: the same "carry on"
+     signal, readable at the same contrast rather than a dimmed fill. */
+  --next-fill: #4fce8b;
+  --next-fill-strong: #6fdfa3;
+  --next-ink: #08160f;
+  /* The breath's two ends on the dark panel: the same light green the disc is filled
+     with, at the alphas a dark surface needs to show a soft ring. */
+  --next-halo-rest: rgba(79, 206, 139, 0.26);
+  --next-halo-peak: rgba(79, 206, 139, 0.4);
+  /* The method control on the dark panel: the same periwinkle, lifted so it stays
+     legible on the dark surface and still reads as documentation rather than as the
+     teal accent. */
+  --method-ink: #a9b6ef;
+  --method-soft: rgba(169, 182, 239, 0.14);
+  --method-panel: rgba(169, 182, 239, 0.08);
+  /* The teaching beat's callout on the dark panel. */
+  --beat-bg: rgba(169, 182, 239, 0.12);
+  --beat-edge: #a9b6ef;
+  --beat-ink: #dfe6ff;
+  /* The completion overlay is the same dark blue in both themes: it is the end of
+     the journey rather than a surface that follows the app's light/dark choice. */
+  --journey-veil: rgba(4, 10, 20, 0.7);
+  /* The ECG frame on the dark surfaces: the same cyan the Home trace uses, with more
+     glow, because a dark backdrop is where a neon line belongs. */
+  --ecg-line: rgba(127, 209, 216, 0.45);
+  --ecg-signal: #7fd1d8;
+  --ecg-glow: rgba(127, 209, 216, 0.65);
 }
 
 * {
@@ -958,10 +1043,196 @@ code {
   margin-bottom: 0.9rem;
 }
 
+/* A flex item's automatic minimum size is its min-content width, so a child that
+   cannot wrap — a long equation, a wide control — would otherwise push the item
+   wider than the panel instead of being contained by it. Every direct child may
+   shrink; what cannot fit is then handled by the child itself (the method note's
+   equation scrolls inside its own box). */
+.panel__header > * {
+  min-width: 0;
+}
+
 .panel__header p {
   margin: 0;
   font-size: 0.88rem;
   max-width: 68ch;
+}
+
+/* The title row every panel and the journey chapter use, so a section's heading and
+   its method control sit on one line and the method panel opens under both. It is
+   the row that makes "in place" possible: the panel is a full-width item in the same
+   wrapped line of content, so it never covers the heading, never covers the chart,
+   and never moves anything that was already there.
+   `min-width: 0` lets the row itself shrink inside its own parent, and the panel's
+   own rule does the same for the item inside it, so a wide equation cannot set the
+   row's minimum width. */
+.panel__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  min-width: 0;
+}
+
+/* --- How this is calculated ------------------------------------------------
+   The method control: a small muted periwinkle button beside a module's title, and
+   the panel it opens in place. The colour is deliberately not the teal accent, so
+   the control cannot be mistaken for navigation or for a primary action, and not
+   the green the journey's way forward uses. */
+
+.methodinfo {
+  /* The button and the panel become items of the title row itself, which is what
+     puts the button beside the heading and the panel on the line under it. */
+  display: contents;
+}
+
+.methodinfo__trigger {
+  flex: none;
+  padding: 0.16rem 0.5rem;
+  border: 1px solid var(--method-ink);
+  border-radius: 999px;
+  background: var(--method-soft);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+  color: var(--method-ink);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-move);
+}
+
+.methodinfo__trigger:hover,
+.methodinfo__trigger:focus-visible,
+.methodinfo__trigger.is-open {
+  background: var(--method-panel);
+  border-color: var(--method-ink);
+  color: var(--method-ink);
+}
+
+.methodinfo__panel {
+  flex: 1 0 100%;
+  /* Its content includes a typeset equation, whose min-content width is the whole
+     expression. Without this the panel — a flex item of the title row — would take
+     that width as its minimum and widen the page on a narrow screen; with it the
+     panel keeps the row's width and the equation scrolls inside its own box. */
+  min-width: 0;
+  margin-top: 0.15rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--method-ink);
+  border-radius: var(--radius-sm);
+  background: var(--method-panel);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text);
+  text-align: left;
+}
+
+.methodinfo__summary {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.methodinfo__block + .methodinfo__block {
+  margin-top: 0.55rem;
+}
+
+/* Plain-reading blocks: the question and how to read the result. They are prose, so
+   they keep the panel's own line height and a small bottom margin, and nothing else. */
+.methodinfo__prose {
+  margin: 0;
+  color: var(--text);
+}
+
+/* The one relation worth seeing. It keeps the equation's own surface — the bordered,
+   slightly inset block the QALY illustration already uses — but the equation inside it
+   is typeset, so a fraction is a fraction and a subscript is a subscript. The box holds
+   its width: an equation too wide for a phone scrolls inside this block at the break
+   points its author chose, rather than wrapping arbitrarily or widening the page. */
+.methodinfo__formula {
+  margin: 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-alt);
+  font-size: 0.86rem;
+  color: var(--text);
+  overflow: hidden;
+}
+
+/* KaTeX sets its own size from the surrounding font; the panel is small, so the
+   equation is a little smaller than the prose and still legible at both themes. Its
+   colour follows the text token rather than inheriting a heading colour, so it reads the
+   same on the light panel and the journey's dark one. */
+.methodinfo__formula .katex {
+  font-size: 1em;
+  color: var(--text);
+}
+
+/* Inline mathematics in the prose sits on the text baseline and never grows the line
+   box, so a sentence keeps its own rhythm whether or not it carries a symbol. */
+.methodinfo__prose .katex,
+.methodinfo__rows .katex,
+.methodinfo__summary .katex,
+.methodinfo__list .katex {
+  font-size: 1.02em;
+  color: inherit;
+}
+
+.methodinfo__heading {
+  margin: 0 0 0.2rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.methodinfo__list {
+  margin: 0;
+  padding-left: 1.05rem;
+}
+
+.methodinfo__list li {
+  margin: 0.15rem 0;
+}
+
+/* The compact rows: an input's name on the left, where it comes from on the right.
+   A definition list rather than a table, so the two columns stay readable at phone
+   widths without a horizontal scroll. */
+.methodinfo__rows {
+  display: grid;
+  grid-template-columns: minmax(7rem, 30%) 1fr;
+  gap: 0.2rem 0.6rem;
+  margin: 0;
+}
+
+.methodinfo__rows dt {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.methodinfo__rows dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* The symbol rows: the symbol itself is read as a symbol, not as a word, so it keeps
+   its own tabular figures and does not wrap mid-definition on a narrow panel. */
+.methodinfo__symbols dt {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 620px) {
+  .methodinfo__rows {
+    grid-template-columns: 1fr;
+    gap: 0.05rem;
+  }
+
+  .methodinfo__rows dd {
+    margin-bottom: 0.3rem;
+  }
 }
 
 .grid {
@@ -1305,13 +1576,13 @@ code {
   top: 0;
   z-index: 90;
   width: min(26rem, calc(100vw - 1rem));
-  max-height: min(22rem, calc(100vh - 1rem));
-  overflow: auto;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  box-shadow: var(--shadow-pop);
+  /* The panel only positions the overlay and carries the placement binding's height cap;
+     the box inside it draws the perimeter and its own interior, so there is nothing to
+     border or pad here. */
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
   color: var(--text);
   font-size: 0.82rem;
   font-weight: 400;
@@ -1326,6 +1597,13 @@ code {
   display: block;
   margin-bottom: 0.2rem;
   color: var(--heading);
+}
+
+/* Caller content under the explanation — the one place an explanation carries its
+   own control. Layout only: the caller's own classes set the type. */
+.infotip__detail {
+  display: block;
+  margin-top: 0.5rem;
 }
 
 .metric__value {
@@ -2580,6 +2858,22 @@ button:focus-visible {
   border-radius: var(--radius-sm);
 }
 
+/* The journey chapter's heading row: the chapter's title and its module's method
+   control on one line, and the method panel opening under both. The heading keeps the
+   bottom margin it had, so the row adds no height of its own until the method control
+   is opened. */
+.journey__heading-row {
+  align-items: baseline;
+}
+
+.journey__heading-row .tutorial__step-title {
+  margin-bottom: 0;
+}
+
+.journey__heading-row .methodinfo__panel {
+  margin-bottom: 0.4rem;
+}
+
 /* The stage the current step sits on (TutorialStepStage). One step is in the
    document at a time; the stage plays the move between two of them: the step
    being left fades out and slides a few pixels towards the side it is heading
@@ -2758,6 +3052,58 @@ button:focus-visible {
   margin-top: 0.5rem;
 }
 
+/* --- The standalone explainer and the journey's end ---------------------- */
+
+/* A lesson opened from a dashboard module says which case it uses and where it came
+   from, in one line, with the return beside it. It replaces the journey's chapter
+   list rather than sitting beside it, so a refresher reads as one lesson. */
+.journey__orientation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 0.6rem 0 0.2rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-alt);
+}
+
+.journey__orientation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.journey__orientation-label {
+  margin: 0 0 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.journey__orientation-text {
+  margin: 0;
+  max-width: 52rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+/* The lesson's own ending: the way back to the module, where the journey puts its
+   arrow. It is not a completion card and says nothing about the case. */
+.journey__explainer-end {
+  justify-content: flex-start;
+}
+
+/* The journey's ending now opens as an overlay (`JourneyOverlay`), so the inline card
+   this block used to draw is gone. The `.journey__end*` rules stayed for a while after
+   the card was replaced; they are removed here with it, so nothing in the stylesheet
+   describes an element the journey no longer renders. */
+
 .tutorial__complete {
   text-align: center;
 }
@@ -2769,6 +3115,2762 @@ button:focus-visible {
 .tutorial__complete .tutorial__intro {
   margin-left: auto;
   margin-right: auto;
+}
+
+/* --- Guided Tutorial journey ---------------------------------------------- */
+
+/* --- The opening drawing --------------------------------------------------- */
+
+.scene__intro {
+  margin: 0 0 1.15rem;
+  max-width: 34rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+/* The scene. One illustration on the step's own surface: no frame, no cards
+   inside the card, and no border around any part of it. Reading order runs down
+   the page and then across — the payer, the population it covers, the fork into
+   two options, the two options themselves — and the labels are short enough to
+   belong to the drawing rather than to a paragraph.
+
+   It is held to a comfortable measure and centred in the step. A scene stretched
+   across the whole panel would put a 400px gap between a label and the picture it
+   belongs to, and the price would drift away from the app it is attached to. */
+.scene {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 36rem;
+  margin: 0 auto 1.3rem;
+  color: var(--muted);
+}
+
+.scene__context {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+  width: 100%;
+}
+
+.scene__payer,
+.scene__population {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  margin: 0;
+}
+
+.scene__payer-art {
+  display: block;
+  width: 5.6rem;
+  height: auto;
+  color: var(--muted);
+}
+
+.scene__population-art {
+  display: block;
+  width: min(9.5rem, 100%);
+  height: auto;
+  color: var(--muted);
+}
+
+.scene__caption {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.scene__caption--strong {
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* The one connector that says what the payer does for this population. The
+   hairline draws itself in, a single pulse crosses it, and then the scene rests:
+   this is the home page's ECG trace used once, not a loop. */
+.scene__flow {
+  display: flex;
+  flex: 0 1 4.5rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.32rem;
+}
+
+.scene__flow-text {
+  color: var(--muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.scene__flow-rule {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 1px;
+  background: var(--border-strong);
+  transform-origin: left center;
+}
+
+.scene__pulse {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 0.3rem;
+  height: 0.3rem;
+  margin-top: -0.15rem;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+}
+
+/* The fork. A stem, the word "options", a second stem, then a hairline whose two
+   ends land exactly on the centres of the two columns below. It is drawn as two
+   alternatives meeting at one question, never as an arrow from one to the other. */
+.scene__fork {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.28rem;
+  width: 100%;
+}
+
+.scene__fork-stem {
+  display: block;
+  width: 1px;
+  height: 0.7rem;
+  background: var(--border-strong);
+}
+
+.scene__fork-text {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+/* The two paths. Both columns open with the same usual-care mark, drawn at the
+   same size and on the same line, so the message is "the same usual care, plus
+   eQalb" before a single label is read. Only the right column adds the app.
+
+   The rule above them is a grid item spanning both columns; its two ends and the
+   two dots are pulled in by a quarter of the gap each, which puts them exactly on
+   the centres of the columns below however wide the panel is. */
+.scene__paths {
+  --paths-gap: 1.6rem;
+  --paths-shift: 0.4rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: var(--paths-gap);
+  width: 100%;
+  margin-top: 0.4rem;
+}
+
+.scene__paths::before {
+  content: '';
+  grid-column: 1 / -1;
+  height: 1px;
+  margin-inline: calc(25% - var(--paths-shift));
+  background: var(--border-strong);
+  transform-origin: center;
+}
+
+.scene__path {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  min-width: 0;
+  padding-top: 0.9rem;
+}
+
+.scene__path::before {
+  content: '';
+  position: absolute;
+  top: -0.19rem;
+  left: 50%;
+  width: 0.38rem;
+  height: 0.38rem;
+  margin-left: -0.19rem;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+/* The illustration row. Its height is fixed so that the two label rows beneath it
+   start on the same line even though one column holds a person and the other a
+   person and a phone. */
+.scene__art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 5.6rem;
+}
+
+.scene__usual {
+  flex: 0 0 auto;
+  width: 3.1rem;
+  height: auto;
+  color: var(--muted);
+}
+
+.scene__phone {
+  flex: 0 0 auto;
+  width: 3.3rem;
+  height: auto;
+  color: var(--accent);
+}
+
+.scene__plus {
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.scene__option-label {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.scene__option-role {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+/* The pairing, named once under both columns: the drawing says what is being
+   compared without an arrow joining the two alternatives. */
+.scene__compare {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  margin-top: 0.7rem;
+}
+
+.scene__compare-rule {
+  width: min(16rem, 70%);
+  height: 1px;
+  background: var(--border);
+}
+
+.scene__compare-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+/* The price, hanging directly under the eQalb column so it belongs to the app
+   rather than to the comparison. It is centred on the column, and the column's
+   illustration is centred too, so the amount sits under the phone however wide
+   the panel is. The amount is the one large number in the scene; the unit stays
+   small and fully spelled out beneath it. */
+.scene__price {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  margin: 0.55rem 0 0;
+  text-align: center;
+}
+
+.scene__price-lead {
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.scene__price-amount {
+  color: var(--accent);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.scene__price-unit {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.scene__assumptions {
+  margin: 0 0 0.9rem;
+}
+
+/* At a phone's width the context row stacks, because a payer and a population
+   side by side cannot keep two-line captions legible. The two paths stay side by
+   side: they are the point of the drawing, and at 390 px each column still holds
+   its illustration, its label and its price without shrinking the type below the
+   size used everywhere else in the journey. */
+@media (max-width: 560px) {
+  .scene__context {
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .scene__payer-art {
+    width: 4.6rem;
+  }
+
+  .scene__population-art {
+    width: 8.2rem;
+  }
+
+  .scene__flow {
+    flex: 0 0 auto;
+    gap: 0.2rem;
+  }
+
+  .scene__flow-rule {
+    width: 1px;
+    height: 0.9rem;
+    transform-origin: center top;
+  }
+
+  .scene__pulse {
+    top: 0;
+    left: 50%;
+    margin-top: 0;
+    margin-left: -0.15rem;
+  }
+
+  .scene__fork-stem {
+    height: 0.5rem;
+  }
+
+  .scene__paths {
+    --paths-gap: 0.9rem;
+    --paths-shift: 0.225rem;
+  }
+
+  .scene__path {
+    gap: 0.12rem;
+    padding-top: 0.75rem;
+  }
+
+  .scene__art {
+    min-height: 4.9rem;
+    gap: 0.4rem;
+  }
+
+  .scene__usual {
+    width: 2.6rem;
+  }
+
+  .scene__phone {
+    width: 2.8rem;
+  }
+
+  .scene__option-label {
+    font-size: 0.88rem;
+  }
+
+  .scene__option-role {
+    font-size: 0.72rem;
+  }
+
+  .scene__price-amount {
+    font-size: 1.1rem;
+  }
+
+  .scene__compare-rule {
+    width: 75%;
+  }
+}
+
+/* The entrance. It plays once and rests: nothing in the scene loops, and every
+   rule lives inside `no-preference`, so a learner who has asked for less motion
+   gets the finished drawing on the first frame with nothing to wait for. The Start
+   control and the assumptions disclosure are outside the scene, so the animation
+   never delays them. Only opacity and transform move, so no frame of it can shift
+   the text around it. */
+@media (prefers-reduced-motion: no-preference) {
+  .scene__payer {
+    animation: scene-rise 380ms var(--ease-move) 240ms both;
+  }
+
+  .scene__population {
+    animation: scene-rise 380ms var(--ease-move) 340ms both;
+  }
+
+  .scene__flow-text {
+    animation: scene-fade 260ms ease-out 220ms both;
+  }
+
+  .scene__flow-rule {
+    animation: scene-line-x 300ms ease-out 160ms both;
+  }
+
+  .scene__pulse {
+    animation: scene-pulse-x 360ms ease-out 160ms both;
+  }
+
+  .scene__fork-stem,
+  .scene__fork-text {
+    animation: scene-fade 300ms ease-out 440ms both;
+  }
+
+  .scene__fork-stem + .scene__fork-text {
+    animation-delay: 480ms;
+  }
+
+  .scene__paths::before {
+    animation: scene-line-x 340ms ease-out 480ms both;
+  }
+
+  .scene__path::before {
+    animation: scene-fade 220ms ease-out 600ms both;
+  }
+
+  .scene__path .scene__art {
+    animation: scene-rise 400ms var(--ease-move) 500ms both;
+  }
+
+  .scene__path--intervention .scene__art {
+    animation-delay: 560ms;
+  }
+
+  /* The app arrives last and settles from just under full size, so the eye ends
+     on the one thing the intervention path adds. */
+  .scene__phone {
+    animation: scene-phone 320ms var(--ease-move) 660ms both;
+  }
+
+  .scene__option-label {
+    animation: scene-rise 340ms var(--ease-move) 620ms both;
+  }
+
+  .scene__path--intervention .scene__option-label {
+    animation-delay: 660ms;
+  }
+
+  .scene__option-role {
+    animation: scene-fade 320ms ease-out 680ms both;
+  }
+
+  .scene__price {
+    animation: scene-rise 340ms var(--ease-move) 700ms both;
+  }
+
+  .scene__compare {
+    animation: scene-fade 320ms ease-out 780ms both;
+  }
+}
+
+@keyframes scene-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes scene-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scene-line-x {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes scene-pulse-x {
+  from {
+    opacity: 0;
+    transform: translateX(0);
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(4rem);
+  }
+}
+
+@keyframes scene-phone {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* On a phone the connector runs down the column rather than across it, so the
+   pulse travels along the same path the eye does. */
+@media (max-width: 560px) and (prefers-reduced-motion: no-preference) {
+  .scene__flow-rule {
+    animation-name: scene-line-y;
+  }
+
+  .scene__pulse {
+    animation-name: scene-pulse-y;
+  }
+}
+
+@keyframes scene-line-y {
+  from {
+    transform: scaleY(0);
+  }
+
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes scene-pulse-y {
+  from {
+    opacity: 0;
+    transform: translateY(0);
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(1.1rem);
+  }
+}
+
+/* The chapter-transition bridge: a box over the panel the learner is already reading.
+   It is not a modal — the graph stays mounted and visible behind it — but it does cover
+   the panel's controls, so the click that opens it cannot also press one behind it. The
+   veil dims the panel without blurring it, so the axes and labels behind stay sharp while
+   the bridge is read. The box itself is the shared overlay, so its perimeter, padding,
+   type and opening are the same as every other overlay's. */
+.recap {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--recap-veil);
+}
+
+/* The bridge is a transition, so its heading, its question and its action are centred as
+   one group and the box is sized to them rather than to the panel it covers. */
+.recap__card {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: min(30rem, 100%);
+}
+
+.recap__heading {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.recap__heading:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* The transition's own question: the second line of the announcement, so it reads as
+   part of the same sentence group. */
+.recap__question {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+/* The bridge's own control. It keeps R's wording visible, because leaving the recap is
+   a whole sentence rather than a step in a sequence, and it is styled on its own rather
+   than borrowing the footer arrow's disc. */
+.recap__advance {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.75rem;
+  padding: 0.45rem 0.95rem;
+  border: 1px solid var(--next-fill);
+  border-radius: 999px;
+  background: var(--next-fill);
+  color: var(--next-ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--ease-move),
+    border-color var(--motion-fast) var(--ease-move);
+}
+
+.recap__advance:hover,
+.recap__advance:focus-visible {
+  background: var(--next-fill-strong);
+  border-color: var(--next-fill-strong);
+}
+
+.recap__advance:focus-visible {
+  outline: 2px solid var(--next-focus-ring);
+  outline-offset: 3px;
+}
+
+.recap__advance:active {
+  transform: scale(0.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recap__advance {
+    transition: none;
+  }
+
+  .recap__advance:active {
+    transform: none;
+  }
+}
+
+.journey__chapter {
+  position: relative;
+}
+/* The one plane for the whole chapter: the chart, its guidance, the sentence the
+   state adds and the price control all sit inside this panel, so the learner
+   never leaves the picture. */
+.journey__surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-alt);
+  padding: 0.4rem 0.5rem 0.45rem;
+  margin: 0.4rem 0 0.6rem;
+}
+
+/* The chart and its overlay share one coordinate system, so the guidance is
+   measured against exactly the box it softens. */
+.journey__chart {
+  position: relative;
+}
+
+/* The chart area is a convenience click target beside the overlay's labelled
+   control: it is in the pointer path, not the keyboard order, so the chapter
+   offers one announced way forward rather than two. The price state turns it off,
+   because there its own control is the way forward. */
+.journey__chart.is-activatable {
+  cursor: pointer;
+}
+
+.journey__plane {
+  margin: 0;
+  transition: opacity 200ms ease-out;
+}
+
+/* --- The ranked chart (Chapter 3) ----------------------------------------- */
+
+/* The chart fills the panel's width and is tall enough for fourteen labelled rows:
+   a phone needs more room than a desktop for the same rows, because each label may
+   wrap to two lines. */
+.journey__bars {
+  position: relative;
+  margin: 0;
+}
+
+.journey__bars .chart__canvas {
+  height: var(--chart-height-tall);
+}
+
+@media (max-width: 520px) {
+  .journey__bars .chart__canvas {
+    height: 620px;
+  }
+}
+
+/* The single-bar states do not need fourteen rows of room: the height is cut back
+   so the panel stays compact while one bar, its two ends and the guidance are
+   read. */
+.journey__bars--single .chart__canvas {
+  height: 360px;
+}
+
+@media (max-width: 520px) {
+  .journey__bars--single .chart__canvas {
+    height: 400px;
+  }
+}
+
+/* The two ends of the first bar: the tested input over the outcome it produced,
+   in page text so they wrap and scale with everything around them. They sit above
+   and below the bar rather than beside it, so the pair cannot overlap however close
+   the two results are. */
+.bars__end {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  padding: 0.2rem 0.3rem;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--border);
+  text-align: center;
+  pointer-events: none;
+}
+
+.bars__end-eyebrow {
+  color: var(--muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.bars__end-input {
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.bars__end-value {
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* --- The value-of-information chart (Chapter 4) --------------------------- */
+
+/* Two panels over the same comparison. The upper one carries the two choice bars
+   and, below them, a strip in which the gap between them is measured on the bars'
+   own scale; the lower one carries R's EVPPI rows on their own axis. */
+.journey__voi {
+  position: relative;
+  margin: 0;
+}
+
+.voi__panel {
+  position: relative;
+}
+
+.voi__panel + .voi__panel {
+  margin-top: 0.9rem;
+}
+
+.voi__panel-title {
+  margin: 0 0 0.15rem;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+/* The axis name sits above its plot as page text rather than inside the canvas, so
+   it wraps and scales with everything around it. The unit is part of the label. */
+.voi__axis-note {
+  margin: 0 0 0.2rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+/* The plot is the positioning frame for the value labels, which are placed in the
+   same pixels ECharts draws in. */
+.voi__plot {
+  position: relative;
+}
+
+.voi__canvas--choice {
+  height: 124px;
+}
+
+@media (max-width: 520px) {
+  .voi__canvas--choice {
+    height: 138px;
+  }
+}
+
+/* A bar's amount, beside its own end: the length and the number are read together. */
+.voi__value {
+  position: absolute;
+  z-index: 3;
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+/* A bar of exactly no length is marked at the axis, so the row is visibly present
+   with no length rather than missing from the chart. */
+.voi__zero {
+  position: absolute;
+  z-index: 3;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--muted);
+  pointer-events: none;
+}
+
+.voi__gap-strip {
+  position: relative;
+  height: 52px;
+  margin-top: 0.1rem;
+}
+
+/* The measured difference, drawn against the same scale as the bars above it. */
+.voi__gap-line {
+  position: absolute;
+  top: 34px;
+  overflow: visible;
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.voi__gap-note {
+  position: absolute;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  padding: 0.15rem 0.3rem;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--border);
+  text-align: center;
+  pointer-events: none;
+}
+
+.voi__gap-eyebrow {
+  color: var(--muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.voi__gap-value {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.journey__busy {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.6rem;
+  z-index: 3;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* The first base-case request is the only wait the learner meets with no result
+   to look at, so the plane itself answers: the graph stays where it is and is
+   softened, and one calm line with a slow teal sweep sits along the bottom of the
+   same panel. It is a working state, not an error and not a second surface. */
+.journey__surface.is-preparing .journey__plane {
+  opacity: 0.5;
+}
+
+.journey__preparing {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background: var(--panel);
+  pointer-events: none;
+}
+
+.journey__preparing-track {
+  flex: 1 1 4rem;
+  min-width: 3rem;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--accent-soft);
+}
+
+.journey__preparing-segment {
+  display: block;
+  width: 30%;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: journey-preparing-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes journey-preparing-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(340%);
+  }
+}
+
+.journey__preparing-text {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Still, but still visible: the sweep becomes a quiet full-width line rather
+     than a segment parked off-scale, which is where the global rule that removes
+     every animation would otherwise leave it. */
+  .journey__preparing-segment {
+    animation: none;
+    width: 100%;
+    opacity: 0.45;
+    transform: none;
+  }
+}
+
+/* --- The teaching beat ----------------------------------------------------- */
+
+/* The changing lesson sentence, in one shape everywhere it appears in a chapter:
+   a compact blue-tinted card with an accent edge and a small step indicator, so a
+   learner can tell the lesson has moved and where they are in it. The sentence is
+   R's; this only decides how it looks. It replaces the plain paragraphs and the
+   accent-edged strip the chapters used to print (`.journey__stacked-body`,
+   `.ready__caption`, `.journey__qaly-caption`, `.journey__price-note`), which are
+   gone rather than restyled, so no chapter can end up with two callouts. */
+.beat {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0.5rem 0 0;
+  padding: 0.45rem 0.6rem 0.5rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--beat-edge);
+  border-radius: var(--radius-sm);
+  background: var(--beat-bg);
+}
+
+.beat__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.beat__text {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--beat-ink);
+}
+
+.beat__measure {
+  margin: 0.3rem 0 0;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+/* The step indicator: a small quiet pill naming the beat's position in its own
+   chapter. It is decoration for a sighted reader — the sentence itself is announced —
+   so it is aria-hidden rather than read out before every line. */
+.beat__step {
+  flex: none;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--beat-edge);
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--beat-ink);
+  opacity: 0.85;
+}
+
+/* The one-shot highlight: the callout brightens briefly as the sentence changes and
+   settles back, so the eye follows the lesson and then reads it. It runs once, on the
+   change only — nothing pulses or loops. */
+.beat.is-new {
+  animation: beat-arrive 520ms cubic-bezier(0.22, 0.61, 0.36, 1) 1;
+}
+
+@keyframes beat-arrive {
+  from {
+    border-color: var(--beat-edge);
+    background: var(--method-panel);
+  }
+
+  to {
+    border-color: var(--border);
+    background: var(--beat-bg);
+  }
+}
+
+/* Reduced motion: no tint, no sweep. The callout is simply there, already legible. */
+@media (prefers-reduced-motion: reduce) {
+  .beat.is-new {
+    animation: none;
+  }
+}
+
+/* The state's own sentence when the plane is too narrow to hold it beside the
+   feature: it sits directly under the chart, inside the same panel, with the way
+   forward beside it. */
+.journey__stacked {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+}
+
+.journey__stacked-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.journey__stacked-text {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.journey__stacked-measure {
+  margin: 0.3rem 0 0;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+/* --- The journey overlay ---------------------------------------------------
+   The journey's own surface for an overlay of its own — today the completion card, and
+   later a chapter transition. It is separate from `.modal` on purpose: the app's dialogs
+   follow the theme, while this one is a dark blue surface in both themes, because it
+   marks a moment in the journey rather than a card in the workspace. The box itself is
+   the shared `EcgOverlay`, so its shape, padding and opening are the app's, not this
+   view's; the behaviour underneath is the app's own too: `useModalFocus` gives it the
+   focus trap, the inert background and the focus restore. */
+
+.joverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.1rem;
+  /* The overlay's own cyan, for the two actions on its dark surface. */
+  --journey-trace: #8ee6f0;
+}
+
+.joverlay__veil {
+  position: absolute;
+  inset: 0;
+  background: var(--journey-veil);
+  /* The dim is decoration, not a target: clicks pass through it to the container,
+     which is what closes the overlay when the learner clicks outside the panel. */
+  pointer-events: none;
+  animation: joverlay-veil 220ms ease both;
+}
+
+@keyframes joverlay-veil {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* The panel is only the dialog's frame of reference now: the box's outline, its interior
+   and its padding all come from the shared overlay, so there is nothing here to see. */
+.joverlay__panel {
+  position: relative;
+  width: min(27rem, 100%);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--journey-frame-ink);
+  /* The dark surface the shared box paints behind its words, and the ink its words take,
+     so one box can read on the app's light panels and on this dark one. */
+  --ocard-surface: var(--journey-panel);
+  --ocard-ink: var(--journey-frame-ink);
+  --ocard-muted: var(--journey-frame-muted);
+  --ocard-close-ink: var(--journey-frame-muted);
+  /* The trace is its own lighter cyan on this surface, so the neon reads against the
+     navy rather than sinking into it. Colour only: the motion is the shared one. */
+  --ecg-line: rgba(142, 230, 240, 0.42);
+  --ecg-signal: #8ee6f0;
+  --ecg-glow: rgba(142, 230, 240, 0.6);
+}
+
+/* The overlay's own action shapes. They are the app's button classes with the
+   overlay's dark surface behind them, so the pair keeps its primary/secondary
+   relationship on a panel that is not the app's own background. */
+.joverlay__primary {
+  border-color: var(--journey-trace);
+  background: var(--journey-trace);
+  color: #06141f;
+}
+
+.joverlay__primary:hover,
+.joverlay__primary:focus-visible {
+  background: #a9e2e8;
+  border-color: #a9e2e8;
+  color: #06141f;
+}
+
+.joverlay__secondary {
+  border-color: var(--journey-panel-edge);
+  background: transparent;
+  color: var(--journey-frame-ink);
+}
+
+.joverlay__secondary:hover,
+.joverlay__secondary:focus-visible {
+  border-color: var(--journey-trace);
+  color: var(--journey-frame-ink);
+}
+
+/* Reduced motion: the veil is simply there. The box's own reveal is dropped in the
+   component, so its perimeter and content are complete from the first frame. */
+@media (prefers-reduced-motion: reduce) {
+  .joverlay__veil {
+    animation: none;
+  }
+}
+
+/* --- The shared overlay box -------------------------------------------------
+   One box for every overlay in the app and in The Journey: the dialogs, the chapter
+   bridges, the completion overlay and the floating information panels. Its outline is an
+   ECG perimeter and nothing else — no border, no rounded card, no second frame inside a
+   frame — and its opening is one sequence, run by `EcgOverlay`. The loading card is
+   deliberately not one of these: it keeps its own treatment.
+
+   A host only chooses the wording, the width and the alignment; the padding, the type and
+   the spacing are defined here once, so the boxes cannot drift apart. */
+
+.ocard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: calc(100dvh - 2.5rem);
+  --ocard-reveal: 260ms;
+  color: var(--ocard-ink, var(--text));
+}
+
+/* The interior. It is the surface the words sit on and it has no edge of its own: it is
+   inset from the trace and soft at its corners, so it can never read as a card that the
+   trace is decorating. It arrives with the words, never before them. */
+.ocard__backing {
+  position: absolute;
+  inset: 4px;
+  border-radius: 14px;
+  background: var(--ocard-surface, var(--panel));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ocard-reveal) var(--ease-move);
+}
+
+.ocard.is-revealed .ocard__backing {
+  opacity: 1;
+}
+
+/* The words and the actions. Hidden in the layout, but unreachable too: `inert` keeps a
+   click and a keyboard off them and `visibility: hidden` keeps them out of the
+   accessibility tree, so nothing that cannot be seen can be reached. They arrive together
+   as one group once the perimeter has closed. */
+.ocard__stack {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 2.15rem 2.1rem 1.9rem;
+  overflow-y: auto;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition:
+    opacity var(--ocard-reveal) var(--ease-move),
+    transform var(--ocard-reveal) var(--ease-move),
+    visibility 0s linear var(--ocard-reveal);
+}
+
+.ocard.is-revealed .ocard__stack {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition-delay: 0s;
+}
+
+/* One type scale and one rhythm for every box, so a dialog, a chapter bridge and the
+   completion overlay read as the same object. */
+.ocard__content h2,
+.ocard__content h3,
+.ocard__content h4 {
+  margin: 0 0 0.5rem;
+  font-size: 1.12rem;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--ocard-ink, var(--heading));
+}
+
+.ocard__content p {
+  margin: 0 0 0.7rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--ocard-muted, var(--muted));
+}
+
+.ocard__content > :last-child,
+.ocard__content p:last-child {
+  margin-bottom: 0;
+}
+
+.ocard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.7rem;
+  margin-top: 1.25rem;
+}
+
+/* The close control is a quiet corner button at one consistent inset, above the content
+   and clear of the trace: the line runs 9px inside the box and reaches at most 16px
+   inward at the middle of a side, while the control starts 16px from both edges. */
+.ocard__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ocard-close-ink, var(--muted));
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-move),
+    border-color var(--motion-fast) var(--ease-move);
+}
+
+.ocard__close:hover,
+.ocard__close:focus-visible {
+  border-color: currentColor;
+  color: var(--ocard-ink, var(--text));
+}
+
+/* A short announcement or a transition: the heading, the sentence and the actions are
+   centred as one group, and the box is sized to a reading width rather than to the widest
+   panel in the app. The side padding leaves the corner control its room without pushing
+   the text off centre. */
+.ocard--centre {
+  width: min(27rem, 100%);
+  align-self: center;
+}
+
+.ocard--centre .ocard__content {
+  text-align: center;
+}
+
+.ocard--centre .ocard__stack {
+  padding: 2.25rem 2.4rem 2rem;
+}
+
+.ocard--centre .ocard__actions {
+  justify-content: center;
+}
+
+/* Longer informational content keeps its reading column and its left alignment. */
+.ocard--reading {
+  width: 100%;
+}
+
+/* The floating information panel: the same box, at the smaller scale its own trigger
+   sits in. Its height and width come from the placement binding, so it inherits both.
+   The padding still clears the trace's 16px reach, so the text never sits under a
+   deflection. */
+.ocard--dense {
+  max-height: inherit;
+}
+
+.ocard--dense .ocard__stack {
+  padding: 1.05rem 1.1rem 1rem;
+  font-size: 0.82rem;
+}
+
+@media (max-width: 520px) {
+  .ocard__stack {
+    padding: 1.9rem 1.35rem 1.6rem;
+  }
+
+  .ocard--centre .ocard__stack {
+    padding: 2.2rem 1.5rem 1.7rem;
+  }
+}
+
+/* On a narrow screen the two actions stack at full width rather than shrinking inside a
+   row, so their spacing stays even and both remain easy to hit. */
+@media (max-width: 420px) {
+  .ocard--centre .ocard__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ocard--centre .ocard__actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Reduced motion: no reveal at all. The box is complete from the first frame. */
+@media (prefers-reduced-motion: reduce) {
+  .ocard__backing,
+  .ocard__stack {
+    transition: none;
+  }
+}
+
+/* --- The ECG perimeter ------------------------------------------------------
+   The trace *is* the box. The four sides of the box are the four sides of one ECG
+   line, one heartbeat centred on each side that has room for it, and that line is the
+   only thing drawn around the content. The interior above supplies the surface; it must
+   never supply an edge, because the trace is the edge.
+
+   It opens the way the Home screen's own signal behaves: the two origins light at the
+   south-west and north-east corners, the four traces leave them and close the perimeter,
+   and then the signal keeps passing along that same path — a dash that crosses a side and
+   then waits off it — for as long as the box is open. One geometry, lit in turn.
+
+   Every value is computed in pixels from the box's measured size (in the component), so
+   the line sits 9px inside the box and reaches at most 16px inward. The line takes no
+   pointer and holds up nothing. */
+
+.ecg-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ecg-frame path,
+.ecg-frame circle {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Nothing is painted until each side's length has been measured: `--ecg-len` is what
+   the dashes are measured against, so the frame starts from nothing rather than flashing
+   a finished outline and then drawing it. */
+.ecg-frame:not(.is-measured) .ecg-frame__line,
+.ecg-frame:not(.is-measured) .ecg-frame__origin {
+  opacity: 0;
+}
+
+/* The outline. `--ecg-len` is the side's own length, so `stroke-dasharray` is exactly one
+   dash covering the whole side and the draw-in is that side arriving from its corner;
+   with no animation running — under reduced motion — the resting offset of 0 leaves the
+   side complete. */
+.ecg-frame__line {
+  stroke: var(--ecg-line);
+  stroke-width: 1.4px;
+  filter: drop-shadow(0 0 1.8px var(--ecg-glow));
+  stroke-dasharray: var(--ecg-len);
+  stroke-dashoffset: 0;
+  animation: ecg-frame-draw 620ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes ecg-frame-draw {
+  from {
+    stroke-dashoffset: var(--ecg-len);
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* The origins: the two corners the box grows out of, lit a moment before the traces
+   leave them. Their duration comes from the shared sequence in the component. */
+.ecg-frame__origin {
+  fill: var(--ecg-signal);
+  stroke: none;
+  filter: drop-shadow(0 0 5px var(--ecg-glow));
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ecg-frame-seed ease-out both;
+}
+
+@keyframes ecg-frame-seed {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* The signal. The same path again, with a short dash that crosses its side once per
+   cycle and then waits beyond the end of it — the Home trace's `18 182` idiom, so the
+   box beats rather than spinning. Dash and gap are fractions of the side's own length,
+   which is what parks the dash off the line at both ends of the cycle; the component
+   starts one diagonal pair and then the other, half a cycle apart. The glow is a single
+   soft pass: enough to read as neon, not enough to smear the words beside it. */
+.ecg-frame__pulse {
+  stroke: var(--ecg-signal);
+  stroke-width: 2px;
+  stroke-dasharray: calc(var(--ecg-len) * 0.14) calc(var(--ecg-len) * 1.86);
+  stroke-dashoffset: calc(var(--ecg-len) * 0.14);
+  filter: drop-shadow(0 0 2.5px var(--ecg-glow));
+  animation: ecg-frame-pass 4.4s linear infinite;
+}
+
+@keyframes ecg-frame-pass {
+  0% {
+    stroke-dashoffset: calc(var(--ecg-len) * 0.14);
+  }
+
+  46% {
+    stroke-dashoffset: calc(var(--ecg-len) * -1.14);
+  }
+
+  100% {
+    stroke-dashoffset: calc(var(--ecg-len) * -1.14);
+  }
+}
+
+/* Reduced motion: the box is simply finished. The outline is complete and still, the
+   two seeds are lit, and no signal travels — nothing is frozen part-way along a side. */
+@media (prefers-reduced-motion: reduce) {
+  .ecg-frame__line,
+  .ecg-frame__origin {
+    animation: none;
+  }
+
+  .ecg-frame__pulse {
+    display: none;
+  }
+}
+
+/* --- The way forward ------------------------------------------------------ */
+
+/* One control, one place: the panel's footer. It sits after every other part of the
+   panel — the chart, the guidance, the control a state adds, the recap — so the
+   learner looks in the same spot for it in every chapter and every state, and it never
+   lands over chart text.
+
+   The button is an arrow on a filled accent disc. R's transition wording is its
+   accessible name rather than printed beside it: the state's own sentence already says
+   what the state is about, and a second line of text beside a small control competes
+   with it.
+
+   The footer carries its own padding so the halo below has room to breathe inside the
+   panel rather than against its border. */
+.journey__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.4rem 0.3rem;
+}
+
+/* A failed readiness request: the error above it says what happened, and this is the
+   one manual retry. It sits under the alert rather than in the footer, because the
+   footer's arrow is the way forward and it is held until an assessment exists. */
+.journey__retry {
+  margin: 0.5rem 0 0;
+}
+
+.journey__next {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* A comfortable pointer and touch target: 44px square, the size a thumb expects. */
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid var(--next-fill);
+  border-radius: 50%;
+  background: var(--next-fill);
+  color: var(--next-ink);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--ease-move),
+    border-color var(--motion-fast) var(--ease-move),
+    transform var(--motion-fast) var(--ease-move);
+}
+
+/* One slow breath, painted as a shadow rather than as a moving element: the arrow and
+   the disc never move, nothing reflows, and the pulse is a change of alpha and spread
+   over about four seconds. Four pixels of spread and six of blur stay well inside the
+   footer's padding, so the halo can never touch a label or cross the panel's border. */
+.journey__next:not(:disabled) {
+  animation: journey-next-breath 4.2s ease-in-out infinite;
+}
+
+@keyframes journey-next-breath {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--next-halo-rest), 0 0 6px 0 var(--next-halo-rest);
+  }
+  50% {
+    box-shadow: 0 0 0 4px var(--next-halo-peak), 0 0 6px 2px var(--next-halo-peak);
+  }
+}
+
+/* A found control is not still being pointed at: the breath stops the moment the
+   learner hovers or tabs to it, and the surface answers instead. */
+.journey__next:hover:not(:disabled),
+.journey__next:focus-visible:not(:disabled) {
+  animation: none;
+  background: var(--next-fill-strong);
+  border-color: var(--next-fill-strong);
+  box-shadow: 0 0 0 3px var(--next-halo-peak);
+}
+
+/* A short, restrained press: the disc settles a little and darkens, so the click has
+   a physical answer without the arrow leaving its place. */
+.journey__next:active:not(:disabled) {
+  transform: scale(0.96);
+  transition-duration: 90ms;
+}
+
+/* A visible ring on the control itself, so keyboard focus is never only a colour
+   change. It is drawn outside the button's own box, which is empty in the footer. */
+.journey__next:focus-visible {
+  outline: 2px solid var(--next-focus-ring);
+  outline-offset: 3px;
+}
+
+/* Held while R works: the disc keeps its box and its arrow, dims slightly, and stops
+   breathing. Nothing moves and the layout does not jump when the answer lands. */
+.journey__next:disabled {
+  cursor: progress;
+  opacity: 0.55;
+  animation: none;
+  box-shadow: none;
+}
+
+.journey__next-icon {
+  flex: none;
+  /* The arrow is upright and still in every state; only the surface around it
+     changes. */
+  transform: none;
+}
+
+@media (max-width: 520px) {
+  /* The arrow keeps its own size on a phone; the footer simply holds it at the end of
+     the line, where it stays a 44px target with room for its halo. */
+  .journey__footer {
+    justify-content: flex-end;
+    padding: 0.45rem 0.35rem 0.35rem;
+  }
+}
+
+/* Under reduced motion the control is a static accent: the surface, the arrow, the
+   hover and focus colours and the focus ring all remain, and only the breath and the
+   press scale are removed. */
+@media (prefers-reduced-motion: reduce) {
+  .journey__next:not(:disabled) {
+    animation: none;
+  }
+
+  .journey__next:active:not(:disabled) {
+    transform: none;
+  }
+
+  .journey__next,
+  .journey__next:hover:not(:disabled),
+  .journey__next:focus-visible:not(:disabled) {
+    transition: none;
+  }
+}
+
+/* The base case's one-year QALY illustration. It shares the price block's place in
+   the panel — below the chart, under the same hairline — so the two interactive
+   states read as one part of the panel rather than as two different screens. */
+.journey__qaly {
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+.journey__qaly-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.journey__qaly-caption {
+  flex: 1;
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.journey__qaly-heading {
+  margin: 0.35rem 0 0.5rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.journey__qaly-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.journey__qaly-label {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.journey__qaly-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.journey__qaly-slider {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+/* The value the slider is on, beside the slider rather than under it, so the score
+   and the formula line are read together. */
+.journey__qaly-score {
+  min-width: 3.1rem;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+  color: var(--text);
+}
+
+/* R's answer at the score on screen, inside the information panel under the one-year
+   line: the model's own words for what that score does to the result, so the panel
+   itself only carries the score. */
+.journey__qaly-live {
+  margin: 0.5rem 0 0;
+  line-height: 1.5;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* The one score the simulation cannot draw exactly. It sits in the same panel, just
+   under the answer it qualifies, and stays quiet because it qualifies one value rather
+   than the whole lesson. */
+.journey__qaly-ceiling {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* The illustration's own label, so its arithmetic is never read as a model result. */
+.journey__qaly-formula-label {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The one-year product, in the panel's own voice rather than as chart text. */
+.journey__qaly-formula {
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-alt);
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  text-align: center;
+}
+
+.journey__qaly-fixed {
+  margin-top: 0.5rem;
+}
+
+.journey__qaly-fixed-title {
+  margin: 0 0 0.2rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.journey__qaly-fixed-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.journey__qaly-fixed-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.1rem 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.journey__qaly-fixed-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* The reset now sits inside the information panel, under the one-year line it
+   explains: the score is a model input, so the way back to the model's own assumption
+   belongs with the explanation rather than beside the slider. Its type is inherited
+   from the panel, so the control stays as readable as the explanation around it. */
+.journey__qaly-reset {
+  margin-top: 0.55rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-alt);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.journey__qaly-reset:hover,
+.journey__qaly-reset:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- The price chart (Chapter 5) ------------------------------------------ */
+
+/* One figure, two scales. The upper panel is the annual price track; the lower one is
+   the balance on its own axis. They are never put on one axis, because a net benefit
+   is not a price and the two quantities have different units. */
+.journey__pricefig {
+  position: relative;
+  margin: 0;
+}
+
+.pricefig__panel {
+  position: relative;
+}
+
+.pricefig__panel + .pricefig__panel {
+  margin-top: 0.7rem;
+}
+
+.pricefig__panel-title {
+  margin: 0 0 0.15rem;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.pricefig__axis-note {
+  margin: 0 0 0.2rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+/* The positioning frame for every marker, label and tick of the track. */
+.pricefig__track,
+.pricefig__balance {
+  position: relative;
+  width: 100%;
+}
+
+/* The track's own rule: the price axis itself. */
+.pricefig__rail {
+  position: absolute;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border);
+}
+
+.pricefig__stem {
+  position: absolute;
+  width: 1px;
+  height: 10px;
+  background: var(--muted);
+  pointer-events: none;
+}
+
+.pricefig__stem--solved {
+  background: var(--accent);
+}
+
+/* A marker is centred on its own price, so its position is the value. */
+.pricefig__marker {
+  position: absolute;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.pricefig__marker--proposal {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+  background: var(--panel);
+}
+
+.pricefig__marker--learner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--panel);
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* A marker's name and amount, in its own row, so two markers that sit close together
+   are still both readable. */
+.pricefig__tag {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.02rem;
+  text-align: center;
+  line-height: 1.15;
+  pointer-events: none;
+}
+
+.pricefig__tag--proposal {
+  align-items: center;
+}
+
+.pricefig__tag-label {
+  color: var(--muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.pricefig__tag-value {
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.pricefig__tag--solved .pricefig__tag-value {
+  color: var(--accent);
+}
+
+/* The axis's own numbers, under the rail. */
+.pricefig__tick {
+  position: absolute;
+  z-index: 3;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: 0.68rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pricefig__tick--balance {
+  top: auto;
+  bottom: 2px;
+}
+
+/* The balance's zero: usual care. Everything left of it is a worse buy at this
+   case's reference and everything right of it a better one. */
+.pricefig__zero-line {
+  position: absolute;
+  top: 6px;
+  width: 1px;
+  background: var(--muted);
+  opacity: 0.7;
+}
+
+.pricefig__bar {
+  position: absolute;
+  top: 6px;
+  height: 24px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.pricefig__bar--below {
+  background: var(--muted);
+}
+
+/* The balance's amount, beside the bar's own end. */
+.pricefig__value {
+  position: absolute;
+  top: 7px;
+  z-index: 3;
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 22px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pricefig__zero-label {
+  position: absolute;
+  top: 38px;
+  z-index: 3;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+@media (max-width: 520px) {
+  .pricefig__tag-label {
+    font-size: 0.58rem;
+  }
+
+  .pricefig__tag-value {
+    font-size: 0.68rem;
+  }
+}
+
+/* The price chapter's own lever, in the same panel as the figure. */
+.journey__price--chapter {
+  margin-top: 0.7rem;
+}
+
+.journey__price-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.journey__price-slider {
+  flex: 1 1 12rem;
+  min-width: 0;
+  max-width: 26rem;
+  accent-color: var(--accent);
+}
+
+.journey__price-value {
+  min-width: 4.5rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.journey__price-unit {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+/* --- The readiness figure and its questions (Chapter 7) -------------------- */
+
+/* Seven labelled chips and a count bar. The chips are the judgement, the bar is only a
+   summary of it, and neither is a score. */
+.readyfig {
+  position: relative;
+  margin: 0;
+}
+
+.readyfig__intro {
+  padding: 0.2rem 0 0.1rem;
+}
+
+.readyfig__intro-title,
+.readyfig__title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.readyfig__intro-note,
+.readyfig__counts-note {
+  margin: 0.2rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.readyfig__chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.35rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One area: its name and R's status word. The border carries the status colour as a
+   secondary cue, never the only one, and the text keeps full contrast in both themes. */
+.readyfig__chip {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.readyfig__chip-name {
+  font-size: 0.74rem;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.readyfig__chip-status {
+  flex: none;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.readyfig__chip--green {
+  border-left-color: var(--success);
+}
+
+.readyfig__chip--amber {
+  border-left-color: var(--warning);
+}
+
+.readyfig__chip--red {
+  border-left-color: var(--danger);
+}
+
+/* The area the current answer changed. It is marked by weight and a hairline, not by
+   hiding or dimming the areas beside it: a learner comparing two of them has to read
+   both. */
+.readyfig__chip.is-changed {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.readyfig__chip.is-changed .readyfig__chip-status {
+  color: var(--text);
+}
+
+/* The count bar: three segments sized by R's own counts, each labelled with its
+   number. It is a summary, so it carries no axis and no total. */
+.readyfig__counts {
+  margin-top: 0.5rem;
+}
+
+.readyfig__counts-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.readyfig__bar {
+  display: flex;
+  gap: 2px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.readyfig__segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 1.15rem;
+  flex-basis: 0;
+}
+
+.readyfig__segment--green {
+  background: var(--success);
+}
+
+.readyfig__segment--amber {
+  background: var(--warning);
+}
+
+.readyfig__segment--red {
+  background: var(--danger);
+}
+
+.readyfig__segment-value {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #0b1418;
+}
+
+/* --- The four questions --------------------------------------------------- */
+
+.ready {
+  margin-top: 0.6rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+
+.ready__fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ready__legend {
+  padding: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.ready__options {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+/* One answer: a short scenario, not a level's name. The whole row is the target. */
+.ready__option {
+  display: block;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-move),
+    background var(--motion-fast) var(--ease-move);
+}
+
+.ready__option:hover:not(:disabled),
+.ready__option:focus-visible:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.ready__option:focus-visible {
+  outline: 2px solid var(--next-focus-ring);
+  outline-offset: 2px;
+}
+
+.ready__option.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.ready__option:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.ready__option-text {
+  display: block;
+}
+
+/* --- What the answer changed ---------------------------------------------- */
+
+.ready__feedback {
+  margin-top: 0.55rem;
+  padding: 0.45rem 0.6rem;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.ready__feedback-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.ready__feedback-domain {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ready__feedback-text {
+  margin: 0.25rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* The status word, with its colour as a secondary cue only: the word itself carries
+   the meaning. */
+.ready__status {
+  flex: none;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #0b1418;
+}
+
+.ready__status--green {
+  background: var(--success);
+}
+
+.ready__status--amber {
+  background: var(--warning);
+}
+
+.ready__status--red {
+  background: var(--danger);
+}
+
+/* R's one visible sentence for a readiness state is now the shared teaching-beat
+   callout (`.beat`), so the readiness chapter's own caption rule is gone with the
+   paragraph it styled. Nothing in the stylesheet describes an element the chapter no
+   longer renders. */
+
+/* --- The last chapter's figure (Chapter 9) -------------------------------- */
+
+/* The reused Kaplan-Meier chart with the journey's own labels above it. The title names
+   what is timed and what the event is; the qualifier is the one line of caveat the
+   panel keeps, so the simulated nature and the censoring are never hidden. */
+.journey__km-title {
+  margin: 0 0 0.15rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.journey__km-qualifier {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* Before the first curves arrive. The figure keeps its title and qualifier so the
+   panel is never an unexplained blank while the simulation runs. */
+.journey__km-pending {
+  margin: 0;
+  padding: 1.5rem 0.5rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* The two estimates at the chosen time, side by side. They are labels and values, not
+   a comparison: the gap is stated in R's sentence below them. */
+.journey__km-reads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.journey__km-read {
+  min-width: 0;
+}
+
+.journey__km-read-label {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.journey__km-read-value {
+  margin: 0.1rem 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* The values the chapter holds fixed, on demand. */
+.ready__fixed {
+  margin-top: 0.5rem;
+}
+
+.ready__fixed-note {
+  margin: 0.2rem 0 0.35rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.ready__fixed-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ready__fixed-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.12rem 0;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.ready__fixed-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+}
+
+@media (max-width: 520px) {
+  /* Two chips per row on a phone keeps every name and status word readable without a
+     horizontal scroll. */
+  .readyfig__chips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .readyfig__chip {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ready__option {
+    transition: none;
+  }
+}
+
+/* --- The budget chart (Chapter 6) ----------------------------------------- */
+
+/* The base app's own budget figures: a component breakdown as metric cards, then the
+   net-impact bars with the running total on a second axis. The chart itself is the
+   adapted `charts/BudgetImpactChart.vue` option, so the two screens read alike. */
+.journey__budgetfig {
+  position: relative;
+  margin: 0;
+}
+
+/* The assumptions the totals rest on, before any amount appears. */
+.budgetfig__intro {
+  padding: 0.2rem 0 0.1rem;
+}
+
+.budgetfig__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.4rem;
+  margin: 0;
+}
+
+.budgetfig__fact {
+  min-width: 6rem;
+}
+
+.budgetfig__fact dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.budgetfig__fact dd {
+  margin: 0.1rem 0 0;
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The period every component covers, said once above them. */
+.budgetfig__period {
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+/* The component cards are the app's own `MetricCard` and `metrics` grid, with a
+   tighter minimum so four figures fit a chart panel, so the breakdown looks like the
+   dashboard's rather than like a second design. */
+.budgetfig__metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem;
+}
+
+/* One card's own wrapper, which is what the guidance marks. */
+.budgetfig__metric {
+  min-width: 0;
+}
+
+.budgetfig__panel {
+  position: relative;
+  margin-top: 0.75rem;
+}
+
+.budgetfig__panel-title {
+  margin: 0 0 0.1rem;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.budgetfig__canvas {
+  height: 200px;
+}
+
+/* The cumulative line needs room for its own axis name, so the plot is taller once
+   it is drawn. */
+.budgetfig__canvas--tall {
+  height: 250px;
+}
+
+.budgetfig__total {
+  margin: 0.45rem 0 0;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 520px) {
+  .budgetfig__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .budgetfig__canvas {
+    height: 230px;
+  }
+
+  .budgetfig__canvas--tall {
+    height: 280px;
+  }
+}
+
+/* The price state keeps its control in the same panel as the graph, below a
+   hairline that separates it from the chart. It is never dimmed and never
+   covered, so it stays usable in every state it appears in. */
+.journey__price {
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+  margin-top: 0.55rem;
+}
+
+/* The state's own sentence, on the panel: at this state the plane carries no
+   softening, so the caption belongs here rather than over the graph. The one way
+   on sits beside it, inside the same strip. */
+.journey__price-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+
+.journey__price-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  font-size: 0.9rem;
+  max-width: 52rem;
+}
+
+/* The same circular control as the overlay's, so the way forward looks the same
+   wherever the chapter offers it. */
+.journey__price-next {
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+}
+
+.journey__price-label {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* The price control shares the panel with the chart, so it has less width than a
+   full-width tutorial control: the range takes what is left and the unit wraps
+   rather than pushing the panel wider than the phone column. */
+.journey__price .field__control input[type='range'] {
+  width: 100%;
+  max-width: 22rem;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.journey__price .field__control {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.journey__price .field__unit {
+  white-space: normal;
+}
+
+.journey__observation {
+  margin: 0.5rem 0 0.1rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  max-width: 52rem;
+}
+
+/* --- The uncertainty chapter's detail disclosure -------------------------- */
+
+/* A closed disclosure, quiet enough to sit under the chart without competing with
+   the sentence that carries the story. The summary inherits the shared
+   disclosure styling; only the list lines are tightened here. */
+.journey__variation {
+  margin: 0.35rem 0.1rem 0.1rem;
+  font-size: 0.8rem;
+}
+
+.journey__variation-list {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.journey__variation-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* --- The guidance overlay -------------------------------------------------- */
+
+/* Four dimmed panes around an empty cut-out, plus one short line of R's text
+   beside it. The cut-out is empty, so the feature the state is about is never
+   tinted, filtered, outlined or covered - nothing is drawn over it at all.
+
+   Nothing here receives pointer events: a click or a Tab aimed at the chart
+   reaches the chart, and the price control is outside this box entirely. */
+.spot {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: var(--radius-sm);
+}
+
+/* The softening. A light wash of the panel colour reads as "not now" in both themes.
+   There is deliberately no backdrop blur: it destroyed the chart's axis titles,
+   ticks, units and data labels, which the learner still needs in order to read the
+   feature being pointed at. The focused region is marked by the ring below instead,
+   so attention is drawn without anything becoming unreadable. */
+.spot__pane {
+  position: absolute;
+  background: var(--spot-veil);
+  /* The duration is the overlay's own: it is 220ms when the cue is travelling to
+     another feature of the same picture, and 0 when the target changed and the new
+     geometry must appear in place rather than slide across the panel. */
+  transition:
+    left var(--spot-move, 220ms) ease-out,
+    top var(--spot-move, 220ms) ease-out,
+    width var(--spot-move, 220ms) ease-out,
+    height var(--spot-move, 220ms) ease-out;
+}
+
+/* The focused feature's own mark: a hairline ring with a soft halo, painted only
+   inward from the cut-out's boundary. Nothing is drawn outside the cut-out, so the
+   border and its halo can never cross a category label, a tick, an axis title or a
+   value the state keeps sharp. This is what replaces the blur as the cue for where
+   to look. */
+.spot__ring {
+  position: absolute;
+  z-index: 1;
+  border-radius: 6px;
+  /* A hairline only: nothing is painted outside the cut-out, and nothing is painted
+     inward from the border either, so the accent cannot wash over the labels that
+     sit against the cut-out's edges. */
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+  transition:
+    left var(--spot-move, 220ms) ease-out,
+    top var(--spot-move, 220ms) ease-out,
+    width var(--spot-move, 220ms) ease-out,
+    height var(--spot-move, 220ms) ease-out,
+    opacity 180ms ease-out;
+}
+
+/* The guide's own drawing: a slim teal trace with a small head, pointing from the
+   sentence toward the feature R named, and any direction R asked for between two
+   features. It is a hairline, so it marks the way without covering what it marks. */
+.spot__arrows {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  color: var(--accent);
+  transition: opacity 200ms ease-out;
+}
+
+.spot__arrow-path {
+  /* The whole path is drawn on from its own start, the way the landing page's
+     trace is: one brief, purposeful movement that says "look here" and stops. */
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: spot-arrow-draw 620ms ease-out forwards;
+}
+
+.spot__arrow--lead .spot__arrow-path {
+  /* The connectors are drawn first and the direction R asked for follows it, so
+     attention moves from the sentence, through the feature, to the next one. */
+  animation-delay: 220ms;
+  opacity: 0.85;
+}
+
+@keyframes spot-arrow-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* R's sentence and the chapter's advance control sharing one card, sitting on the
+   softened part of the plane rather than on the feature it describes. The card's
+   own surface keeps it legible over the dimmed graph, and because the control is
+   inside the card it never lands on the graph, an axis title or the slider. */
+.spot__callout {
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.45rem 0.5rem 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.35;
+  transition:
+    left var(--spot-move, 220ms) ease-out,
+    top var(--spot-move, 220ms) ease-out,
+    right var(--spot-move, 220ms) ease-out,
+    bottom var(--spot-move, 220ms) ease-out;
+}
+
+.spot__callout-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.spot__callout-text {
+  margin: 0;
+}
+
+/* The one sentence that explains a measure the state introduces. It sits inside the
+   same card as the sentence it follows, slightly quieter, so the explanation
+   belongs to the number rather than becoming a second layer of guidance. */
+.spot__callout-measure {
+  margin: 0.3rem 0 0;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+
+
+@media (prefers-reduced-motion: reduce) {
+  /* The guidance is carried entirely by the contrast between the sharp cut-out and
+     the softened panes, so with motion removed it is just as clear: the overlay is
+     simply placed, with no travel between states. The arrows are still drawn —
+     they are how R says which feature the sentence is about — but they are there
+     complete, with no draw-on. */
+  .spot__pane,
+  .spot__callout,
+  .spot__arrows {
+    transition: none;
+  }
+
+  .spot__arrow-path {
+    animation: none;
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
 }
 
 /* --- Guided Tutorial Part 2 ---------------------------------------------- */
@@ -2941,17 +6043,13 @@ button:focus-visible {
   background: rgba(15, 25, 32, 0.55);
 }
 
+/* A dialog's panel is now only its frame of reference for focus, sizing and placement:
+   the box's outline, interior, padding and type all come from the shared `.ocard`, so
+   nothing here draws a card. */
 .modal__panel {
   position: relative;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 1rem 1.15rem 1.15rem;
-  max-width: 44rem;
   width: 100%;
-  max-height: calc(100vh - 2rem);
-  overflow-y: auto;
+  max-width: 44rem;
   text-align: left;
 }
 
@@ -2960,16 +6058,12 @@ button:focus-visible {
   font-size: 1.05rem;
 }
 
-/* The small centred prompts — the welcome question and the Home menu's two
-   explanations — rather than the wide panel the case-facts overlay uses: each
-   carries two lines and two actions, so the panel is a prompt and not a page. */
+/* The short centred prompts — the welcome question, the Home menu's explanations, the
+   PSA confirmation and the Part 2 congratulations — rather than the wide panel the
+   case-facts overlay uses: each carries two lines and two actions, so its box is a
+   prompt and not a page. */
 .modal__panel--welcome {
-  max-width: 26rem;
-  text-align: center;
-}
-
-.modal__panel--welcome .tutorial__nav {
-  justify-content: center;
+  max-width: 27rem;
 }
 
 /* --- Base-case presentation mode -------------------------------------------
@@ -2983,7 +6077,6 @@ button:focus-visible {
 
 .modal--present .modal__panel {
   max-width: 68rem;
-  max-height: calc(100dvh - 2rem);
 }
 
 .present__head {

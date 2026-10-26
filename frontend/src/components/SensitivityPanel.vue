@@ -29,6 +29,7 @@ import ButtonLabel from './ButtonLabel.vue'
 import ChartDownload from './ChartDownload.vue'
 import DataTable from './DataTable.vue'
 import InfoTip from './InfoTip.vue'
+import MethodInfo from './MethodInfo.vue'
 import MetricCard from './MetricCard.vue'
 import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
@@ -431,7 +432,10 @@ const settingsNote = computed(() =>
   <section class="panel">
     <header class="panel__header">
       <div>
-        <h2>Deterministic sensitivity analysis</h2>
+        <div class="panel__title-row">
+          <h2>Deterministic sensitivity analysis</h2>
+          <MethodInfo module="sensitivity" />
+        </div>
         <ResultTrace :reveal-class="revealClass" />
         <p class="muted">Which assumptions influence the result most?</p>
       </div>

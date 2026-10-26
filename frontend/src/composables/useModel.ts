@@ -790,7 +790,8 @@ function runReadiness(): Promise<void> {
  * computed: an analysis that has not been run is simply absent, and R then
  * reports its own "Not available" / "Not yet assessable" wording rather than a
  * value this client made up. Every number is a field copied out of another
- * response — the base-case ICER, the PSA's probability and mean NMB, the value of
+ * response — the base case's ICER, incremental cost and incremental QALYs, the
+ * PSA's probability and mean NMB, the value of
  * information's EVPI and EVPPI rows, the budget-impact totals — and the six
  * scenario signals are the current global assumptions. The readiness block
  * follows the same rule: it is sent only once the readiness assessment has been
@@ -800,7 +801,14 @@ function htaSummaryBody(): HtaSummaryInputs {
   const body: HtaSummaryInputs = { ...scenarioBody() }
 
   const base = baseCase.value
-  if (base && isNum(base.icer)) body.icer = base.icer
+  if (base) {
+    if (isNum(base.icer)) body.icer = base.icer
+    // The economic rule is the incremental net monetary benefit, so R needs the
+    // two differences rather than the ratio: a negative ICER cannot distinguish
+    // "costs less and adds health" from "costs more and adds none".
+    if (isNum(base.incremental_cost)) body.incremental_cost = base.incremental_cost
+    if (isNum(base.incremental_qalys)) body.incremental_qalys = base.incremental_qalys
+  }
 
   const psaResult = psa.value
   if (psaResult) {

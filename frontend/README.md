@@ -42,10 +42,38 @@ VS Code tasks are provided for both processes.
 | `npm run build` | `vue-tsc -b` type check, then a production build into `dist/`. |
 | `npm run typecheck` | Type check only, including the `.vue` templates. |
 | `npm run preview` | Serve the production build on 127.0.0.1:4173. |
-| `npm run lint` | oxlint over the TypeScript sources. |
+| `npm run lint` | oxlint over the `.ts` sources and the `<script>` blocks of `.vue` files. |
 
 `vue-tsc` is what type-checks the single-file components, which is why it runs in
-`build`. oxlint does not parse `.vue` files, so lint covers the `.ts` sources.
+`build` and in `typecheck` — including the `.vue` templates.
+
+`npm run lint` is not a substitute for that. oxlint is configured with its `vue`
+plugin, so it does lint the `<script>` block of each `.vue` file alongside the
+`.ts` sources; the lint run reports 94 files (60 `.vue`, 34 `.ts`). It does not
+validate template markup, and passing lint says nothing about runtime behaviour,
+accessibility or visual design. The three commands check different things:
+
+- `typecheck` covers TypeScript in `.ts` files **and** in `.vue` templates.
+- `lint` covers `.ts` files and `.vue` `<script>` blocks, and reports warnings
+  without failing the command.
+- `build` repeats `typecheck` and then bundles.
+
+None of them exercises the running application against the R API, renders a
+template, or checks appearance.
+
+One further command checks something the three above cannot: the mathematics in
+the method notes. Given a JSON export of the note dictionary — `module_methods`
+from `GET /api/defaults`, or `MODULE_METHOD_NOTES` written straight from R — it
+typesets every display formula and every `$…$` span in it with the same KaTeX
+build the app uses:
+
+```
+node scripts/check-math.mjs ../math-notes.json
+```
+
+It prints the failing note, block and expression, and exits non-zero, so a
+malformed equation is caught before it reaches a browser. It checks the TeX
+only; it does not check the surrounding prose or appearance.
 
 ## Layout
 
@@ -75,6 +103,7 @@ src/
     useDisclosure.ts    # Escape closes the disclosure the focus is inside, app-wide
     useAppBusy.ts       # the app-wide busy state the loading indicator shows: ref-counted start/finish, label, isActive
     useTutorialSession.ts  # Guided Tutorial: Part 1's inputs/results/step and Part 2's case, price, coverage, readiness answers and section; never touches useModel
+    useTutorialJourney.ts  # the redesigned tutorial's own session: chapter/screen, reveal state, one price lever, the initial and moved base case, the provisional view and the price the learner called reasonable; separate from useTutorialSession and useModel
     useResultEntrance.ts   # the one-shot result entrance: an analysis's committed revision becomes an alternating animation class, once per revision, remembered across a panel's unmount
     useTabUnderline.ts     # places the analysis tab strip's indicator from the selected tab's own box: 190 ms slide between tabs on one row, a jump across a wrap, a resize or a font change, cleaned up on unmount
     useLoadingMessages.ts  # the lighthearted line under a long operation's factual status: one list of 24 sentences, a 1 s grace, a 7 s interval, a 280 ms opacity-only crossfade, and a static line under reduced motion
@@ -99,6 +128,7 @@ src/
                                 # narrow reading column, or a readable not-found state when the slug names no post
     HomeView.vue                # eQalb's own start screen at /app : eQalb wordmark with ECG pulse, credit, actions, links
     TutorialView.vue            # Guided Tutorial: Part 1 (four steps, completion) and the Part 2 shell
+    JourneyView.vue             # redesigned Guided Tutorial at /app?journey=1 : the shell, the notice and the chapter navigation
     ProjectDescriptionView.vue  # what the model is, what it covers, contact
     DownloadResultsView.vue     # what this session produced, and the ZIP download
   export/
@@ -112,6 +142,9 @@ src/
                         # documents the format and how to add, preview and publish a post
   components/
     AppLoadingIndicator.vue # the only loader: a thin teal top bar after 350 ms and a small eQalb/ECG card after 2.5 s, its trace pulse crossing the line once per cycle
+    EcgOverlay.vue          # the one overlay box: perimeter + interior + one reveal sequence, used by every overlay
+    EcgFrame.vue            # the ECG perimeter a box wears instead of a border: four sides of one trace, seeded from
+                            # the south-west and north-east corners, then a signal passing along the same path for ever
     LaunchTransition.vue    # the landing page's arrival into the app: a still copy of the Home screen's
                             # eQalb composition, wiped in behind a passing band of light (decoration only)
     AssumptionsForm.vue # the 16 model inputs + the reference WTP threshold
@@ -130,6 +163,11 @@ src/
     tutorial/           # Guided Tutorial: stepper, step stage (the transition between steps), control, status card,
                         # plane, Part 1's four steps and completion card, and Part 2's shell, case brief, price
                         # curve, value-for-money, budget-impact, readiness and recommendation sections
+  journey/            # the redesigned tutorial: the case brief, the guided Chapter 1 beats, the
+                        # cost-effectiveness plane the beats reveal one element at a time, the later
+                        # chapters' own figures (the one-way tornado, the price track, the budget bars,
+                        # the readiness chips and — reused from components/charts/ — the simulated
+                        # survival curves) and the guide ring that points at the next action
     charts/             # one component per chart, options only
     DataTable.vue, MetricCard.vue, InfoTip.vue, StaleNotice.vue, table.ts
     BlogLayout.vue, date.ts     # in components/blog/: the blog's header, footer and reading column shell
@@ -667,10 +705,234 @@ deployed.
   case other than the active one through R's `exclude_case_id` rule, returns to the
   Case brief and restores R's own defaults for the price, the coverage cap and the
   four readiness answers.
+- The redesigned Guided Tutorial's first slice is implemented behind
+  `/app?journey=1`, so the tutorial described above is still the default entry and
+  is unchanged. It covers the case brief and Chapter 1 (base case): `JourneyView`
+  renders the shell, `useTutorialJourney` holds the session, and
+  `components/journey/` holds the brief, the chapter's screens and the
+  cost-effectiveness plane. R owns the case, the wording, every reveal sentence and
+  the interpretation: `eqalb_tutorial_journey.R` publishes
+  `GET /api/tutorial/journey`, and `POST /api/tutorial/journey/base-case` returns
+  the base case through `eqalb_tutorial_ce()`, so its values are the same values
+  Part 1 returns for the same price.
+
+  The chapter is one continuous guided sequence, not a set of screens. A guide ring
+  and caret point at the single thing to act on and everything else is softened, and
+  a completed action is the advance: selecting eQalb reveals the extra cost and
+  hands attention to the health action, revealing the health hands it to the ratio,
+  revealing the ratio hands it to the price. There is no forward button between
+  those four stages — the chapter has no timer either, so nothing advances except
+  the learner's own action. The learner may move the price as often as they like;
+  the one explicit Continue is a quiet control that appears once they have moved it,
+  and it carries the unchanged-health observation and the reflective question with
+  the price exploration rather than as stages of their own. A quiet Back revisits an
+  earlier stage without erasing anything, and Resume returns to where the learner
+  was. Every reveal stays on screen, so the chapter accumulates one picture instead
+  of replacing it. There is no table, no traffic light and no threshold line; text
+  is dimmed by opacity, never blurred, and the guide is `aria-hidden`,
+  `pointer-events: none` and never focusable. Focus is moved only when the control
+  the learner used has left the document, so dragging the price never loses focus.
+  Reduced motion removes the pulse, the sweep and the chart animation while keeping
+  every reveal.
+- The journey now runs eight chapters behind that same shell: the base case, one-way
+  sensitivity, the uncertainty view, the value of information, the price, the budget,
+  the readiness check and the time to a first heart attack or stroke. Each is one
+  component in `components/journey/` and each is
+  computed by the R function the matching dashboard tab uses, so no chapter carries a
+  calculation of its own. The readiness chapter is the only one that runs
+  no model: it asks four scenario-worded questions about the deployment, passes those
+  answers with the case's six fixed inputs to `calculate_readiness()`, and draws the
+  seven domains as labelled chips with the status counts as a secondary summary rather
+  than a score. No state requires a Green. The journey's handoff card (R's
+  `journey.end`: one sentence, then Open the analysis app / Start the journey again /
+  Exit to Home) follows the closing statement of the last chapter — the time-to-event
+  view — because the chapter list has nothing after it, so a chapter added later moves it
+  automatically; it is never shown in a standalone explainer.
+  The last chapter is the same comparison drawn as time to a first MI or stroke: one
+  `simulate_eqalb_survival()` run at the case's effect assumption and the model's own
+  annual risks, with the tab's own chart component rendering the two curves and their
+  bands unchanged. Three states read the same curves at a time the learner chooses (1, 5
+  or 10 years): the two estimates, what a downward movement is, and the two estimates
+  compared in percentage points. One response carries all three times, so changing the
+  time asks R for nothing, and no p-value, hazard ratio or median is published. The
+  downward-movement state passes the chart an optional `highlight` — the arm, the two
+  years and the level R's sentence names — so the interval being described is shaded on
+  the curve; with no highlight (every other caller, including the tab) the chart draws
+  exactly as it always did. In a standalone lesson the first advance fetches the curves
+  and stays on the first state, so the two estimates are read before the lesson moves on;
+  the next two advances walk the remaining states. The
+  panel keeps the title, a qualifier saying the estimates are simulated and other-cause
+  deaths are censored, and the sentence each state adds; the hypothetical reading of a
+  censored estimate and the limit on what the curves say are in its disclosure.
+  The readiness lesson is also reachable on its own: `ReadinessPanel` carries an
+  "Explain this" control that opens `/app?journey=1&explain=readiness`, where the same
+  chapter renders without the chapter list, the progress line, the earlier-chapter Back,
+  the restart control or the bridges, under R's one orientation sentence and a "Back to
+  analysis" control. Opening it requests nothing — the lesson's first advance calls the
+  readiness endpoint — and it keeps its own answers, leaving the journey's chapter,
+  stage, answers, cached results, price and score untouched. Returning sets the
+  dashboard tab (kept in the navigation store, which is why a direct link that never had
+  a dashboard behind it still lands on readiness) and leaves every dashboard input and
+  result exactly as it was. A lesson also offers "Read the whole journey", which closes
+  the lesson (restoring the journey's saved position and cached results) and then opens
+  the journey through the store's `showJourney()` — the one entry that clears the
+  `explain` flag as well as the page, so the address cannot keep asking for a lesson that
+  is no longer open. The budget and survival modules use the same pattern; the
+  survival lesson's curves are cached against R's key for every input the simulation
+  reads, so neither the price nor the score can invalidate them and a reopened lesson
+  reuses a stored set instead of simulating again.
+  Every chapter keeps one panel of teaching copy — the caption, the feedback its action
+  produced, and the labels, units and assumptions needed to read the figure, including
+  the two utilities the QALY control holds fixed and the one-line definitions of EVPI
+  and EVPPI — and puts its methodological caveats, qualifications and scope limits in a
+  single closed disclosure under a chapter-specific heading ("How this check works",
+  "What this ranking does and does not show", "What these figures cover", "What this
+  total covers", "How this score is used"). The sentences are R's and were moved rather
+  than rewritten, so nothing is printed twice. The QALY step is the one chapter whose
+  disclosure is the panel's information button rather than a second closed block: it
+  carries the scale, the role of the score, the one-year line, R's answer at the score on
+  screen, the note for the one score the uncertainty analysis cannot draw exactly and the
+  reset control, so the step has one disclosure rather than two and its visible panel is
+  the caption, the definition, the slider and its value and the two held utilities.
+  `FRONTEND_PLAN.md` and `api/api_contract.md` carry the detail.
+- **What has been verified in the running app, and what has not.** These are kept apart
+  deliberately, because "the code says so" is not the same claim as "it was seen working".
+  *Observed:* the survival chapter's time marker sits at the selected time, its interval
+  shading covers exactly the years R's sentence names, and its comparison beat marks both
+  curves and prints both estimates; the completion overlay is the shared box (no border,
+  no radius, four measured ECG perimeter edges, interior revealed, focus on its primary
+  action); Escape and the close control dismiss it and it does not reopen on its own;
+  "Open analysis workspace" returns to the dashboard with every input unchanged; "Restart
+  The Journey" returns the journey to its first chapter and clears its cached curves while
+  leaving the dashboard untouched; and none of those three actions issued an API request.
+  The overlay's opening sequence was sampled on the shared component — content `inert` and
+  transparent until the perimeter closes at about 0.8 s, then revealed, then the primary
+  action takes focus. *Code-only:* one chapter-transition bridge. A bridge is the recap at
+  a chapter's last state and always leads into a chapter whose own calculation must run
+  first, and after the survival chapter none is reachable without another simulation, so it
+  was not exercised in a browser. It renders the shared `EcgOverlay` (`centre`, `role="group"`,
+  `aria-labelledby="recap-heading"`), and `leaveRecap()` opens the awaiting chapter once its
+  answer is held or shows the app-wide loader while it waits, never asking twice for the
+  same answer. That bridge is the one runtime gap in the tutorial.
+  Two behaviours are intended rather than defects: the completion overlay opens as soon as
+  the final survival beat is reached, so that beat is read after dismissing it (closing
+  returns to the chart, still interactive); and journey position is in-memory session state
+  that a page reload clears, which is why the Home control reads "The Journey (resume)"
+  during a journey and "The Journey" afterwards.
+- The teaching beat is one component (`JourneyBeatCallout`): a compact blue-tinted
+  callout with an accent edge and a small step indicator, holding R's sentence for the
+  state and, where the state introduces a measure, R's one-line explanation. It replaces
+  the plain paragraphs and the accent strip the chapters used to print, so the changing
+  lesson text has one shape everywhere it appears; the plane chapters keep theirs inside
+  the plane's anchored card, where it points at the region it describes. The callout
+  plays a single brief tint when the sentence changes — on Next and on Back — and
+  nothing at all under `prefers-reduced-motion`. The figure keeps step with it: the
+  Kaplan-Meier chart takes an optional `highlight` (a shaded interval, a time mark, or
+  one level per arm), which the survival chapter sets from the beat and no other caller
+  passes, so the tab's own drawing is unchanged.
+- The end of the journey is an overlay (`JourneyOverlay`), not an inline card: the app's
+  own dialog behaviour (focus trap, inert background, focus restore, Escape) with the
+  journey's surface — a dimmed page and a dark blue panel that fades in. Its content and
+  actions are R's (`journey.end`: `title`, `body`, `open_label`, `restart_label`); a close
+  control returns to the final chart without reopening it, and the restart keeps its
+  journey-only semantics. The shell is built for reuse, but only the end of the journey
+  opens it.
+- Every overlay in the app is one box (`EcgOverlay`): the dialogs (the welcome prompt, the
+    Home menu, the PSA confirmation, the Part 2 case facts and congratulations), the journey's
+    completion overlay, the chapter-transition bridges and the floating information panels.
+    Its outline is an ECG perimeter and nothing else — no card border, no corner radius and no
+    second frame inside a frame: the box's four sides are the four sides of one ECG line, with
+    one heartbeat of the same size centred on each side that has room for it, so a box shows
+    four identical deflections rather than a repeating comb. A soft interior surface sits
+    inside the trace and draws no edge of its own. The loading card is deliberately not one of
+    these and keeps its own treatment.
+- The opening is one sequence, run by `EcgOverlay` and timed by the constants `EcgFrame`
+    exports: the two origins light at the south-west and north-east corners (220 ms), the four
+    traces leave them and close the perimeter (180 ms delay, 620 ms travel), then at
+    `ECG_REVEAL_MS` (800 ms) the interior, the words and the actions arrive together (260 ms),
+    and the signal keeps passing along that same perimeter — the Home trace's `18 182` dash,
+    one diagonal pair and then the other, 4.4 s, infinite. It is the same geometry lit in turn,
+    never a second track. No host can time itself differently, and the sequence is identical in
+    a 27rem dialog, a 30rem bridge and a small information popover.
+- While the perimeter is still forming the content is genuinely unreachable: the stack is
+    `inert`, so neither a click nor the keyboard can land on it, and `visibility: hidden` keeps
+    it out of the accessibility tree. On reveal the focus goes to the box's own first control
+    (`[data-overlay-initial]` where a host marks one) — but only if nothing has claimed it
+    first, so a learner who already tabbed to the close control keeps it. Under
+    `prefers-reduced-motion: reduce` there is no sequence at all: the perimeter is complete, the
+    signal is hidden and the content is live from the first frame.
+- Layout is shared with the box: one padding (`2.15rem 2.1rem 1.9rem`, and
+    `2.25rem 2.4rem 2rem` for a centred box), one type scale (1.12rem/700 heading, 0.92rem body),
+    one rhythm (0.5rem under the heading, 1.25rem above the actions). `centre` boxes size to
+    `min(27rem, 100%)` and centre the heading, the sentence and the action group — the completion
+    overlay, the chapter bridges, the welcome prompt, the menu explanation, the PSA confirmation
+    and the Part 2 congratulations; `reading` boxes stay left-aligned in the host's column (the
+    case facts and presentation mode); `dense` is the floating popover. On a narrow screen the
+    centred box's actions stack at full width rather than shrinking. The close control sits at one
+    consistent inset (16px from the top and right) above the content and clear of the trace.
+- The chapter-transition boxes are the bridges rendered by `JourneyChapter.vue` (`.recap`),
+    not the completion overlay: they are the same shared box. `TutorialStepStage` is only the
+    fade between steps and draws nothing.
+
+Ordinary cards, in-place clarifications, method panels and chart panels are content, not
+overlays, and are not framed.
+- The Home menu offers the narrative tutorial, "The Journey", in place of the legacy
+  guided tutorial, and offers it once: the separate Start/Resume button is gone. The
+  choice keeps the explanation-before-navigation pattern the workspace entry uses, and
+  its action reads "Start" or "Resume" from the journey's own session without making a
+  request. The legacy tutorial's view, session and route are untouched and it remains
+  reachable by its own address.
+- Each analysis module's heading carries a "How this is calculated" control
+  (`MethodInfo`), a muted periwinkle button distinct from the teal accent, that opens R's
+  method note in place. The note is written for a reader who knows mathematics and nothing
+  about this codebase, so it carries the mathematics and no implementation, and it carries
+  only the blocks that add something: a lead sentence naming the question, then the formula,
+  the computation in order, what each symbol means (with its unit and scope), how to read
+  the result, only the assumptions that change how the result reads, and a breakdown only
+  where it adds something the steps do not. Where a note gives an ICER comparison it states
+  it as the incremental net monetary benefit `INMB = λ·ΔE − ΔC` and marks the
+  ICER-threshold equivalence as holding only when `ΔE > 0`. It names no function, file,
+  endpoint or internal check, and never presents a model default as the reader's current
+  input; every note states the model's own method, so it cannot become a textbook
+  calculation the app does not perform. The note is R's (`MODULE_METHOD_NOTES`), the same
+  dictionary the journey contract republishes, so a module and its chapter describe a
+  method identically; the remaining headings are the same in every note ("The relation",
+  "How it is computed", "What the symbols mean", "Reading the result"), so a reader who has
+  seen one can find the same thing in the next. "How this works" labels the non-economic
+  modules, "Explain this" stays the separate interactive-lesson action, and the HTA
+  decision summary has no note because its rules are already a disclosure.
+- The mathematics in those notes is typeset, not transcribed. R writes each expression as
+  TeX inside the ordinary string it already authors, so the wording and the equation are
+  one value and cannot drift apart; a principal equation is the note's `formula` and inline
+  symbols sit between `$…$` in the prose, the steps and the symbol table. `MathText` is the
+  single renderer: it typesets **only** the piece a caller hands it, never the page, and it
+  emits KaTeX's HTML *and* MathML. The visual HTML is `aria-hidden` and the MathML carries
+  the accessible reading, so the equation is announced once and correctly; `trust: false`
+  means no authored expression can introduce a link, an embed or raw HTML; and a malformed
+  expression throws, is caught per piece, and shows its own source in a plain fallback
+  rather than vanishing or taking the sentence around it down with it. KaTeX is a local
+  dependency (`katex@0.18.10`, with its fonts bundled from `katex/dist/katex.min.css`), so
+  no equation is fetched from a third party. The pin is deliberate: 0.18 is the first line
+  that patches both GHSA-cg87-wmx4-v546 (HTML attribute injection, patched at 0.16.21) and
+  GHSA-238p-pmpm-9mq7 (a `trust` bypass, patched only at 0.18.2), and within that line
+  0.18.10 is the newest release the publisher has not withdrawn — 0.18.11 is deprecated as
+  an accidental breaking release. From 0.18 the package ships its own declarations, which
+  is why no local module declaration is checked in. A display equation never widens its
+  column: it is split at the break points its author chose (`aligned` rows) and, if it still
+  cannot fit, scrolls inside its own box. That box is what keeps the whole page still: every
+  flex item between the panel and the equation (`panel__header`'s children,
+  `panel__title-row`, the note's own panel) carries `min-width: 0`, because a flex item
+  otherwise takes its min-content width — the whole expression — as its minimum and widens
+  the page at 320px instead of letting the equation scroll. That fix was measured in the
+  running app at 320, 330, 340 and 390 px with the widest note open and closed: no
+  page-level overflow at any of them, and the equation scrolls inside its own box only
+  where the column is too narrow for it. `node scripts/check-math.mjs
+  <notes.json>` typesets every expression in an exported note dictionary and exits non-zero
+  on the first malformed one, so a bad equation is caught before it ships rather than in the
+  browser.
 - The app opens on the Home screen and fetches the model contract only when the
   analysis dashboard is first opened, so Home itself makes no API request and
-  nothing is analysed before its own action button is pressed.
-- Results are snapshots, so each tab re-runs from its own button. The readiness,
+  nothing is analysed before its own action button is pressed.- Results are snapshots, so each tab re-runs from its own button. The readiness,
   HTA summary and value-based price tabs additionally flag a stored result as
   computed from earlier inputs when their own inputs have changed, and no result
   is removed by editing or resetting an input.
@@ -762,6 +1024,20 @@ deployed.
   result until its own button is used, and R reports a price it could not identify
   as "Not available" with its own reason rather than as a number. See
   [`../FRONTEND_PLAN.md`](../FRONTEND_PLAN.md) for what is still planned.
+- The economic domain of that summary is decided by the incremental net monetary
+  benefit, not by the ICER: the summary request carries the base case's
+  `incremental_cost` and `incremental_qalys` alongside `icer`, and
+  `assess_hta_decision_summary()` compares `wtp × incremental_qalys −
+  incremental_cost` with zero. A ratio cannot decide that comparison safely — a
+  negative ICER is below every positive threshold whether eQalb costs less and adds
+  health or costs more and adds none — so the ICER is reported only where it is
+  interpretable (positive incremental health) and never sets a colour on its own.
+  The other four domains, the 50%/5% probability bands and the overall/position
+  wording are unchanged, and the disclosure that explains the rules says the same
+  thing as the code. The availability block follows the same rule: `base_case` is
+  true when either the ICER or the two differences arrived, and `missing_inputs`
+  names the two differences rather than the ICER, so a verdict that did not need an
+  ICER is never presented as an assessment whose base case was missing.
 - The readiness tab inherits the population and the two engagement values from the
   shared assumptions instead of holding its own copies, so changing them there
   changes the readiness request too. Its "Traffic-light rules" disclosure carries

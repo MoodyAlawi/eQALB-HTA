@@ -24,8 +24,10 @@ import type {
 } from '../api/types'
 import { NOT_INTERPRETABLE, formatCount, formatNumber, formatPercent, isNum } from '../format'
 import { useModel } from '../composables/useModel'
+import { useAppView } from '../composables/useAppView'
 import { useResultEntrance } from '../composables/useResultEntrance'
 import InfoTip from './InfoTip.vue'
+import MethodInfo from './MethodInfo.vue'
 import ButtonLabel from './ButtonLabel.vue'
 import MetricCard from './MetricCard.vue'
 import ResultTrace from './ResultTrace.vue'
@@ -136,6 +138,20 @@ const groups = computed<ReadinessGroup[]>(() => {
 /** Engagement is a shared assumption, shown as the percentage the API receives. */
 function engagementLabel(pct: number | undefined): string {
   return isNum(pct) ? `${formatNumber(pct, 1)}%` : NOT_INTERPRETABLE
+}
+
+const { showJourneyExplainer } = useAppView()
+
+/**
+ * Opens this module's lesson from the Guided tutorial as a standalone explainer.
+ *
+ * The tutorial's own worked example is what the lesson assesses: it reads none of the
+ * settings on this panel and changes none of them, so the stored assessment behind
+ * this panel is exactly as the learner left it when they come back. The chapter id is
+ * R's, and the journey screen decides what it can open.
+ */
+function openExplainer(): void {
+  showJourneyExplainer('readiness')
 }
 
 /**
@@ -290,7 +306,10 @@ const settingsNote = computed(() =>
   <section class="panel">
     <header class="panel__header">
       <div>
-        <h2>DHT readiness and implementation</h2>
+        <div class="panel__title-row">
+          <h2>DHT readiness and implementation</h2>
+          <MethodInfo module="readiness" />
+        </div>
         <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
           An illustrative assessment: could this digital therapeutic be implemented in practice?
@@ -304,6 +323,14 @@ const settingsNote = computed(() =>
           @click="model.runReadiness()"
         >
           <ButtonLabel :busy="model.busy.readiness" idle="Assess readiness" pending="Assessing readiness…" />
+        </button>
+        <button
+          type="button"
+          class="btn btn--ghost"
+          title="Read this module's lesson on its own, in the Guided tutorial. It uses the tutorial's own worked example, not your analysis settings, and returns here when you are done."
+          @click="openExplainer()"
+        >
+          Explain this
         </button>
         <button
           type="button"

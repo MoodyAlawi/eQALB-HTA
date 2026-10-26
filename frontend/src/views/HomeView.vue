@@ -48,25 +48,38 @@
 import { computed, ref } from 'vue'
 import { useAppView, type AppPage } from '../composables/useAppView'
 import { useTheme } from '../composables/useTheme'
+import { useTutorialJourney } from '../composables/useTutorialJourney'
 import { DIALOG_TRANSITION_NAME, onDialogLeave } from '../composables/useDialogTransition'
 import { useModalFocus } from '../composables/useModalFocus'
+import EcgOverlay from '../components/EcgOverlay.vue'
 
-const { show } = useAppView()
+const { show, showJourney } = useAppView()
 const { theme, toggle } = useTheme()
+// Read, never requested: the journey's own session says whether there is progress, and
+// asking it here costs no API call, which is what keeps Home request-free.
+const { hasProgress: journeyStarted } = useTutorialJourney()
 
 /**
  * The two menu choices that explain themselves before they navigate, and the
  * words each explanation carries. One short title, one sentence describing what
  * the choice actually opens, and the label of the action that continues to it.
  */
-type MenuChoice = 'workspace' | 'tutorial'
+type MenuChoice = 'workspace' | 'journey'
 
 interface Explanation {
   title: string
   text: string
   action: string
-  page: AppPage
+  /** The page the action opens, or null for the journey's own in-app entry. */
+  page: AppPage | null
 }
+
+/**
+ * The guided tutorial's own screen, kept in the app but no longer offered from Home:
+ * the narrative tutorial replaced it in the menu. Its view, its session composable and
+ * its route are untouched, so it stays reachable by its own address while the menu
+ * offers one tutorial rather than two.
+ */
 
 const EXPLANATIONS: Record<MenuChoice, Explanation> = {
   workspace: {
@@ -75,11 +88,11 @@ const EXPLANATIONS: Record<MenuChoice, Explanation> = {
     action: 'Open workspace',
     page: 'dashboard',
   },
-  tutorial: {
-    title: 'Learn by doing',
-    text: 'Work through a guided example, change a few assumptions, and explore how the results respond.',
-    action: 'Start tutorial',
-    page: 'tutorial',
+  journey: {
+    title: 'The Journey',
+    text: 'Work through one case from the base case to the recommendation, one lesson at a time.',
+    action: 'Start The Journey',
+    page: null,
   },
 }
 
@@ -92,10 +105,22 @@ const active = ref<MenuChoice | null>(null)
 const menuOpen = computed(() => active.value !== null)
 const explanation = computed(() => (active.value ? EXPLANATIONS[active.value] : null))
 
+/**
+ * The overlay's action label. The journey's follows the session — "Start" before there
+ * is progress and "Resume" after — so the menu tells the learner which of the two they
+ * are about to do, while the destination is the same entry either way.
+ */
+const continueLabel = computed(() => {
+  const entry = explanation.value
+  if (!entry) return ''
+  if (active.value === 'journey' && journeyStarted.value) return 'Resume The Journey'
+  return entry.action
+})
+
 const menuModal = ref<HTMLElement | null>(null)
 const menuContinue = ref<HTMLButtonElement | null>(null)
 const workspaceButton = ref<HTMLButtonElement | null>(null)
-const tutorialButton = ref<HTMLButtonElement | null>(null)
+const journeyButton = ref<HTMLButtonElement | null>(null)
 
 useModalFocus(menuOpen, menuModal, {
   initialFocus: () => menuContinue.value,
@@ -103,7 +128,7 @@ useModalFocus(menuOpen, menuModal, {
   // the focus goes to the choice it belongs to — closing never leaves the keyboard
   // on the document.
   fallbackFocus: () =>
-    (active.value === 'tutorial' ? tutorialButton.value : workspaceButton.value),
+    (active.value === 'journey' ? journeyButton.value : workspaceButton.value),
 })
 
 function openExplanation(choice: MenuChoice): void {
@@ -114,11 +139,24 @@ function closeExplanation(): void {
   active.value = null
 }
 
-/** The overlay's own action: close first, then navigate — once, and at once. */
+/**
+ * The overlay's own action: close first, then navigate — once, and at once.
+ *
+ * The journey does not have a page of its own in this store's sense: it is the
+ * application at its own address, opened through the navigation store's whole-journey
+ * entry so a learner who has already started it lands back where they were, and so the
+ * address cannot carry a stale explainer flag. Everything else is a plain page move.
+ */
 function continueTo(): void {
-  const page = explanation.value?.page
+  const choice = active.value
+  const explanation = choice ? EXPLANATIONS[choice] : null
   active.value = null
-  if (page) show(page)
+  if (!explanation) return
+  if (choice === 'journey') {
+    showJourney()
+    return
+  }
+  if (explanation.page) show(explanation.page)
 }
 
 function onMenuKeydown(event: KeyboardEvent): void {
@@ -212,13 +250,18 @@ const TRACE_TRAIL = 'M0 64 H20 Q30 48 40 64 L46 74 L56 30 L70 88 L82 64 H96 Q108
         >
           Open analysis workspace
         </button>
+        <!-- The tutorial the menu offers is the narrative one, "The Journey". It keeps
+             the explanation-before-navigation pattern the other entry point uses, and
+             its wording follows the session: "Resume" once the journey has moved. The
+             legacy guided tutorial is no longer listed here; its screen and session are
+             unchanged, so it remains reachable by its own address. -->
         <button
-          ref="tutorialButton"
+          ref="journeyButton"
           type="button"
           class="btn home__action home__action--choice"
-          @click="openExplanation('tutorial')"
+          @click="openExplanation('journey')"
         >
-          Guided tutorial
+          The Journey{{ journeyStarted ? ' (resume)' : '' }}
         </button>
         <button type="button" class="btn home__action" @click="show('description')">
           Project description
@@ -270,19 +313,23 @@ const TRACE_TRAIL = 'M0 64 H20 Q30 48 40 64 L46 74 L56 30 L70 88 L82 64 H96 Q108
       >
         <div class="modal__backdrop" @click="closeExplanation()"></div>
         <div class="modal__panel modal__panel--welcome">
-          <h2 id="menu-explanation-title" class="modal__title">{{ explanation.title }}</h2>
-          <p id="menu-explanation-text" class="page__prose">{{ explanation.text }}</p>
-          <div class="tutorial__nav">
-            <button
-              ref="menuContinue"
-              type="button"
-              class="btn btn--primary"
-              @click="continueTo()"
-            >
-              {{ explanation.action }}
-            </button>
-            <button type="button" class="btn btn--ghost" @click="closeExplanation()">Close</button>
-          </div>
+          <EcgOverlay variant="centre">
+            <h2 id="menu-explanation-title" class="modal__title">{{ explanation.title }}</h2>
+            <p id="menu-explanation-text" class="page__prose">{{ explanation.text }}</p>
+            <template #actions>
+              <button
+                ref="menuContinue"
+                type="button"
+                class="btn btn--primary"
+                @click="continueTo()"
+              >
+                {{ continueLabel }}
+              </button>
+              <button type="button" class="btn btn--ghost" @click="closeExplanation()">
+                Close
+              </button>
+            </template>
+          </EcgOverlay>
         </div>
       </div>
     </Transition>

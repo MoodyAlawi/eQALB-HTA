@@ -42,6 +42,7 @@ export type AppPage =
   | 'blog'
   | 'home'
   | 'tutorial'
+  | 'journey'
   | 'description'
   | 'export'
   | 'dashboard'
@@ -51,6 +52,40 @@ const APP_PATH = '/app'
 const ABOUT_PATH = '/about'
 const BLOG_PATH = '/blog'
 
+/**
+ * The analysis dashboard's tabs. The list itself belongs to the shell that draws it;
+ * only the selected one is kept here, so a screen outside the dashboard (the
+ * tutorial, a standalone explainer) can read where the learner was and put them back
+ * there without owning the strip.
+ */
+export type DashboardTabId =
+  | 'baseCase'
+  | 'ce'
+  | 'sensitivity'
+  | 'budget'
+  | 'survival'
+  | 'voi'
+  | 'readiness'
+  | 'valueBasedPrice'
+  | 'hta'
+
+/**
+ * Which dashboard tab is selected.
+ *
+ * It lives here rather than in the shell because it now has a reader outside the
+ * shell: returning from a standalone tutorial explainer restores the tab it was
+ * opened from. Nothing else about the strip moves - the default is still the base
+ * case, and only the shell sets it in ordinary use.
+ */
+const dashboardTab = ref<DashboardTabId>('baseCase')
+
+/**
+ * The chapter a standalone explainer is showing, or null when the journey is being
+ * read as a whole. It is part of the address, so a refresh or a direct link reopens
+ * the same explainer rather than the journey's first chapter.
+ */
+const explainerChapter = ref<string | null>(null)
+
 /** Every eQalb screen shares /app; only the public pages have an address of their own. */
 const PAGE_PATHS: Record<AppPage, string> = {
   openhealth: LANDING_PATH,
@@ -58,6 +93,7 @@ const PAGE_PATHS: Record<AppPage, string> = {
   blog: BLOG_PATH,
   home: APP_PATH,
   tutorial: APP_PATH,
+  journey: APP_PATH,
   description: APP_PATH,
   export: APP_PATH,
   dashboard: APP_PATH,
@@ -106,12 +142,33 @@ function isPublishedPath(path: string): boolean {
   return PUBLIC_PATHS.includes(path) || isBlogPath(path)
 }
 
-function pageForPath(pathname: string): AppPage {
+function pageForPath(pathname: string, search = ''): AppPage {
   const path = normalise(pathname)
   if (path === ABOUT_PATH) return 'about'
   if (isBlogPath(path)) return 'blog'
-  if (path === APP_PATH) return 'home'
+  if (path === APP_PATH) {
+    // The redesigned journey is reached by an explicit flag on the application's
+    // own address, so the current tutorial stays the default entry and neither
+    // screen needs an address of its own.
+    return new URLSearchParams(search).get('journey') === '1' ? 'journey' : 'home'
+  }
   return 'openhealth'
+}
+
+/**
+ * The chapter named by an `explain` flag on the application's address, or null.
+ *
+ * A standalone explainer is the same journey screen with one chapter opened on its
+ * own, so it needs no address of its own: `?journey=1&explain=readiness` is the
+ * journey, in explainer mode, on the chapter named. An `explain` flag without the
+ * journey flag is not an address this shell publishes, so it is ignored and the
+ * address is rewritten with the page that is actually shown.
+ */
+function explainerForSearch(search: string): string | null {
+  const params = new URLSearchParams(search)
+  if (params.get('journey') !== '1') return null
+  const id = params.get('explain')
+  return id && id.length > 0 ? id : null
 }
 
 /**
@@ -134,11 +191,18 @@ function postSlugForPath(pathname: string): string | null {
 
 const initialPath =
   typeof window === 'undefined' ? LANDING_PATH : normalise(window.location.pathname)
+const initialSearch = typeof window === 'undefined' ? '' : window.location.search
 
-const page = ref<AppPage>(typeof window === 'undefined' ? 'openhealth' : pageForPath(initialPath))
+const page = ref<AppPage>(
+  typeof window === 'undefined' ? 'openhealth' : pageForPath(initialPath, initialSearch),
+)
 
 /** The post the blog is showing, or null while the blog index is showing. */
 const postSlug = ref<string | null>(typeof window === 'undefined' ? null : postSlugForPath(initialPath))
+
+if (typeof window !== 'undefined' && page.value === 'journey') {
+  explainerChapter.value = explainerForSearch(initialSearch)
+}
 
 /**
  * Whether the page on screen was reached by Back or Forward rather than by
@@ -173,14 +237,42 @@ function addressFor(next: AppPage): string {
  * Writes the address for a page and keeps the title with it. Moves inside eQalb
  * share /app, so they change nothing here: the single eQalb history entry the
  * visitor arrived through is the one Back leaves eQalb by.
+ *
+ * The query is what separates the journey and a standalone explainer from Home, so
+ * it is composed rather than kept: entering the journey sets `journey=1`, opening an
+ * explainer adds `explain=<chapterId>`, and leaving either removes both, so a reload
+ * of Home opens Home rather than a lesson. Any other parameter an address already
+ * carries is left alone.
  */
+function journeyQuery(next: AppPage): string {
+  if (typeof window === 'undefined') return ''
+  const search = new URLSearchParams(window.location.search)
+  search.delete('explain')
+  if (next === 'journey') {
+    search.set('journey', '1')
+    if (explainerChapter.value) search.set('explain', explainerChapter.value)
+  } else {
+    search.delete('journey')
+  }
+  return search.toString()
+}
+
 function syncAddress(next: AppPage): void {
   restoredByHistory = false
   if (typeof window === 'undefined') return
   const path = addressFor(next)
   setTitle(path)
-  if (normalise(window.location.pathname) === path) return
-  window.history.pushState({ page: next }, '', path)
+  const query = journeyQuery(next)
+  const target = query ? `${path}?${query}` : path
+  const samePath = normalise(window.location.pathname) === path
+  if (!samePath) {
+    window.history.pushState({ page: next }, '', target)
+    return
+  }
+  const current = new URLSearchParams(window.location.search).toString()
+  if (current !== query) {
+    window.history.replaceState({ page: next }, '', target)
+  }
 }
 
 let installed = false
@@ -201,7 +293,11 @@ function installHistory(): void {
     const path = normalise(window.location.pathname)
     restoredByHistory = true
     postSlug.value = postSlugForPath(path)
-    page.value = pageForPath(path)
+    page.value = pageForPath(path, window.location.search)
+    // Back or Forward onto an explainer address reopens that explainer; onto any
+    // other address it leaves explainer mode.
+    explainerChapter.value =
+      page.value === 'journey' ? explainerForSearch(window.location.search) : null
     setTitle(path)
   })
 }
@@ -211,8 +307,42 @@ function show(next: AppPage): void {
   // the page itself, so moving to one of them closes whatever post was open.
   // Only `showPost` carries a slug into the address.
   postSlug.value = null
+  // Explainer mode belongs to the journey screen: leaving it closes the lesson.
+  if (next !== 'journey') explainerChapter.value = null
   page.value = next
   syncAddress(next)
+}
+
+/**
+ * Opens one chapter of the journey on its own, as the standalone explainer for the
+ * dashboard module it belongs to. The chapter id is R's, so nothing here holds a
+ * list of chapters or maps a module to a script.
+ */
+function showJourneyExplainer(chapterId: string): void {
+  explainerChapter.value = chapterId
+  show('journey')
+}
+
+/**
+ * Opens the whole journey, leaving explainer mode if a lesson is open.
+ *
+ * Explainer mode lives in the address (`?journey=1&explain=<id>`), and the whole
+ * journey is the same screen without that flag. It is cleared here, before the address
+ * is composed, because `show('journey')` deliberately keeps a lesson open — that is what
+ * lets `showJourneyExplainer` set the flag and then show the screen. Calling it while a
+ * lesson is open would therefore keep `explain=<id>` in the address, and the journey
+ * screen reads a set flag with no lesson open as a lesson it cannot show. Closing the
+ * lesson's own state is the journey composable's job; this only stops the address from
+ * asking for a lesson that is no longer open.
+ */
+function showJourney(): void {
+  explainerChapter.value = null
+  show('journey')
+}
+
+/** Selects one dashboard tab. The shell calls this; the journey's return reads it. */
+function setDashboardTab(id: DashboardTabId): void {
+  dashboardTab.value = id
 }
 
 /**
@@ -296,6 +426,13 @@ export function useAppView() {
     postSlug,
     show,
     showPost,
+    showJourney,
+    showJourneyExplainer,
+    /** The chapter a standalone explainer is showing, or null in the journey. */
+    explainerChapter,
+    /** The selected dashboard tab, which the journey's return restores. */
+    dashboardTab,
+    setDashboardTab,
     goHome(): void {
       show('home')
     },

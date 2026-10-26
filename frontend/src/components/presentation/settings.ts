@@ -71,17 +71,22 @@ export function supersededSentence(): string {
 /**
  * The labels for the request fields the HTA summary can report as not supplied.
  *
- * The endpoint names five fields — the only five it can report — and a presentation
- * is read by someone who has never seen the contract, so each is named here with the
- * wording the workspace already uses for that value (the metric card's own label).
- * No field is dropped and no value is guessed: a presentation says which information
- * the assessment did not receive, in the reader's terms.
+ * The endpoint names the fields it can report — the upstream analyses' own values
+ * — and a presentation is read by someone who has never seen the contract, so each
+ * is named here with the wording the workspace already uses for that value (the
+ * metric card's own label). No field is dropped and no value is guessed: a
+ * presentation says which information the assessment did not receive, in the
+ * reader's terms.
  *
- * A field the contract does not currently have is written out with its underscores
- * removed rather than left as an identifier, so nothing is ever shown as a raw name
- * even if the endpoint grows a sixth.
+ * `incremental_cost` and `incremental_qalys` are the two the economic rule reads;
+ * `icer` is kept for a response from a build that still reported it. A field the
+ * contract does not have is written out with its underscores removed rather than
+ * left as an identifier, so nothing is ever shown as a raw name even if the
+ * endpoint grows another.
  */
 const AVAILABILITY_FIELD_LABELS: Record<string, string> = {
+  incremental_cost: 'Incremental cost',
+  incremental_qalys: 'Incremental QALYs',
   icer: 'ICER',
   probability_cost_effective: 'Probability cost-effective',
   evpi: 'EVPI per patient',

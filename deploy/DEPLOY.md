@@ -322,7 +322,11 @@ Browser smoke path:
    content and no CORS error; the console is free of errors.
 2. `GET /api/defaults` succeeds in the network tab.
 3. Run the base case; charts and tables render.
-4. Open the guided tutorial and complete Part 1.
+4. Open `https://<your-domain>/app?journey=1` and work through the Case brief and
+   Chapter 2, the base case: the brief's text appears, advancing runs one base
+   case, and its incremental cost, QALYs and ICER render. The journey is served
+   by the R journey endpoints, so this step fails visibly if the backend was
+   deployed without `eqalb_tutorial_journey.R`.
 5. Run one sensitivity analysis.
 6. First PSA: **100 iterations, seed 12345** (about 20 seconds). Confirm the
    cost-effectiveness plane and CEAC render.

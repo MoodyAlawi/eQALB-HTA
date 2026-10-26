@@ -20,6 +20,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { DIALOG_TRANSITION_NAME, onDialogLeave } from '../../composables/useDialogTransition'
 import { useModalFocus } from '../../composables/useModalFocus'
+import EcgOverlay from '../EcgOverlay.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -151,29 +152,31 @@ function onKeydown(event: KeyboardEvent): void {
       @keydown="onKeydown"
     >
       <div class="modal__backdrop" @click="close()"></div>
-      <div class="modal__panel present">
-        <header class="present__head">
-          <p class="present__identity">
-            <span class="present__brand">eQalb</span>
-            <span class="present__title" id="present-title">{{ title }}</span>
-          </p>
-          <button ref="closeButton" type="button" class="btn" @click="close()">Close</button>
-        </header>
+      <div class="modal__panel">
+        <EcgOverlay variant="reading" class="present">
+          <header class="present__head">
+            <p class="present__identity">
+              <span class="present__brand">eQalb</span>
+              <span class="present__title" id="present-title">{{ title }}</span>
+            </p>
+            <button ref="closeButton" type="button" class="btn" @click="close()">Close</button>
+          </header>
 
-        <p v-if="stale" class="alert alert--warning">{{ stale }}</p>
-        <p v-if="superseded" class="alert alert--info">{{ superseded }}</p>
+          <p v-if="stale" class="alert alert--warning">{{ stale }}</p>
+          <p v-if="superseded" class="alert alert--info">{{ superseded }}</p>
 
-        <slot />
+          <slot />
 
-        <details v-if="$slots.settings" class="details">
-          <summary>{{ settingsLabel }}</summary>
-          <p class="muted">{{ settingsNote }}</p>
-          <slot name="settings" />
-        </details>
+          <details v-if="$slots.settings" class="details">
+            <summary>{{ settingsLabel }}</summary>
+            <p class="muted">{{ settingsNote }}</p>
+            <slot name="settings" />
+          </details>
 
-        <slot name="footer" />
+          <slot name="footer" />
 
-        <p class="present__notice">{{ notice }}</p>
+          <p class="present__notice">{{ notice }}</p>
+        </EcgOverlay>
       </div>
     </div>
   </Transition>

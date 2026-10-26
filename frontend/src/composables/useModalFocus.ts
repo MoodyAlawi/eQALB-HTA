@@ -81,7 +81,8 @@ function tabbable(root: HTMLElement): HTMLElement[] {
  * one.
  */
 function panel(modal: HTMLElement): HTMLElement {
-  const found = modal.querySelector<HTMLElement>('.modal__panel') ?? modal
+  const found =
+    modal.querySelector<HTMLElement>('.modal__panel, .joverlay__panel') ?? modal
   if (!found.hasAttribute('tabindex')) found.setAttribute('tabindex', '-1')
   return found
 }

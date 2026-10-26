@@ -19,7 +19,9 @@ import { useModalFocus } from '../composables/useModalFocus'
 import { DIALOG_TRANSITION_NAME, onDialogLeave } from '../composables/useDialogTransition'
 import ButtonLabel from './ButtonLabel.vue'
 import ChartDownload from './ChartDownload.vue'
+import EcgOverlay from './EcgOverlay.vue'
 import InfoTip from './InfoTip.vue'
+import MethodInfo from './MethodInfo.vue'
 import CostEffectivenessPlane from './charts/CostEffectivenessPlane.vue'
 import CeacChart from './charts/CeacChart.vue'
 import { probabilityAtThreshold } from './charts/ceac'
@@ -257,7 +259,10 @@ const presentedStale = computed(() =>
   <section class="panel">
     <header class="panel__header">
       <div>
-        <h2>Cost-effectiveness plane and PSA</h2>
+        <div class="panel__title-row">
+          <h2>Cost-effectiveness plane and PSA</h2>
+          <MethodInfo module="uncertainty" />
+        </div>
         <ResultTrace :reveal-class="revealClass" />
         <p class="muted">How much does the answer change when the assumptions are uncertain?</p>
       </div>
@@ -425,19 +430,26 @@ const presentedStale = computed(() =>
       >
         <div class="modal__backdrop" @click="cancelPsa()"></div>
         <div class="modal__panel modal__panel--welcome">
-          <h2 id="psa-confirm-title" class="modal__title">
-            Run the PSA with {{ formatNumber(model.psaSims) }} iterations?
-          </h2>
-          <p class="page__prose">
-            Running 1,000 or more iterations may take a few minutes. If you want a quick PSA, change
-            the number of iterations to 100.
-          </p>
-          <div class="tutorial__nav">
-            <button ref="psaContinue" type="button" class="btn btn--primary" @click="continuePsa()">
-              Continue
-            </button>
-            <button type="button" class="btn btn--ghost" @click="cancelPsa()">Cancel</button>
-          </div>
+          <EcgOverlay variant="centre">
+            <h2 id="psa-confirm-title" class="modal__title">
+              Run the PSA with {{ formatNumber(model.psaSims) }} iterations?
+            </h2>
+            <p class="page__prose">
+              Running 1,000 or more iterations may take a few minutes. If you want a quick PSA,
+              change the number of iterations to 100.
+            </p>
+            <template #actions>
+              <button
+                ref="psaContinue"
+                type="button"
+                class="btn btn--primary"
+                @click="continuePsa()"
+              >
+                Continue
+              </button>
+              <button type="button" class="btn btn--ghost" @click="cancelPsa()">Cancel</button>
+            </template>
+          </EcgOverlay>
         </div>
       </div>
     </Transition>

@@ -14,6 +14,7 @@ import { formatEuro, formatNumber, formatQaly, formatThreshold } from '../format
 import { useModel } from '../composables/useModel'
 import { useResultEntrance } from '../composables/useResultEntrance'
 import InfoTip from './InfoTip.vue'
+import MethodInfo from './MethodInfo.vue'
 import ButtonLabel from './ButtonLabel.vue'
 import ChartDownload from './ChartDownload.vue'
 import DataTable from './DataTable.vue'
@@ -176,7 +177,10 @@ const settingsNote = computed(() =>
   <section class="panel">
     <header class="panel__header">
       <div>
-        <h2>Value of information</h2>
+        <div class="panel__title-row">
+          <h2>Value of information</h2>
+          <MethodInfo module="voi" />
+        </div>
         <ResultTrace :reveal-class="revealClass" />
         <p class="muted">How much could resolving uncertainty be worth?</p>
       </div>

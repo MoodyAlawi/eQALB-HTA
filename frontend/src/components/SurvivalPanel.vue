@@ -25,6 +25,7 @@ import type {
 } from '../api/types'
 import { formatCount, formatNumber, formatPercent, isNum, type Tone } from '../format'
 import { useModel } from '../composables/useModel'
+import { useAppView } from '../composables/useAppView'
 import { useResultEntrance } from '../composables/useResultEntrance'
 import { prepareCsvDownload } from '../composables/useDownloadNotice'
 import { EXPORT_FILENAMES, kmSummaryCsv } from '../export/tabExports'
@@ -33,6 +34,7 @@ import ButtonLabel from './ButtonLabel.vue'
 import ChartDownload from './ChartDownload.vue'
 import DataTable from './DataTable.vue'
 import InfoTip from './InfoTip.vue'
+import MethodInfo from './MethodInfo.vue'
 import MetricCard from './MetricCard.vue'
 import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
@@ -46,6 +48,21 @@ import type { Column } from './table'
 const model = useModel()
 // The entrance this tab's result plays when it is committed; see the composable.
 const { revealClass } = useResultEntrance('survival')
+
+const { showJourneyExplainer } = useAppView()
+
+/**
+ * Opens this module's lesson from the Guided tutorial as a standalone explainer.
+ *
+ * The tutorial's own worked example is what the lesson draws: 1,000 simulated people per
+ * arm at the case's effect assumptions, read from the tutorial's contract rather than
+ * from this panel's seed, sample size or follow-up. Nothing here runs, moves or clears
+ * the simulated curves behind this panel, and the journey screen decides whether the
+ * chapter can be opened this way at all.
+ */
+function openExplainer(): void {
+  showJourneyExplainer('survival')
+}
 
 const result = computed(() => model.survival)
 const steps = computed<KmStep[]>(() => result.value?.steps ?? [])
@@ -305,7 +322,10 @@ const presentedStale = computed(() =>
   <section class="panel">
     <header class="panel__header">
       <div>
-        <h2>Simulated Kaplan-Meier analysis</h2>
+        <div class="panel__title-row">
+          <h2>Simulated Kaplan-Meier analysis</h2>
+          <MethodInfo module="survival" />
+        </div>
         <ResultTrace :reveal-class="revealClass" />
         <p class="muted">How might event-free survival compare between the arms?</p>
       </div>
@@ -317,6 +337,14 @@ const presentedStale = computed(() =>
           @click="model.runSurvival()"
         >
         <ButtonLabel :busy="model.busy.survival" idle="Run survival simulation" pending="Simulating survival…" />
+        </button>
+        <button
+          type="button"
+          class="btn btn--ghost"
+          title="Read this module's lesson on its own, in the Guided tutorial. It uses the tutorial's own worked example — 1,000 simulated people per arm at the case's effect assumptions — not your analysis settings, and returns here when you are done."
+          @click="openExplainer()"
+        >
+          Explain this
         </button>
         <button
           v-if="result"

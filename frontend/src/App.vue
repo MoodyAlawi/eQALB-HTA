@@ -30,7 +30,7 @@
 import { computed, ref, watch } from 'vue'
 import { useModel } from './composables/useModel'
 import { useTheme } from './composables/useTheme'
-import { useAppView } from './composables/useAppView'
+import { useAppView, type DashboardTabId as TabId } from './composables/useAppView'
 import AssumptionsForm from './components/AssumptionsForm.vue'
 import BaseCasePanel from './components/BaseCasePanel.vue'
 import CostEffectivenessPanel from './components/CostEffectivenessPanel.vue'
@@ -45,6 +45,7 @@ import HomeView from './views/HomeView.vue'
 import ProjectDescriptionView from './views/ProjectDescriptionView.vue'
 import DownloadResultsView from './views/DownloadResultsView.vue'
 import TutorialView from './views/TutorialView.vue'
+import JourneyView from './views/JourneyView.vue'
 import OpenHealthHomeView from './views/OpenHealthHomeView.vue'
 import AboutView from './views/AboutView.vue'
 import BlogIndexView from './views/BlogIndexView.vue'
@@ -52,21 +53,11 @@ import BlogPostView from './views/BlogPostView.vue'
 import AppLoadingIndicator from './components/AppLoadingIndicator.vue'
 import DownloadNotice from './components/DownloadNotice.vue'
 import LaunchTransition from './components/LaunchTransition.vue'
+import EcgOverlay from './components/EcgOverlay.vue'
 import { useTabUnderline } from './composables/useTabUnderline'
 import { usePageEntrance } from './composables/usePageEntrance'
 import { DIALOG_TRANSITION_NAME, onDialogLeave } from './composables/useDialogTransition'
 import { useModalFocus } from './composables/useModalFocus'
-
-type TabId =
-  | 'baseCase'
-  | 'ce'
-  | 'sensitivity'
-  | 'budget'
-  | 'survival'
-  | 'voi'
-  | 'readiness'
-  | 'valueBasedPrice'
-  | 'hta'
 
 interface Tab {
   id: TabId
@@ -76,11 +67,11 @@ interface Tab {
 
 const TABS: readonly Tab[] = [
   { id: 'baseCase', label: 'Base case', hint: 'Incremental cost, QALYs and ICER' },
-  { id: 'ce', label: 'Cost-effectiveness and PSA', hint: 'Plane, iterations and CEAC' },
   { id: 'sensitivity', label: 'Sensitivity analysis', hint: 'Tornado diagram' },
+  { id: 'ce', label: 'Cost-effectiveness and PSA', hint: 'Plane, iterations and CEAC' },
+  { id: 'voi', label: 'Value of information', hint: 'EVPI and EVPPI' },
   { id: 'budget', label: 'Budget impact', hint: 'Costs over the horizon' },
   { id: 'survival', label: 'Simulated survival', hint: 'Kaplan-Meier curves' },
-  { id: 'voi', label: 'Value of information', hint: 'EVPI and EVPPI' },
   { id: 'readiness', label: 'DHT readiness', hint: 'Implementation domains and statuses' },
   {
     id: 'valueBasedPrice',
@@ -92,7 +83,7 @@ const TABS: readonly Tab[] = [
 
 const model = useModel()
 const { theme, toggle } = useTheme()
-const { page, show, postSlug } = useAppView()
+const { page, show, postSlug, dashboardTab: activeTab, setDashboardTab } = useAppView()
 
 /**
  * The welcome overlay.
@@ -188,7 +179,12 @@ function onWelcomeKeydown(event: KeyboardEvent): void {
   }
 }
 
-const activeTab = ref<TabId>('baseCase')
+/**
+ * The selected tab comes from the navigation store now, not from a ref here: the
+ * readiness panel's standalone explainer returns to the module it was opened from,
+ * so the selection has one reader outside this shell. This shell is still the only
+ * thing that changes it in ordinary use.
+ */
 const showAssumptions = ref(false)
 const activeHint = computed(() => TABS.find((tab) => tab.id === activeTab.value)?.hint ?? '')
 
@@ -208,7 +204,7 @@ function panelId(id: TabId): string {
 }
 
 function activateTab(id: TabId): void {
-  activeTab.value = id
+  setDashboardTab(id)
 }
 
 /**
@@ -476,6 +472,7 @@ watch(page, (next) => {
       <BlogPostView v-else-if="page === 'blog'" />
       <HomeView v-else-if="page === 'home'" />
       <TutorialView v-else-if="page === 'tutorial'" />
+      <JourneyView v-else-if="page === 'journey'" />
       <ProjectDescriptionView v-else-if="page === 'description'" />
       <DownloadResultsView v-else-if="page === 'export'" />
     </div>
@@ -510,24 +507,26 @@ watch(page, (next) => {
       >
         <div class="modal__backdrop" @click="dismissWelcome()"></div>
         <div class="modal__panel modal__panel--welcome">
-          <h2 id="welcome-title" class="modal__title">New to health economics?</h2>
-          <p class="page__prose">
-            Take the short guided tutorial to learn the main ideas before using the full
-            analysis.
-          </p>
-          <div class="tutorial__nav">
-            <button
-              ref="welcomeTutorial"
-              type="button"
-              class="btn btn--success"
-              @click="welcomeStartTutorial()"
-            >
-              Start tutorial
-            </button>
-            <button type="button" class="btn btn--primary" @click="welcomeOpenAnalysis()">
-              Open analysis
-            </button>
-          </div>
+          <EcgOverlay variant="centre">
+            <h2 id="welcome-title" class="modal__title">New to health economics?</h2>
+            <p class="page__prose">
+              Take the short guided tutorial to learn the main ideas before using the full
+              analysis.
+            </p>
+            <template #actions>
+              <button
+                ref="welcomeTutorial"
+                type="button"
+                class="btn btn--success"
+                @click="welcomeStartTutorial()"
+              >
+                Start tutorial
+              </button>
+              <button type="button" class="btn btn--primary" @click="welcomeOpenAnalysis()">
+                Open analysis
+              </button>
+            </template>
+          </EcgOverlay>
         </div>
       </div>
     </Transition>

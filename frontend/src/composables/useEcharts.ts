@@ -45,7 +45,20 @@ export interface EchartsHandle {
   render: () => void
 }
 
-export function useEcharts(option: () => EChartsCoreOption): EchartsHandle {
+export interface EchartsOptions {
+  /**
+   * Merge the next option into the current one instead of replacing it. A chart
+   * whose data moves — a point the learner drags along an axis — needs this, or
+   * every update would restart from an empty chart and the point would jump
+   * rather than travel. Every existing chart keeps the replace behaviour.
+   */
+  merge?: boolean
+}
+
+export function useEcharts(
+  option: () => EChartsCoreOption,
+  settings: EchartsOptions = {},
+): EchartsHandle {
   const container = ref<HTMLElement | null>(null)
   let chart: echarts.ECharts | null = null
   let observer: ResizeObserver | null = null
@@ -75,7 +88,7 @@ export function useEcharts(option: () => EChartsCoreOption): EchartsHandle {
       chart = echarts.init(element)
       observe(element, () => chart?.resize())
     }
-    chart.setOption(option(), { notMerge: true })
+    chart.setOption(option(), { notMerge: !settings.merge })
   }
 
   onMounted(render)

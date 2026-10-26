@@ -43,6 +43,7 @@ import DataTable from './DataTable.vue'
 import ButtonLabel from './ButtonLabel.vue'
 import ChartDownload from './ChartDownload.vue'
 import InfoTip from './InfoTip.vue'
+import MethodInfo from './MethodInfo.vue'
 import MetricCard from './MetricCard.vue'
 import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
@@ -240,7 +241,10 @@ const assumptionRows = computed<PresentationSetting[]>(() => {
   <section class="panel">
     <header class="panel__header">
       <div>
-        <h2>Base-case cost-effectiveness</h2>
+        <div class="panel__title-row">
+          <h2>Base-case cost-effectiveness</h2>
+          <MethodInfo module="base_case" />
+        </div>
         <ResultTrace :reveal-class="revealClass" />
         <p class="muted">Is eQalb cost-effective at these assumptions?</p>
       </div>

@@ -12,8 +12,10 @@ import { computed, ref, shallowRef } from 'vue'
 import type { BudgetImpactResponse, BudgetImpactRow } from '../api/types'
 import { formatCount, formatEuro, formatPercent } from '../format'
 import { useModel } from '../composables/useModel'
+import { useAppView } from '../composables/useAppView'
 import { useResultEntrance } from '../composables/useResultEntrance'
 import InfoTip from './InfoTip.vue'
+import MethodInfo from './MethodInfo.vue'
 import ButtonLabel from './ButtonLabel.vue'
 import ChartDownload from './ChartDownload.vue'
 import BudgetImpactChart from './charts/BudgetImpactChart.vue'
@@ -29,6 +31,21 @@ import { movedSentence, supersededSentence, settingRow } from './presentation/se
 import type { Column } from './table'
 
 const model = useModel()
+
+const { showJourneyExplainer } = useAppView()
+
+/**
+ * Opens this module's lesson from the Guided tutorial as a standalone explainer.
+ *
+ * The lesson charges the tutorial's own fixed price and reads none of the settings on
+ * this panel, so the stored budget result behind this panel is untouched when the
+ * learner comes back. The chapter id is R's, and the journey screen decides what it
+ * can open.
+ */
+function openExplainer(): void {
+  showJourneyExplainer('budget')
+}
+
 // The entrance this tab's result plays when it is committed; see the composable.
 const { revealClass } = useResultEntrance('budget')
 
@@ -215,7 +232,10 @@ const settingsNote = computed(() =>
   <section class="panel">
     <header class="panel__header">
       <div>
-        <h2>Budget impact</h2>
+        <div class="panel__title-row">
+          <h2>Budget impact</h2>
+          <MethodInfo module="budget" />
+        </div>
         <ResultTrace :reveal-class="revealClass" />
         <p class="muted">
           What could implementation mean for the budget — deterministic, undiscounted, per year?
@@ -229,6 +249,14 @@ const settingsNote = computed(() =>
           @click="model.runBudget()"
         >
           <ButtonLabel :busy="model.busy.budget" idle="Run budget impact" pending="Running the budget impact…" />
+        </button>
+        <button
+          type="button"
+          class="btn btn--ghost"
+          title="Read this module's lesson on its own, in the Guided tutorial. It uses the tutorial's own worked example at the case's fixed price, not your analysis settings, and returns here when you are done."
+          @click="openExplainer()"
+        >
+          Explain this
         </button>
         <button
           v-if="result"

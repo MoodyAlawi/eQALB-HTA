@@ -24,12 +24,19 @@
  * only renders the text it is given — it never rewords, shortens or summarises
  * it.
  *
+ * A caller may also pass content through the default slot, for the one case where
+ * an explanation has to carry its own control: the QALY panel's one-year line and
+ * its way back to the model's own assumption. The slot sits under the text, and the
+ * button opens for either source, so neither an explanation nor its control can be
+ * lost when only one of them is supplied.
+ *
  * The trigger sits beside the label rather than inside it: a button nested in a
  * <label> would make the label click toggle the panel instead of focusing the
  * field, and is invalid interactive content.
  */
 
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, useSlots } from 'vue'
+import EcgOverlay from './EcgOverlay.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -47,8 +54,12 @@ const open = ref(false)
 const trigger = ref<HTMLButtonElement | null>(null)
 const panel = ref<HTMLElement | null>(null)
 const panelId = `infotip-${useId()}`
+const slots = useSlots()
 
 const hasText = computed(() => typeof props.text === 'string' && props.text.trim().length > 0)
+/** Content supplied by the caller, e.g. a control that belongs with the explanation. */
+const hasDetail = computed(() => Boolean(slots.default))
+const hasPanel = computed(() => hasText.value || hasDetail.value)
 const label = computed(() => `Information about ${props.topic}`)
 
 /** Viewport edge gap, in px, that the overlay keeps clear. */
@@ -161,7 +172,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <span v-if="hasText" class="infotip">
+  <span v-if="hasPanel" class="infotip">
     <button
       ref="trigger"
       type="button"
@@ -176,7 +187,9 @@ onBeforeUnmount(() => {
       <span aria-hidden="true">i</span>
     </button>
     <Teleport to="body">
-      <span
+      <!-- A <div>, not a <span>: callers may put block content in the slot, and a
+           panel with role="region" is a block-level element anyway. -->
+      <div
         v-if="open"
         :id="panelId"
         ref="panel"
@@ -185,9 +198,12 @@ onBeforeUnmount(() => {
         :aria-label="label"
         :style="panelStyle"
       >
-        <strong v-if="title" class="infotip__title">{{ title }}</strong>
-        {{ text }}
-      </span>
+        <EcgOverlay variant="dense">
+          <strong v-if="title" class="infotip__title">{{ title }}</strong>
+          <template v-if="hasText">{{ text }}</template>
+          <div v-if="hasDetail" class="infotip__detail"><slot /></div>
+        </EcgOverlay>
+      </div>
     </Teleport>
   </span>
 </template>

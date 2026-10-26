@@ -49,8 +49,16 @@ const props = withDefaults(
     step: number
     /** Whether the arriving step's heading may take the focus. */
     focusHeading?: boolean
+    /**
+     * Whether a move between steps plays the fade. Part 1 and Part 2 always want
+     * it, so it defaults to on. The journey's chapters are one continuous panel
+     * rather than successive cards, so the journey turns it off and the panel is
+     * simply carried from one chapter to the next: nothing fades out, nothing is
+     * rebuilt, and the chart inside it keeps its instance.
+     */
+    animate?: boolean
   }>(),
-  { focusHeading: true },
+  { focusHeading: true, animate: true },
 )
 
 /**
@@ -112,8 +120,10 @@ function begin(): void {
   // A fade-out is already running: its own timer will hand over to the newest
   // target, so only the direction has been refreshed.
   if (phase.value === 'leaving') return
-  if (prefersReducedMotion()) {
-    // No fade at all: the arriving step is simply shown, immediately.
+  if (!props.animate || prefersReducedMotion()) {
+    // No fade at all: the arriving step is simply shown, immediately. The journey
+    // asks for this, because its chapters are one panel that is carried across
+    // rather than one card replacing another.
     arrive()
     return
   }

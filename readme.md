@@ -18,7 +18,7 @@ Every clinical effect, cost, utility, event risk, survival curve, and economic r
 
 What you can do with it:
 
-- Explore six analysis tabs covering cost effectiveness, uncertainty, affordability, survival, implementation readiness, and decision support.
+- Explore the Shiny application's six analysis tabs covering cost effectiveness, uncertainty, affordability, survival, implementation readiness, and decision support.
 - Work through the guided tutorial if you are new to health economics.
 - Adjust the assumptions and see how each result responds.
 - Download every result available in the session as a single ZIP package.
@@ -33,7 +33,11 @@ deployment records; everything under `deploy/` is a generic template.
 To run the application yourself, see [Running locally](#running-locally) and
 [Deploying it yourself](#deploying-it-yourself).
 
-## Analyses included
+## Analyses included in the Shiny application
+
+The Shiny reference implementation has six analysis tabs. The browser interface
+groups the same model into nine tabs; see
+[Browser application (optional interface)](#browser-application-optional-interface).
 
 | Tab | What it shows |
 |---|---|
@@ -137,11 +141,11 @@ that the model itself is never duplicated:
 | Charts | Apache ECharts, in the same palette as the Shiny application |
 | Model execution | Unchanged: `eqalb_markov.R`, `eqalb_owsa.R` and `eqalb_survival.R` do all the arithmetic |
 
-It covers the base case, the interactive cost-effectiveness plane, the PSA and
-CEAC, the tornado diagram, the budget impact, the simulated Kaplan-Meier analysis
-and value of information. See `api/api_contract.md` and `frontend/README.md`, and
-`FRONTEND_PLAN.md` for what is still planned. Everything it shows is simulated
-illustrative data, exactly as in the Shiny application.
+Its nine analysis tabs are Base case, Sensitivity analysis, Cost-effectiveness
+and PSA, Value of information, Budget impact, Simulated survival, DHT readiness,
+Value-based Price and HTA Decision Summary. See `api/api_contract.md` and
+`frontend/README.md`, and `FRONTEND_PLAN.md` for what is still planned. Everything
+it shows is simulated illustrative data, exactly as in the Shiny application.
 
 The browser build also carries the public OpenHealth shell: the landing page, the
 About page and the blog for news and updates.

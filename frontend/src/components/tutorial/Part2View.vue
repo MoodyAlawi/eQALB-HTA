@@ -30,6 +30,7 @@ import {
   onDialogLeave,
 } from '../../composables/useDialogTransition'
 import { useModalFocus } from '../../composables/useModalFocus'
+import EcgOverlay from '../EcgOverlay.vue'
 import TutorialStepStage from './TutorialStepStage.vue'
 import Part2Brief from './Part2Brief.vue'
 import Part2Value from './Part2Value.vue'
@@ -413,37 +414,39 @@ function exit(): void {
       >
       <div class="modal__backdrop" @click="closeFacts()"></div>
       <div class="modal__panel">
-        <h2 class="modal__title">{{ factsTitle }}</h2>
-        <div class="table-scroll">
-          <table class="table table--wrap" :aria-label="factsTitle">
-            <thead>
-              <tr>
-                <th scope="col">{{ factsLabels.headings.group }}</th>
-                <th scope="col">{{ factsLabels.headings.fact }}</th>
-                <th scope="col">{{ factsLabels.headings.value }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in caseFacts.rows" :key="`${row.group}-${row.fact}`">
-                <th scope="row">{{ row.group }}</th>
-                <td>{{ row.fact }}</td>
-                <td>{{ row.value }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="field__hint">{{ factsLabels.hint }}</p>
-        <div class="tutorial__nav">
-          <button
-            ref="factsClose"
-            type="button"
-            class="btn btn--primary"
-            data-part2-facts-close
-            @click="closeFacts()"
-          >
-            {{ factsLabels.close }}
-          </button>
-        </div>
+        <EcgOverlay variant="reading">
+          <h2 class="modal__title">{{ factsTitle }}</h2>
+          <div class="table-scroll">
+            <table class="table table--wrap" :aria-label="factsTitle">
+              <thead>
+                <tr>
+                  <th scope="col">{{ factsLabels.headings.group }}</th>
+                  <th scope="col">{{ factsLabels.headings.fact }}</th>
+                  <th scope="col">{{ factsLabels.headings.value }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in caseFacts.rows" :key="`${row.group}-${row.fact}`">
+                  <th scope="row">{{ row.group }}</th>
+                  <td>{{ row.fact }}</td>
+                  <td>{{ row.value }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="field__hint">{{ factsLabels.hint }}</p>
+          <template #actions>
+            <button
+              ref="factsClose"
+              type="button"
+              class="btn btn--primary"
+              data-part2-facts-close
+              @click="closeFacts()"
+            >
+              {{ factsLabels.close }}
+            </button>
+          </template>
+        </EcgOverlay>
       </div>
       </div>
     </Transition>
@@ -463,26 +466,29 @@ function exit(): void {
       >
         <div class="modal__backdrop" @click="dismissCongratulations()"></div>
         <div class="modal__panel modal__panel--welcome">
-          <h2 id="part2-congratulations-title" class="modal__title">
-            Congratulations — you've finished the tutorial
-          </h2>
-          <p class="page__prose">
-            You've completed the guided introduction to health technology assessment. Major
-            expansions are planned for the tutorial section — stay tuned for the next blog post!
-          </p>
-          <div class="tutorial__nav">
-            <button
-              ref="congratulationsOpenAnalysis"
-              type="button"
-              class="btn btn--primary"
-              @click="finishTutorial()"
-            >
-              Open analysis
-            </button>
-            <button type="button" class="btn btn--ghost" @click="dismissCongratulations()">
-              Back to the recommendation
-            </button>
-          </div>
+          <EcgOverlay variant="centre">
+            <h2 id="part2-congratulations-title" class="modal__title">
+              Congratulations — you've finished the tutorial
+            </h2>
+            <p class="page__prose">
+              You've completed the guided introduction to health technology assessment. Major
+              expansions are planned for the tutorial section — stay tuned for the next blog
+              post!
+            </p>
+            <template #actions>
+              <button
+                ref="congratulationsOpenAnalysis"
+                type="button"
+                class="btn btn--primary"
+                @click="finishTutorial()"
+              >
+                Open analysis
+              </button>
+              <button type="button" class="btn btn--ghost" @click="dismissCongratulations()">
+                Back to the recommendation
+              </button>
+            </template>
+          </EcgOverlay>
         </div>
       </div>
     </Transition>

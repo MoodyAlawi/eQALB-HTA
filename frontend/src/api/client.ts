@@ -22,6 +22,19 @@ import type {
   Part2CaseResponse,
   Part2Curve,
   Part2EvaluateResponse,
+  JourneyBaseCaseResponse,
+  JourneyBudgetResponse,
+  JourneyContractResponse,
+  JourneyReadinessResponse,
+  JourneyReadinessAnswerKey,
+  JourneyReadinessAnswers,
+  JourneyPriceResponse,
+  JourneyPsaDraw,
+  JourneyPriceSolvePayload,
+  JourneySensitivityResponse,
+  JourneySurvivalResponse,
+  JourneyUncertaintyResponse,
+  JourneyVoiResponse,
   PsaResponse,
   ReadinessInputs,
   ReadinessResponse,
@@ -327,6 +340,153 @@ export function postTutorialPart1(
  */
 export function fetchTutorialPart2(): Promise<TutorialPart2ContractResponse> {
   return request<TutorialPart2ContractResponse>('/tutorial/part2')
+}
+
+/**
+ * The Guided Tutorial journey contract: the fixed case, the chapters this slice
+ * implements, Chapter 1's wording with each answer's feedback, the one price
+ * lever and the provisional verdict options. Building it runs no model.
+ */
+export function fetchTutorialJourney(): Promise<JourneyContractResponse> {
+  return request<JourneyContractResponse>('/tutorial/journey')
+}
+
+/**
+ * One journey base-case result for the case, the price and the score given. The body
+ * carries the two levers; every other assumption is the case's own R-owned value, so
+ * a journey request cannot read or move a dashboard setting. The response is
+ * presentation-ready: values, the ICER's rendering, the status, its interpretation,
+ * the reading sentence and the sentence tying the result to the score all come from R.
+ */
+export function postTutorialJourneyBaseCase(
+  body: JourneyBaseCaseRequest,
+): Promise<JourneyBaseCaseResponse> {
+  return request<JourneyBaseCaseResponse>('/tutorial/journey/base-case', undefined, body)
+}
+
+export interface JourneyBaseCaseRequest {
+  price: number
+  utility_no_event: number
+}
+
+/**
+ * Chapter 2's repeats, drawn for the scenario the learner left Chapter 1 at. R owns
+ * the number of repeats, the seed and the distribution, so the request carries the two
+ * levers and nothing about uncertainty.
+ */
+export function postTutorialJourneyUncertainty(
+  body: JourneyUncertaintyRequest,
+): Promise<JourneyUncertaintyResponse> {
+  return request<JourneyUncertaintyResponse>('/tutorial/journey/uncertainty', undefined, body)
+}
+
+export interface JourneyUncertaintyRequest {
+  price: number
+  utility_no_event: number
+}
+
+/**
+ * Chapter 3's two rankings, drawn for the scenario the learner left Chapter 1 at. R
+ * owns the tested ranges, the ranking and every sentence, so the request carries the
+ * two levers only.
+ */
+export function postTutorialJourneySensitivity(
+  body: JourneySensitivityRequest,
+): Promise<JourneySensitivityResponse> {
+  return request<JourneySensitivityResponse>('/tutorial/journey/sensitivity', undefined, body)
+}
+
+export interface JourneySensitivityRequest {
+  price: number
+  utility_no_event: number
+}
+
+/**
+ * Chapter 4's value of information, computed from the draws Chapter 2 already
+ * returned. The request posts those rows back unchanged, so no simulation runs for
+ * this chapter; the threshold is the reference R published in the contract, echoed
+ * rather than chosen here.
+ */
+export function postTutorialJourneyVoi(
+  body: JourneyVoiRequest,
+): Promise<JourneyVoiResponse> {
+  return request<JourneyVoiResponse>('/tutorial/journey/voi', undefined, body)
+}
+
+export interface JourneyVoiRequest {
+  price: number
+  threshold: number
+  results: JourneyPsaDraw[]
+}
+
+/**
+ * Chapter 5's price comparison at the journey's price and score. `solve` is the solve
+ * R returned for this scenario earlier in the chapter: posting it back lets R reuse
+ * the price at which the balance reaches zero instead of solving again, so revisiting
+ * the chapter costs one model run. R validates the solve — including the scenario key,
+ * which changes with the score — before using it, and computes the balance itself
+ * either way. There is no price lever in this chapter, so the price sent is the one
+ * chosen in the base case.
+ */
+export function postTutorialJourneyPrice(
+  body: JourneyPriceRequest,
+): Promise<JourneyPriceResponse> {
+  return request<JourneyPriceResponse>('/tutorial/journey/price', undefined, body)
+}
+
+export interface JourneyPriceRequest {
+  price: number
+  utility_no_event: number
+  threshold: number
+  solve?: JourneyPriceSolvePayload
+}
+
+/**
+ * Chapter 6's budget impact at the journey's one price. The response carries the whole
+ * coverage sweep, so the coverage cap is chosen in the browser from rows R has already
+ * computed and no further request is made. No utility is sent: the budget calculation
+ * prices active users and has no quality-of-life term.
+ */
+export function postTutorialJourneyBudget(
+  body: JourneyBudgetRequest,
+): Promise<JourneyBudgetResponse> {
+  return request<JourneyBudgetResponse>('/tutorial/journey/budget', undefined, body)
+}
+
+export interface JourneyBudgetRequest {
+  price: number
+}
+
+/**
+ * Chapter 7's assessment of the conditions delivery depends on.
+ *
+ * The request carries the four answers and, when the learner has just chosen one, the
+ * question they answered so R can name the area that answer changed. The case's
+ * population, access shares, engagement values and accessibility are read in R, so
+ * this chapter cannot move the inputs the economics were computed with.
+ */
+export function postTutorialJourneyReadiness(
+  body: JourneyReadinessRequest,
+): Promise<JourneyReadinessResponse> {
+  return request<JourneyReadinessResponse>('/tutorial/journey/readiness', undefined, body)
+}
+
+export interface JourneyReadinessRequest {
+  answers: Partial<JourneyReadinessAnswers>
+  focus_question?: JourneyReadinessAnswerKey
+}
+
+/**
+ * Chapter 8's time-to-event view.
+ *
+ * The request carries no body: every input the simulation reads is fixed in R — the
+ * case's effect assumption, the model's own annual risks, 1,000 people per arm, 10
+ * years and one seed — so the same figure comes back every time and the response names
+ * the simulation it describes for the client's cache. No price or score is sent,
+ * because the curves do not read either.
+ */
+export function postTutorialJourneySurvival(): Promise<JourneySurvivalResponse> {
+  return request<JourneySurvivalResponse>('/tutorial/journey/survival', undefined, {})
 }
 
 export interface TutorialPart2CaseRequest {

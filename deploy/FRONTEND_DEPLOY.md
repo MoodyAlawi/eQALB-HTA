@@ -260,8 +260,10 @@ this migration.
 
 ## 5. Normal deploy sequence
 
-1. Merge to the deployment branch (or start the workflow manually with the input
-   empty).
+1. Merge (or push) to `main`. A push is the only way to release a new bundle:
+   the build and deploy jobs run for a `push` event only, and a manual
+   `workflow_dispatch` runs the rollback job alone (§7) — an empty
+   `rollback_release_id` fails it immediately.
 2. The build job produces the archive and checksum; the deploy job uploads both
    with two separate single-file legacy `scp` calls, then calls
    `activate <release-id> <archive> <checksum>`.

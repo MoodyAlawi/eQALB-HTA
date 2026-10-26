@@ -14,12 +14,12 @@
  */
 
 import { computed } from 'vue'
-import type { TutorialControl } from '../../api/types'
+import type { ControlDescriptor } from '../../api/types'
 import { formatNumber } from '../../format'
 import InfoTip from '../InfoTip.vue'
 
 const props = defineProps<{
-  control: TutorialControl
+  control: ControlDescriptor
   value: number | boolean | undefined
 }>()
 
