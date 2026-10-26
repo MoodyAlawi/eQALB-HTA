@@ -50,7 +50,7 @@ if (!exists("API_ROOT", inherits = FALSE)) {
 MODEL_MODULES <- c(
   "eqalb_markov.R", "eqalb_owsa.R", "eqalb_survival.R", "eqalb_readiness.R",
   "eqalb_km_interpretation.R", "eqalb_ui_copy.R", "eqalb_price.R",
-  "eqalb_tutorial.R"
+  "eqalb_tutorial.R", "eqalb_tutorial_journey.R"
 )
 
 # Wrapped in a function on purpose: eqalb_markov.R ends its demo/analysis block
@@ -85,7 +85,11 @@ MODEL_FUNCTIONS <- c(
   "assess_km_interpretation", "km_number", "km_p_value",
   "calculate_value_based_price", "eqalb_tutorial_contract",
   "eqalb_tutorial_part1", "eqalb_tutorial_part2_contract",
-  "eqalb_tutorial_part2_case", "eqalb_tutorial_part2_evaluate"
+  "eqalb_tutorial_part2_case", "eqalb_tutorial_part2_evaluate",
+  "eqalb_journey_contract", "eqalb_journey_base_case",
+  "eqalb_journey_uncertainty", "eqalb_journey_sensitivity",
+  "eqalb_journey_price", "eqalb_journey_budget", "eqalb_journey_readiness",
+  "eqalb_journey_survival"
 )
 
 # --- Small helpers -----------------------------------------------------------
@@ -689,6 +693,11 @@ function() {
       # back with POST /api/owsa.
       owsa_summary_note = OWSA_SUMMARY_NOTE,
       owsa_prerun_note = OWSA_PRERUN_NOTE,
+    # The method note behind each module's "How this is calculated" control: what
+    # the module runs, what it reads and what it assumes. Presentation only, keyed
+    # by the module id the interface already uses for its own tab. A module that
+    # published nothing here shows no control rather than a guessed note.
+    module_methods = MODULE_METHOD_NOTES,
     model = list(
       cycles = as.integer(cycles),
       states = c("NoEvent", "PostMI", "PostStroke", "Death"),
@@ -1156,6 +1165,11 @@ function(req) {
   # NA_real_, so a missing analysis never becomes a number the caller did not
   # measure.
   icer <- body_optional_number(body, "icer")
+  # The economic rule reads the two differences rather than the ICER, so both are
+  # accepted: a negative ICER cannot say whether eQalb is dominant or dominated,
+  # while the incremental cost and health can.
+  incremental_cost <- body_optional_number(body, "incremental_cost")
+  incremental_qalys <- body_optional_number(body, "incremental_qalys")
   probability_cost_effective <- body_optional_number(
     body, "probability_cost_effective", min = 0, max = 1
   )
@@ -1222,7 +1236,9 @@ function(req) {
     evpi = evpi,
     highest_evppi = highest_evppi,
     cumulative_budget_impact = cumulative_budget_impact,
-    readiness_domains = readiness_domains
+    readiness_domains = readiness_domains,
+    incremental_cost = incremental_cost,
+    incremental_qalys = incremental_qalys
   )
 
   # The evidence priorities read the dashboard statuses back out of that result,
@@ -1263,6 +1279,25 @@ function(req) {
   # tab makes before reading an upstream analysis, and the domain lists are read
   # back from the R summary.
   assessed <- summary_result$domains$Status %in% c("Green", "Amber", "Red")
+
+  # The economic verdict is the sign of the incremental net monetary benefit, so
+  # the base case counts as supplied when either its two differences or its ICER
+  # arrived. Gating that on the ICER alone misreported the case where there is no
+  # ICER to send: an option with no incremental health has no ICER by
+  # construction, and a dominant one has a negative ratio that must not be read as
+  # a threshold comparison.
+  #
+  # What the rule cannot do without is the pair of differences, so they are what
+  # the missing list names — always, whatever the ICER says. A request that sends
+  # only an ICER therefore reports the base case as included and still asks for
+  # the two values its verdict actually needs.
+  base_case_supplied <- !is.na(icer) ||
+    (!is.na(incremental_cost) && !is.na(incremental_qalys))
+  missing_base_case_fields <- c(
+    if (is.na(incremental_cost)) "incremental_cost",
+    if (is.na(incremental_qalys)) "incremental_qalys"
+  )
+
   list(
     wtp = reference_wtp,
     summary = list(
@@ -1283,13 +1318,13 @@ function(req) {
     evidence_note = HTA_EVIDENCE_NOTE,
     rule_note = HTA_SUMMARY_RULE_NOTE,
     availability = list(
-      base_case = !is.na(icer),
+      base_case = base_case_supplied,
       psa = !is.na(probability_cost_effective) && !is.na(evpi),
       value_of_information = !is.na(evpi) || !is.null(evppi_table),
       budget_impact = !is.na(cumulative_budget_impact),
       readiness = !is.null(supplied),
       missing_inputs = c(
-        if (is.na(icer)) "icer",
+        missing_base_case_fields,
         if (is.na(probability_cost_effective)) "probability_cost_effective",
         if (is.na(evpi)) "evpi",
         if (is.na(cumulative_budget_impact)) "cumulative_budget_impact",
@@ -1463,4 +1498,120 @@ function(req) {
 #* @post /api/tutorial-part2-evaluate
 function(req) {
   eqalb_tutorial_part2_evaluate(parse_body(req))
+}
+
+# --- Guided Tutorial journey -------------------------------------------------
+
+#* Guided Tutorial journey contract: the fixed case, its two options and the
+#* explanations the case brief keeps behind disclosures, the chapter list this
+#* slice implements, and Chapter 1's wording, expected answers and one price
+#* lever. No model run happens to build it.
+#*
+#* The path is flat for the same reason Part 1's is: plumber cannot hold a route
+#* and a nested route that share a prefix, so /api/tutorial/journey cannot sit
+#* beside /api/tutorial. The published contract is GET /api/tutorial/journey,
+#* which the FastAPI service serves and maps here.
+#* @serializer json list(auto_unbox = TRUE, digits = NA)
+#* @get /api/tutorial-journey
+function() {
+  eqalb_journey_contract()
+}
+
+#* Guided Tutorial journey base case for one price and one no-event utility: the
+#* incremental cost, the incremental QALYs, R's formatted ICER, the result table and
+#* plane, R's teaching status with its interpretation, and R's plain-language reading
+#* of the numbers. The request carries the two levers only; every other assumption is
+#* the case's own fixed value, so a journey request cannot read a dashboard or Part 1
+#* setting. The same body always returns the same response.
+#* @serializer json list(auto_unbox = TRUE, digits = NA)
+#* @post /api/tutorial-journey-base-case
+function(req) {
+  eqalb_journey_base_case(parse_body(req))
+}
+
+#* Probabilistic sensitivity analysis for the journey's second chapter. The
+#* repeats are produced by run_psa_eqalb(), the same function the analysis
+#* dashboard uses, and the deterministic comparison at the same price and utility is
+#* returned alongside them so the chapter's point and its cloud cannot disagree. The
+#* utility enters as the mean of the analysis's existing beta for that parameter.
+#* @serializer json list(auto_unbox = TRUE, digits = NA)
+#* @post /api/tutorial-journey-uncertainty
+function(req) {
+  eqalb_journey_uncertainty(parse_body(req))
+}
+
+#* The journey's third chapter: one-way sensitivity analysis, ranked twice. Both
+#* rankings come from run_eqalb_owsa(), the same analysis the sensitivity tab uses,
+#* given the learner's price and utility and the ranges R derives from that scenario.
+#* No threshold, net monetary benefit or decision is returned: the chapter ranks how
+#* far a single assumption moves the extra cost and then the extra health.
+#* @serializer json list(auto_unbox = TRUE, digits = NA)
+#* @post /api/tutorial-journey-sensitivity
+function(req) {
+  eqalb_journey_sensitivity(parse_body(req))
+}
+
+#* The journey's fourth chapter: what better evidence would be worth. The value is
+#* computed from the PSA rows the client holds - the same rows the uncertainty
+#* chapter returned for this price and utility - so no simulation runs here. Both
+#* figures come from voi_evpi() and voi_evppi(), the functions the
+#* value-of-information tab uses, and are per person. The rows are validated with the
+#* same helper /api/value-of-information uses.
+#* @serializer json list(auto_unbox = TRUE, digits = NA)
+#* @post /api/tutorial-journey-voi
+function(req) {
+  body <- parse_body(req)
+  body$results <- model_results_from_body(body)
+  eqalb_journey_voi(body)
+}
+
+#* The journey's fifth chapter: where the price has to sit for the balance to hold.
+#* The balance is one run of the same model the base case uses, and the price at
+#* which the balance reaches zero comes from eqalb_price_solve(), the solver the
+#* value-based-price analysis uses. An optional 'solve' (the solve this chapter
+#* already returned) lets a repeat request reuse it instead of solving again; its
+#* shape and its scenario key are validated first, so a solve computed at a different
+#* price scenario or utility is refused. It only ever supplies the marker - the
+#* balance beside it is always computed here.
+#* @serializer json list(auto_unbox = TRUE, digits = NA)
+#* @post /api/tutorial-journey-price
+function(req) {
+  eqalb_journey_price(parse_body(req))
+}
+
+#* The journey's sixth chapter: what adoption would cost the payer. Every figure comes
+#* from calculate_budget_impact(), the function the budget-impact tab and Part 2 use,
+#* so no model runs here. The response carries the whole coverage sweep for the one
+#* price the journey carries, so moving the coverage cap selects a row R has already
+#* computed instead of asking again. Budget impact does not read the utility: the
+#* calculator prices active users and has no quality-of-life term.
+#* @serializer json list(auto_unbox = TRUE, digits = NA)
+#* @post /api/tutorial-journey-budget
+function(req) {
+  eqalb_journey_budget(parse_body(req))
+}
+
+#* The journey's seventh chapter: can the technology be delivered as planned? Every
+#* status comes from calculate_readiness(), the function the DHT-readiness tab and
+#* Part 2 use, so no model runs here and no threshold is restated. The request carries
+#* only the four answers the chapter asks for; the case's own access shares, engagement
+#* values and accessibility are read in R and cannot be moved by a request, so this
+#* chapter cannot change the economics the earlier chapters computed.
+#* @serializer json list(auto_unbox = TRUE, digits = NA)
+#* @post /api/tutorial-journey-readiness
+function(req) {
+  eqalb_journey_readiness(parse_body(req))
+}
+
+#* The journey's eighth and last chapter: time to a first heart attack or stroke. The
+#* curves come from simulate_eqalb_survival(), the function the Simulated survival tab
+#* runs, at the case's own effect assumption and the model's own annual event risks.
+#* No model runs here, no price and no quality-of-life score is read, and no p-value,
+#* hazard ratio or median is returned: the chapter reads the two curves at three times
+#* and compares the two estimates at one of them. The request carries no body, so the
+#* same seed always returns the same figure.
+#* @serializer json list(auto_unbox = TRUE, digits = NA)
+#* @post /api/tutorial-journey-survival
+function(req) {
+  eqalb_journey_survival()
 }

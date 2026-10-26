@@ -277,6 +277,134 @@ class TutorialPart2EvaluateRequest(BaseModel):
     patient_engagement: str | None = None
 
 
+class JourneyBaseCaseRequest(BaseModel):
+    """The Guided Tutorial journey's two levers for Chapter 1.
+
+    ``price`` and ``utility_no_event`` are the scenario the whole journey uses. Every
+    other assumption the base case needs is the case's own fixed value in R, so a
+    journey request cannot read or move a dashboard or Part 1 setting. An omitted
+    lever takes R's default from ``GET /api/tutorial/journey``, and a value outside
+    the lever's own range is rejected by R with its own message rather than clamped.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    price: float | None = None
+
+    utility_no_event: float | None = None
+
+
+class JourneyUncertaintyRequest(BaseModel):
+    """The Guided Tutorial journey's second chapter.
+
+    ``price`` and ``utility_no_event`` are the comparison the learner built in the
+    first chapter, so none of the case's own assumptions can differ between the two
+    chapters. The number of repeats and the random seed are R's, so the same scenario
+    always produces the same cloud. The utility enters as the mean of the analysis's
+    existing beta for that parameter; no spread is chosen here.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    price: float | None = None
+
+    utility_no_event: float | None = None
+
+
+class JourneySensitivityRequest(BaseModel):
+    """The Guided Tutorial journey's third chapter.
+
+    ``price`` and ``utility_no_event`` describe the scenario; both one-way rankings
+    are derived from it, and R chooses the tested ranges, so a caller cannot supply a
+    range, an outcome or a ranking of its own.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    price: float | None = None
+
+    utility_no_event: float | None = None
+
+
+class JourneyVoiRequest(BaseModel):
+    """The Guided Tutorial journey's fourth chapter.
+
+    ``results`` is the draw array the journey's own uncertainty chapter returned,
+    posted back unchanged, so the value of information is computed on the exact
+    comparisons the learner saw and no simulation is rerun. Those rows already carry
+    the scenario they were drawn for, so no utility is sent: the value is computed on
+    the retained draws rather than rebuilt from a parameter. ``threshold`` is the
+    reference value R publishes in the journey contract, echoed rather than chosen
+    by the client.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    price: float | None = None
+
+    threshold: float | None = None
+
+    results: list[dict[str, Any]] | None = None
+
+
+class JourneyPriceRequest(BaseModel):
+    """The Guided Tutorial journey's fifth chapter.
+
+    ``price`` is the annual price the balance is computed at — the one the learner
+    chose in the base case, since this chapter has no price lever of its own.
+    ``utility_no_event`` is the scenario's score, so the balance is computed for the
+    same comparison as every chapter before it. ``threshold`` is the reference value R
+    publishes in the journey contract, echoed rather than chosen by the client.
+    ``solve`` is the solve object this chapter already returned for the same scenario;
+    R validates its shape, its ``scenario_key`` and its threshold before reusing it,
+    and it only ever supplies the marker — the balance is always a fresh model run.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    price: float | None = None
+
+    utility_no_event: float | None = None
+
+    threshold: float | None = None
+
+    solve: dict[str, Any] | None = None
+
+
+class JourneyBudgetRequest(BaseModel):
+    """The Guided Tutorial journey's sixth chapter.
+
+    ``price`` is the annual price the journey carries, and it is the same field the
+    other chapters read, so there is one name for one value. There is no second price
+    and therefore nothing to choose between. The whole coverage sweep is returned, so
+    no field here selects a coverage cap, and no utility is accepted because
+    ``calculate_budget_impact()`` has no quality-of-life term.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    price: float | None = None
+
+
+class JourneyReadinessRequest(BaseModel):
+    """The Guided Tutorial journey's seventh chapter.
+
+    ``answers`` carries the four implementation choices the chapter asks about, keyed
+    by question id (``interoperability``, ``governance``, ``workflow``, ``languages``);
+    each value is one of the option ids the contract publishes for that question, and R
+    rejects anything else. Nothing else is accepted: the case's population, access
+    shares, engagement values and accessibility are read in R, so a caller cannot move
+    the inputs the economics were computed with. ``focus_question`` names the question
+    the learner just answered, so R can report which area that answer changed.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    answers: dict[str, str] | None = None
+
+    focus_question: str | None = None
+
+
 class ValueBasedPriceRequest(ScenarioInputs):
     """Value-based price inputs.
 
@@ -774,6 +902,206 @@ def tutorial_part2_evaluate(
     status, and both paths return the same response.
     """
     return call_model(request, "tutorial-part2-evaluate", body)
+
+
+@app.get(
+    "/api/tutorial/journey",
+    summary="Guided Tutorial journey contract: case brief and Chapter 1",
+)
+def tutorial_journey(request: Request) -> dict[str, Any]:
+    """The journey contract for the first slice.
+
+    Returns the fixed case (the decision, the two options, the proposed price and
+    the explanations the brief keeps behind disclosures), the two chapters this
+    slice implements, Chapter 1's wording with each answer's feedback, the one
+    price lever, and the provisional verdict options — all from
+    ``eqalb_journey_contract()`` in eqalb_tutorial_journey.R. Building it runs no
+    model.
+
+    The case's fixed assumptions are the tutorial's own defaults, so a journey
+    result cannot move when the analysis dashboard is edited. The threshold the
+    brief mentions is explanatory context: no response in this slice uses it.
+    """
+    return call_model(request, "tutorial-journey")
+
+
+@app.post(
+    "/api/tutorial/journey/base-case",
+    summary="Guided Tutorial journey base case for one price",
+)
+def tutorial_journey_base_case(
+    request: Request, body: JourneyBaseCaseRequest | None = Body(default=None)
+) -> dict[str, Any]:
+    """One deterministic base-case result for the journey's case and price.
+
+    Returns the incremental cost, the incremental QALYs, the ICER with R's own
+    rendering, the result table and the plane's points and labels, R's teaching
+    status for cost effectiveness with its interpretation, and R's plain-language
+    reading of the numbers — all produced by ``eqalb_journey_base_case()``, which
+    calls ``eqalb_tutorial_ce()`` and therefore ``run_eqalb_model()`` unchanged.
+
+    The values are the same values ``POST /api/tutorial/part1`` returns for the
+    same price and fixed assumptions, so the two screens cannot disagree. The
+    request carries only ``price``; every other assumption is the case's own.
+    """
+    return call_model(request, "tutorial-journey-base-case", body)
+
+
+@app.post(
+    "/api/tutorial/journey/uncertainty",
+    summary="Guided Tutorial journey uncertainty: repeats of the comparison",
+)
+def tutorial_journey_uncertainty(
+    request: Request, body: JourneyUncertaintyRequest | None = Body(default=None)
+) -> dict[str, Any]:
+    """The repeats of the journey's comparison, plus the point they centre on.
+
+    Returns one entry per successful repeat, the average of the repeats, the
+    deterministic comparison at the same price, the range the repeats ran over and
+    the counts either side of usual care — all produced by
+    ``eqalb_journey_uncertainty()``, which calls ``run_psa_eqalb()`` unchanged.
+
+    The request carries only ``price``, so the repeats are drawn for the comparison
+    the learner built in the first chapter and no assumption of theirs can differ
+    between the two chapters. No threshold, probability of cost effectiveness or
+    expected-value quantity is returned: this chapter is about how much a repeated
+    assessment varies.
+    """
+    return call_model(request, "tutorial-journey-uncertainty", body)
+
+
+@app.post(
+    "/api/tutorial/journey/sensitivity",
+    summary="Guided Tutorial journey sensitivity: one assumption at a time",
+)
+def tutorial_journey_sensitivity(
+    request: Request, body: JourneySensitivityRequest | None = Body(default=None)
+) -> dict[str, Any]:
+    """One-way sensitivity for the journey's comparison, ranked twice.
+
+    Returns R's ranked rows for the extra cost per person and then for the extra
+    health per person, each with the tested inputs at both ends, the outcomes they
+    produced, the base case they start from and R's sentences for the chapter's
+    states — all produced by ``eqalb_journey_sensitivity()``, which calls
+    ``run_eqalb_owsa()`` unchanged twice with the ranges R derives from the
+    scenario.
+
+    The request carries only ``price``. No threshold, net monetary benefit,
+    expected value or decision is returned: the two rankings answer which
+    assumptions move each part of the comparison, and neither is presented as
+    overall importance.
+    """
+    return call_model(request, "tutorial-journey-sensitivity", body)
+
+
+@app.post(
+    "/api/tutorial/journey/voi",
+    summary="Guided Tutorial journey value of information: EVPI and EVPPI",
+)
+def tutorial_journey_voi(
+    request: Request, body: JourneyVoiRequest | None = Body(default=None)
+) -> dict[str, Any]:
+    """What better evidence would be worth, on the draws the learner already saw.
+
+    ``results`` is the draw array the journey's uncertainty chapter returned, posted
+    back unchanged: the value of information is computed from those exact rows by
+    ``voi_evpi()`` and ``voi_evppi()``, the functions the value-of-information tab
+    uses, so no PSA is rerun. Both figures are per person over the model's horizon.
+
+    Returns the two choice quantities, EVPI, the ranked EVPPI rows, R's own counts
+    for the states that report them, the two axis maxima and the sentences for every
+    state. The eligible population is never multiplied in, and no threshold test or
+    funding verdict is produced.
+    """
+    return call_model(request, "tutorial-journey-voi", body)
+
+
+@app.post(
+    "/api/tutorial/journey/price",
+    summary="Guided Tutorial journey price: the balance and the price it needs",
+)
+def tutorial_journey_price(
+    request: Request, body: JourneyPriceRequest | None = Body(default=None)
+) -> dict[str, Any]:
+    """The balance at one annual price, and the price at which it reaches zero.
+
+    Every value comes from ``eqalb_journey_price()``. The balance is
+    ``eqalb_price_run()`` at the submitted price and ``eqalb_price_nmb()`` at the
+    case's reference; the price where the balance reaches zero is
+    ``eqalb_price_solve()``, the solver the value-based-price analysis uses.
+
+    A body that posts back the ``solve`` this chapter already returned reuses it
+    instead of solving again, so moving the slider costs one model run. R validates
+    that solve's shape, its ``scenario_key`` and its threshold, and it supplies only
+    the marker: the balance beside it is always computed here. The chapter draws two
+    separate scales, never a ratio, and no negotiated price, recommendation or
+    affordability verdict is produced.
+    """
+    return call_model(request, "tutorial-journey-price", body)
+
+
+@app.post(
+    "/api/tutorial/journey/budget",
+    summary="Guided Tutorial journey budget: what adoption would cost",
+)
+def tutorial_journey_budget(
+    request: Request, body: JourneyBudgetRequest | None = Body(default=None)
+) -> dict[str, Any]:
+    """The payer's net budget impact across the journey's own population.
+
+    Every figure comes from ``eqalb_journey_budget()``, which calls
+    ``calculate_budget_impact()`` unchanged — the function the budget-impact tab and
+    Guided Tutorial Part 2 use — over the coverage lever's own steps. No model runs
+    here, and no PSA or one-way analysis.
+
+    The response carries the whole sweep for each candidate price, so moving the
+    coverage cap selects a row R has already computed. Two costing conventions are
+    deliberately kept apart and stated on screen: this module charges active users
+    only, while the Markov model charges everyone receiving eQalb. No budget ceiling is
+    applied, so no affordability verdict is produced.
+    """
+    return call_model(request, "tutorial-journey-budget", body)
+
+
+@app.post(
+    "/api/tutorial/journey/readiness",
+    summary="Guided Tutorial journey readiness: can it be delivered as planned",
+)
+def tutorial_journey_readiness(
+    request: Request, body: JourneyReadinessRequest | None = Body(default=None)
+) -> dict[str, Any]:
+    """The assessment of the conditions delivery depends on.
+
+    Every status comes from ``calculate_readiness()`` unchanged — the function the DHT
+    readiness tab and Guided Tutorial Part 2 use — over the case's own ten inputs, four
+    of which the chapter lets the learner choose. No model runs here, and no PSA or
+    one-way analysis.
+
+    The seven areas are judged separately; the counts are a summary of those judgements
+    and never a score. Nothing here verifies that the intervention would achieve the
+    modelled outcomes, validates the economic assumptions, or issues a certification,
+    regulatory or funding decision.
+    """
+    return call_model(request, "tutorial-journey-readiness", body)
+
+
+@app.post(
+    "/api/tutorial/journey/survival",
+    summary="Guided Tutorial journey survival: time to a first event",
+)
+def tutorial_journey_survival(request: Request) -> dict[str, Any]:
+    """The last view of the same comparison, drawn as time to a first event.
+
+    The curves come from ``simulate_eqalb_survival()`` — the function the Simulated
+    survival tab runs — at the case's own effect assumption and the model's own annual
+    event risks, with 1,000 people per arm, 10 years and a fixed seed. No model, PSA or
+    one-way analysis runs here, and no price or quality-of-life score is read.
+
+    These are simulated Kaplan-Meier estimates of time to a first MI or stroke, with
+    other-cause deaths censored. They are illustrative and are not clinical evidence,
+    and they are not a test of the economic results.
+    """
+    return call_model(request, "tutorial-journey-survival")
 
 
 def main() -> None:

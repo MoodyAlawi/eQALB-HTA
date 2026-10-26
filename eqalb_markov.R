@@ -1032,6 +1032,150 @@ hta_summary_percent <- function(value, digits = 1) {
   paste0(format(round(100 * value, digits), nsmall = digits), "%")
 }
 
+# A value is "known" when it is one number that is not missing.
+hta_summary_known <- function(value) {
+  length(value) == 1L && is.numeric(value) && is.finite(value)
+}
+
+# The incremental net monetary benefit at the reference threshold:
+#   INMB = lambda * incremental health - incremental cost,
+# in euros per person. It is the decision test because its sign is right in
+# every quadrant of cost and effect, which the ICER is not: the ICER's sign is
+# the sign of the cost difference divided by the sign of the health difference,
+# so one negative number covers both "cheaper and more effective" and "dearer
+# and less effective".
+hta_summary_inmb <- function(reference_wtp, incremental_cost, incremental_qalys) {
+  reference_wtp * incremental_qalys - incremental_cost
+}
+
+# Whether a net monetary benefit is exactly the same for both options.
+#
+# Equality is a real outcome, not a rounding artefact to be pushed to one side:
+# at equality the threshold cannot separate the two options. The tolerance is
+# relative to the terms that produced the difference, so it scales with the
+# magnitude in play and is never a fixed number of euros. Each term is read only
+# when it is known: the comparison may fall back to the PSA's mean NMB, where the
+# base case's own differences are absent, and then only an exact zero counts.
+hta_summary_net_equal <- function(inmb, reference_wtp, incremental_cost,
+                                  incremental_qalys) {
+  magnitudes <- c(1, abs(inmb))
+  if (hta_summary_known(reference_wtp) && hta_summary_known(incremental_qalys)) {
+    magnitudes <- c(magnitudes, abs(reference_wtp * incremental_qalys))
+  }
+  if (hta_summary_known(incremental_cost)) {
+    magnitudes <- c(magnitudes, abs(incremental_cost))
+  }
+  abs(inmb) <= sqrt(.Machine$double.eps) * max(magnitudes)
+}
+
+# The sign of a difference, with anything indistinguishable from zero reported as
+# zero rather than as a direction. The tolerance is relative to the quantities the
+# difference is being read against, so it is not a threshold in euros or QALYs.
+hta_summary_sign <- function(value, ...) {
+  scale <- max(c(1, abs(value), unlist(list(...))))
+  if (abs(value) <= sqrt(.Machine$double.eps) * scale) {
+    return(0)
+  }
+  if (value > 0) 1 else -1
+}
+
+# Where the two options sit relative to each other, from the signs of the two
+# differences alone. This drives wording only; the verdict is the sign of the
+# net monetary benefit, which the caller has already established.
+#
+#   dominant             less costly and more effective
+#   dominated            more costly and less effective
+#   more_health          more effective and more costly (ICER is comparable)
+#   less_health          less effective and less costly (ICER is comparable)
+#   equal_health_cheaper no health difference, lower cost
+#   equal_health_dearer  no health difference, higher cost
+#   no_difference        neither cost nor health differs
+hta_summary_economic_position <- function(incremental_cost, incremental_qalys) {
+  if (!hta_summary_known(incremental_cost) ||
+        !hta_summary_known(incremental_qalys)) {
+    return(NA_character_)
+  }
+  cost <- hta_summary_sign(incremental_cost, incremental_qalys)
+  health <- hta_summary_sign(incremental_qalys, incremental_cost)
+  if (health == 0) {
+    if (cost == 0) {
+      return("no_difference")
+    }
+    return(if (cost < 0) "equal_health_cheaper" else "equal_health_dearer")
+  }
+  if (cost == 0) {
+    return(if (health > 0) "dominant" else "dominated")
+  }
+  if (health > 0) {
+    return(if (cost < 0) "dominant" else "more_health")
+  }
+  if (cost < 0) "less_health" else "dominated"
+}
+
+# The plain-language sentence for a position, or NULL when there is nothing
+# worth adding to the status wording.
+hta_summary_position_text <- function(position) {
+  switch(position,
+    dominant = "It costs less and provides more health than usual care.",
+    dominated = "It costs more and provides less health than usual care.",
+    more_health = paste(
+      "It provides more health at a higher cost, so the comparison is a",
+      "trade-off that the threshold resolves."
+    ),
+    less_health = paste(
+      "It provides less health at a lower cost, so the comparison is a",
+      "trade-off that the threshold resolves."
+    ),
+    equal_health_cheaper = "It provides the same health at a lower cost.",
+    equal_health_dearer = "It provides the same health at a higher cost.",
+    no_difference = paste(
+      "It provides the same health at the same cost, so the two options are",
+      "indistinguishable."
+    ),
+    NULL
+  )
+}
+
+# How the ICER may be described. An ICER is only interpretable in the north-east
+# quadrant, where eQalb costs more and provides more health: divided by zero it
+# does not exist, divided by a negative it points the wrong way, and when the
+# option is dominant the ratio is negative for the best possible reason. In every
+# other case the report says what the position is instead of printing a number
+# that invites a threshold comparison.
+hta_summary_icer_label <- function(icer, incremental_cost, incremental_qalys,
+                                   position = NULL) {
+  if (is.null(position)) {
+    position <- hta_summary_economic_position(incremental_cost, incremental_qalys)
+  }
+  if (identical(position, "dominant")) {
+    return("less costly and more effective, so no ICER is needed")
+  }
+  if (hta_summary_known(incremental_qalys)) {
+    health <- hta_summary_sign(incremental_qalys, incremental_cost)
+    if (health < 0) {
+      return(paste(
+        "ICER not interpretable because eQalb provides less health than usual",
+        "care"
+      ))
+    }
+    if (health == 0) {
+      cost <- hta_summary_sign(incremental_cost, incremental_qalys)
+      detail <- if (cost < 0) {
+        "at a lower cost"
+      } else if (cost > 0) {
+        "at a higher cost"
+      } else {
+        "and no cost difference"
+      }
+      return(paste0("no incremental health ", detail, ", so no ICER"))
+    }
+  }
+  if (!hta_summary_known(icer)) {
+    return("ICER not available")
+  }
+  paste0("ICER ", hta_summary_money(icer), "/QALY")
+}
+
 # Traffic-light decision summary for the HTA decision-summary tab.
 # Presentation only: it reads values already computed by the other tabs (base
 # case, PSA, VOI, BIA and DHT readiness) and does not rerun any model.
@@ -1043,7 +1187,9 @@ assess_hta_decision_summary <- function(
   evpi,
   highest_evppi = NA_real_,
   cumulative_budget_impact,
-  readiness_domains = NULL
+  readiness_domains = NULL,
+  incremental_cost = NA_real_,
+  incremental_qalys = NA_real_
 ) {
   p_ce <- suppressWarnings(
     min(max(as.numeric(probability_cost_effective), 0), 1)
@@ -1064,45 +1210,115 @@ assess_hta_decision_summary <- function(
   }
 
   # --- 1. Economic value -----------------------------------------------------
-  economic <- if (is.na(icer) || is.na(p_ce) || is.na(reference_wtp)) {
+  # The threshold comparison is the incremental net monetary benefit, never the
+  # ICER: INMB = lambda * incremental health - incremental cost. Its sign is
+  # correct in every quadrant, whereas a negative ICER covers both a dominant and
+  # a dominated option. The base case's own differences are preferred; the PSA's
+  # mean NMB is the same quantity averaged over the draws and is used only when
+  # the base case cannot supply the two differences.
+  economic_position <- hta_summary_economic_position(
+    incremental_cost, incremental_qalys
+  )
+  base_inmb <- if (hta_summary_known(reference_wtp) &&
+                     hta_summary_known(incremental_cost) &&
+                     hta_summary_known(incremental_qalys)) {
+    hta_summary_inmb(reference_wtp, incremental_cost, incremental_qalys)
+  } else {
+    NA_real_
+  }
+  comparison <- if (hta_summary_known(base_inmb)) {
+    "base case"
+  } else if (hta_summary_known(mean_incremental_nmb)) {
+    "PSA mean"
+  } else {
+    NA_character_
+  }
+  comparison_nmb <- if (identical(comparison, "base case")) {
+    base_inmb
+  } else if (identical(comparison, "PSA mean")) {
+    mean_incremental_nmb
+  } else {
+    NA_real_
+  }
+  # Favourable, unfavourable or exactly equal. Nothing here reads the ICER.
+  verdict <- if (!hta_summary_known(comparison_nmb)) {
+    NA_character_
+  } else if (hta_summary_net_equal(
+    comparison_nmb, reference_wtp, incremental_cost, incremental_qalys
+  )) {
+    "equal"
+  } else if (comparison_nmb > 0) {
+    "favourable"
+  } else {
+    "unfavourable"
+  }
+
+  economic <- if (!hta_summary_known(reference_wtp) || is.na(p_ce) ||
+                    is.na(verdict)) {
     "Not available"
-  } else if (p_ce >= HTA_SUMMARY_THRESHOLDS$economic_green_probability &&
-               icer <= reference_wtp) {
+  } else if (identical(verdict, "favourable") &&
+               p_ce >= HTA_SUMMARY_THRESHOLDS$economic_green_probability) {
     "Green"
-  } else if (p_ce < HTA_SUMMARY_THRESHOLDS$economic_red_probability &&
-               icer > reference_wtp) {
+  } else if (identical(verdict, "unfavourable") &&
+               p_ce < HTA_SUMMARY_THRESHOLDS$economic_red_probability) {
     "Red"
   } else {
     "Amber"
   }
-  economic_measure <- if (is.na(icer)) {
+  economic_position_text <- hta_summary_position_text(economic_position)
+  icer_label <- hta_summary_icer_label(
+    icer, incremental_cost, incremental_qalys, economic_position
+  )
+  economic_measure <- if (!hta_summary_known(comparison_nmb)) {
     "not available"
   } else {
     paste0(
-      "ICER ", hta_summary_money(icer), "/QALY vs reference threshold ",
-      hta_summary_money(reference_wtp), "/QALY; P(cost-effective) ",
-      hta_summary_percent(p_ce), "; mean incremental NMB ",
-      hta_summary_money(mean_incremental_nmb)
+      if (identical(icer_label, "ICER not available")) "" else paste0(icer_label, "; "),
+      comparison, " incremental NMB ", hta_summary_money(comparison_nmb),
+      " against zero at the ", hta_summary_money(reference_wtp),
+      "/QALY threshold; P(cost-effective) ", hta_summary_percent(p_ce)
     )
   }
-  economic_interpretation <- switch(economic,
-    Green = paste(
-      "eQalb is cost-effective at the reference threshold in the",
-      "majority of PSA simulations and the base-case ICER is below it."
-    ),
-    Amber = paste(
-      "The economic result is borderline, or the ICER and the probability of",
-      "cost-effectiveness disagree, so the conclusion depends on the assumed",
-      "threshold and assumptions."
-    ),
-    Red = paste(
-      "eQalb is not cost-effective at the reference threshold in most",
-      "PSA simulations and the base-case ICER is above it."
-    ),
-    paste("Not yet assessable: run the base case and the PSA.")
-  )
+  economic_interpretation <- if (identical(economic, "Not available")) {
+    "Not yet assessable: run the base case and the PSA."
+  } else {
+    status_text <- switch(economic,
+      Green = paste(
+        "eQalb has positive incremental net monetary benefit at the reference",
+        "threshold - the extra health it provides, valued at the threshold,",
+        "exceeds its extra cost - and it is cost-effective in the majority of",
+        "PSA simulations."
+      ),
+      Red = paste(
+        "eQalb has negative incremental net monetary benefit at the reference",
+        "threshold - its extra cost exceeds the value of its extra health - and",
+        "it is cost-effective in fewer than 5% of PSA simulations."
+      ),
+      paste(
+        "The result is borderline, or the net-benefit comparison and the",
+        "probability of cost-effectiveness disagree, so the conclusion depends",
+        "on the assumed threshold and the other assumptions.",
+        if (identical(verdict, "equal")) paste(
+          "The two options have equal net monetary benefit at this threshold,",
+          "so the threshold alone cannot separate them."
+        )
+      )
+    )
+    paste(status_text, economic_position_text)
+  }
   add_row("Economic value", economic, economic_measure,
-          "Base-case ICER, reference WTP and PSA probability", 
+          if (identical(comparison, "base case")) {
+            paste(
+              "Incremental net monetary benefit at the reference threshold, from",
+              "the base case's own cost and health differences, and the PSA",
+              "probability of cost-effectiveness"
+            )
+          } else {
+            paste(
+              "Mean incremental net monetary benefit across the PSA draws and the",
+              "PSA probability of cost-effectiveness"
+            )
+          },
           economic_interpretation)
 
   # --- 2. Decision uncertainty (reuses the VOI rule) -------------------------

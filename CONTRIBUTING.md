@@ -84,9 +84,14 @@ cd frontend && npm run typecheck && npm run lint && npm run build
 # Python API: import sanity after changing api/
 api/.venv/bin/python -c 'import fastapi, uvicorn'
 
-# R: after changing any eqalb_*.R or app.R
-Rscript -e 'parse("app.R")'
+# R: after changing any eqalb_*.R or app.R (syntax only; nothing is sourced)
+Rscript -e 'for (f in c("app.R", Sys.glob("eqalb_*.R"))) parse(f)'
 cd /path/to/repo && Rscript -e 'renv::status()'
+
+# R: the HTA decision-summary rule, with synthetic inputs (no model is run)
+Rscript tests/test_hta_summary_rule.R
+# R: the summary endpoint's availability gate, driven through its real handler
+Rscript tests/test_hta_availability.R
 
 # Shell scripts and workflows, if you have the tools
 bash -n deploy/backend-deploy.sh deploy/frontend-deploy.sh

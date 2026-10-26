@@ -971,7 +971,9 @@ eqalb_tutorial_summary <- function(ce, bia, readiness) {
     evpi = NA_real_,
     highest_evppi = NA_real_,
     cumulative_budget_impact = bia$total,
-    readiness_domains = readiness$domains
+    readiness_domains = readiness$domains,
+    incremental_cost = ce$incremental_cost,
+    incremental_qalys = ce$incremental_qalys
   )
   existing_readiness_status <- existing$domains$Status[
     existing$domains$Domain == "Implementation readiness"

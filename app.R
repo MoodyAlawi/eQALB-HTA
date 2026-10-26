@@ -5812,7 +5812,12 @@ server <- function(input, output, session) {
       } else {
         sum(bia$net_budget_impact)
       },
-      readiness_domains = if (is.null(readiness)) NULL else readiness$domains
+      readiness_domains = if (is.null(readiness)) NULL else readiness$domains,
+      # The economic rule reads the two differences, not the ICER, so that a
+      # dominated option cannot be mistaken for a dominant one by the sign of a
+      # ratio. Both are NA until the base case has been run.
+      incremental_cost = if (is.null(base)) NA_real_ else base$incremental_cost,
+      incremental_qalys = if (is.null(base)) NA_real_ else base$incremental_qalys
     )
   })
 
@@ -6502,7 +6507,9 @@ server <- function(input, output, session) {
       evpi = metrics$evpi,
       highest_evppi = metrics$highest_evppi,
       cumulative_budget_impact = sum(tutorial_bia()$net_budget_impact),
-      readiness_domains = tutorial_readiness_domains()
+      readiness_domains = tutorial_readiness_domains(),
+      incremental_cost = tutorial_ce()$incremental_cost,
+      incremental_qalys = tutorial_ce()$incremental_qalys
     )
   })
 

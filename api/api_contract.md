@@ -186,6 +186,46 @@ The form contract, read from the R constants so the client cannot drift:
   sentence it shows until the analysis has been run. Both are byte-identical to
   the strings `app.R` renders, and the narrative itself comes back with
   `POST /api/owsa` as `summary`.
+- `module_methods` — the method note behind each module's "How this is calculated"
+  control, from `MODULE_METHOD_NOTES` in `eqalb_ui_copy.R`, keyed by the module id
+  the interface already uses for its own tab: `base_case`, `sensitivity`,
+  `uncertainty`, `voi`, `price`, `budget`, `readiness` and `survival`. The note is
+  written for a reader who knows mathematics and nothing about this codebase, so it
+  carries the mathematics and no implementation. Every note has `label` ("How this is
+  calculated" for a module that computes an economic result, "How this works" where it
+  does not), `summary` (the lead: the question the module answers, in one or two
+  sentences) and `steps` (the computation, in order); the rest are optional and present
+  only where they add something the other blocks do not — `formula` (one short relation
+  in symbols), `definitions_title` + `definitions` (`symbol` / `meaning` rows, with each
+  symbol's unit and the scope it refers to, and only for symbols not already defined
+  where they are introduced), `interpretation` (how to read the number, including the
+  decision rule), `assumptions` (only those that change how the result reads) and
+  `table_title` + `table` (`label` / `value` rows). The two character lists (`steps`
+  and `assumptions`) are marked AsIs in R, so a note that carries only one of either
+  still serialises as an array rather than as a bare string. The base case states the
+  general decision rule as the incremental net monetary benefit `INMB = λ·ΔE − ΔC` —
+  positive favours eQalb, zero means equal net monetary benefit — and gives the
+  ICER-threshold equivalence only with its `ΔE > 0` condition; no note presents an ICER
+  comparison as the rule without it. No function name, file name, endpoint or internal
+  check appears in any of it, and a model default is never presented as the reader's
+  current input. Each note states the model's own method — the annual cycles and their
+  transitions, the discounting, the price-only slope the break-even price is solved
+  from, the budget's two savings terms and undiscounted horizon, the seven readiness
+  rules and the Kaplan-Meier product — so it cannot drift into a textbook calculation
+  the app does not perform. The caveats stay in each module's own
+  disclosure, so the method note and the limitations are not
+  two copies of one paragraph. Mathematics travels as TeX, not as Unicode: `formula` is one
+  display expression (long ones use `aligned` rows so a narrow screen has a break point
+  before it has to scroll) and the prose fields carry inline expressions between `$…$`.
+  R writes each `\\` as a doubled backslash, which JSON escapes once more, so the client
+  receives the single backslash TeX expects; a consumer must render only the pieces
+  designated as mathematics and pass every other character through unchanged. The HTA decision summary publishes none: its rules are
+  already a disclosure (`HTA_RULE_ITEMS`) and repeating them here would duplicate it.
+  A module that published nothing shows no control rather than a guessed note. The
+  journey contract republishes the same dictionary as `journey.methods`, so a lesson
+  and its dashboard tab cannot describe a method differently.
+  The only module the interface shows without a note is therefore `hta`; the
+  `Assumptions` form is not a module of its own and carries none either.
 - `readiness` — the DHT readiness contract, so the client cannot drift from it:
   - `parameters[8]` — `{id, label, group, unit, type, default, min, max, step,
     percent, info}` for the numeric readiness inputs plus the accessibility
@@ -375,6 +415,367 @@ Returns `evpi` (per patient) and `evppi`. EVPPI is a union: either
 clamped}]}` or `{available: false, reason}` when fewer than 100 successful
 draws are available. Clients must handle both.
 
+### `POST /api/tutorial/journey/uncertainty`
+
+`eqalb_journey_uncertainty()`, the third chapter: repeats of the comparison. Body:
+`price` and `utility_no_event` — the two levers the base case set, so the repeats are
+drawn for the same scenario the earlier chapter showed. The repeats come from
+`run_psa_eqalb()` with this journey's own seed and count, so the same scenario always
+produces the same cloud. The score enters as the **mean of the analysis's existing
+beta** for that parameter (`psa_parameter_table()`); its spread is the analysis's own
+and is not chosen here. At every score the beta represents exactly; at exactly `1.00`
+its own validity guard applies, so the deterministic model uses 1.00 while the draws
+centre marginally below it and are narrower — `variation.utility_sentence` says so, and
+is an empty string at every other score.
+
+Returns `n_repeats`, `seed`, `cloud` (one `{cost, qalys}` pair per successful
+repeat, for the chart), **`draws`** (the successful simulation rows themselves,
+including every sampled parameter column the analysis stored, so the
+value-of-information chapter can value exactly these comparisons without simulating
+them again), `mean`, `base_case`, `spread`, `sides`, `variation` (the quiet
+disclosure's contents, derived from the analysis's own tables) and `notes`.
+`draws` and `cloud` are the same rows: the drawn values and the plotted values
+cannot disagree.
+
+### `POST /api/tutorial/journey/voi`
+
+`eqalb_journey_voi()`, the fourth chapter: what better evidence would be worth.
+Body: `price` (optional, validated against the price control's range),
+`threshold` (optional, defaulting to the case's own reference) and `results` —
+the `draws` array the uncertainty chapter returned, posted back unchanged and
+validated by the same helper `/api/value-of-information` uses. **No simulation is
+run**: the posted rows, which include the sampled parameter columns, go straight to
+`voi_evpi()` and `voi_evppi()`, the functions the value-of-information tab calls,
+and every figure is per person over the model's horizon.
+
+- `voi.evpi` — `per_person` and `display` (EVPI), `choose_now` / `choose_now_display`
+  (the balance of choosing on today's information, relative to usual care, whose
+  own net benefit is the axis's zero), `perfect` / `perfect_display` (the balance if
+  the included parameter uncertainty were resolved), `mean_nmb` and `preferred`
+  (R's own name for the option ahead on average, or an empty string).
+- `voi.evppi` — `available`, `reason` (R's own sentence when it is not), `rows`
+  (each with `parameter_id`, `label`, `plot_label`, `value`, `value_display` and the
+  `zero` / `small` flags that separate an exact zero from an estimate too small to
+  print), `largest`, the `zero` and `small` counts, and `clamped` / `exceeds`.
+- `voi.axis` — `max` and `evppi_max`, so revealing a bar never rescales one already
+  drawn and the two panels keep separate scales.
+- `voi.disclosure` — the quiet disclosure: per-person scope, that the model's
+  horizon is not a research horizon, that population-level value is not calculated
+  here, and the qualifications of the two measures — what the imagined certainty
+  includes, that the EVPI figure is an upper limit and the gap rather than a bar, and
+  that each EVPPI bar leaves the others uncertain. The **short definitions** are not
+  here: "EVPI is what it would be worth to know every uncertain assumption exactly" and
+  "EVPPI asks that question for one assumption at a time" are the `aside` of the two
+  states that introduce the measures, so a learner never has to open a disclosure to
+  know what the figure in front of them is called.
+- `voi.notes` — one sentence per state, each opening with that state's caption.
+- `notice`.
+
+The eligible population is never multiplied in, and no threshold test, verdict or
+recommendation is produced.
+
+### `POST /api/tutorial/journey/sensitivity`
+
+`eqalb_journey_sensitivity()`, the one-way chapter: the same comparison ranked twice.
+Body: `price` and `utility_no_event`, both optional and validated as above. The two
+are applied to `eqalb_owsa_base_args()` as the analysed scenario *before*
+`eqalb_owsa_range_bounds()` derives the tested ranges from it, so the ranges and the
+rankings describe the comparison the learner built rather than the model's global
+defaults. Both rankings are `run_eqalb_owsa()`, unchanged; the willingness-to-pay value
+it requires is passed so it can run and is neither used nor returned.
+
+`contract.sensitivity.disclosure` — `title` and `lines`: the method's name, what a
+flat bar means, and what a long bar does not mean. These were the states' own notes
+beside the bars and now open a closed disclosure, so the panel keeps the caption and
+the bars.
+
+### `POST /api/tutorial/journey/budget`
+
+`eqalb_journey_budget()`, the sixth chapter: what adoption would cost the payer.
+Body: `price` (optional, defaulting to the case's price and validated against the
+price control's range) — the same field and the same value the other chapters read, so
+there is one name for the journey's price. There is no second price and therefore no
+selection between prices.
+
+`utility_no_event` is **not** accepted, and is ignored if sent:
+`calculate_budget_impact()` charges the annual price to active users and has no
+quality-of-life term, so the score cannot move a budget figure and the chapter does not
+claim it does.
+
+**No model runs.** Every figure is `calculate_budget_impact()` — the function the
+budget-impact tab and Part 2 use — evaluated at each of the coverage lever's 19
+steps for the journey's one price. One response therefore carries the whole sweep, and
+moving the coverage cap selects a row R has already computed instead of asking
+again. No PSA and no one-way analysis runs here.
+
+**The two payment conventions are kept apart, on purpose.**
+`calculate_budget_impact()` charges the annual price for **active users only**
+(`active_users = cumulative_users × followup_engagement`), while the Markov model
+behind the earlier chapters charges **everyone receiving eQalb** in every cycle. The
+same price is therefore applied here under a different payment assumption, a total
+here is *not* the Chapter 5 per-person result multiplied by a population, and the
+slice does not harmonise the two. The difference is stated on screen in the
+chapter's first state and recorded again in its disclosure as a model limitation.
+
+- `budget.population` and `population_display` — the case's 100,000 eligible people,
+  passed to `calculate_budget_impact()` explicitly rather than relying on the
+  budget-impact route's 70,000 default.
+- `budget.horizon_years` — five years.
+- `budget.coverage_control`, `coverage_steps` (19 values, highest first) and
+  `coverage_default` (100).
+- `budget.assumptions` — the constants the calculation uses: year-1 uptake 10%, an
+  annual increase of 5 percentage points, follow-up engagement 42%, implementation
+  cost €40, healthcare savings €20 per active user, avoided-event savings **0**.
+- `budget.candidates[]` — the journey's one price: `key` (`journey`), R's `label`,
+  `price`, `price_display`, and `coverages[]`. The list shape is kept so the sweep, the
+  cache key and the client's read are unchanged in structure, but a list of one has
+  nothing to choose between and the chapter shows no selection.
+- `budget.candidates[].coverages[]` — per coverage step: `coverage`,
+  `coverage_display`, `covered_population` / `covered_display`, the five `rows`
+  (`year`, `year_label`, `enrolled`/`new_users`/`active_users` with displays,
+  `uptake_pct`, the four cost components, `net` with `net_display`, and `cumulative`
+  with `cumulative_display`), `years`, `cumulative` / `cumulative_display` (the last
+  running value, not a second sum), `totals` (each component's five-year total in
+  R's formatting), `components` / `components_period` and `notes` (`population`,
+  `cumulative`) — the sentences that depend on the cap, so the client renders a
+  description R has already written.
+- `budget.candidates[].coverages[].components[]` — the amount beside each visual
+  component, in the order the calculation applies them: `key` (`programme` /
+  `setup` / `savings` / `net`), R's `label` and `sub`, `amount_display` and `amount`,
+  and the `tone` (`cost` / `saving` / `net`) that says whether it is added or
+  subtracted. `components_period` is R's own statement of what the four amounts
+  cover ("All 5 years added together, not discounted"), so a five-year component
+  cannot be read as a year's. The chapter reveals them one at a time and keeps all
+  four from the net state onward; a zero-valued component is not given a card, so
+  avoided-event savings appear only in the disclosure.
+- `budget.axis` — `annual` and `cumulative` extents, both fixed from the whole sweep,
+  so changing the cap never rescales a figure the learner is already reading.
+- `budget.notes` — `adoption`, the one sentence that depends on neither the cap nor the
+  price. The chapter's limits are published in `budget.disclosure` instead, because its
+  "limits" state carries no `note_key`; there is no per-state limits sentence to map.
+- `budget.disclosure` — `title` and `lines`: the payment assumption as a model
+  limitation, the five undiscounted years, what "net" subtracts, and that no budget
+  ceiling is applied.
+- `budget.copy` states each carry R's `advance_label`, the text of the journey's
+  arrow control. The chapter's last state is labelled "What delivery would take"
+  because it opens the readiness chapter's bridge.
+- `notice`.
+
+Net budget impact is spending minus the savings the model expects, so a positive
+figure is extra spending and says nothing about value. The figures are **not
+discounted**, unlike the model's ten-year per-person results. No budget ceiling is
+applied and no affordability verdict is produced: Part 2's €3,000,000 ceiling is
+Part 2's assumption and is not carried into the journey.
+
+### `POST /api/tutorial/journey/readiness`
+
+`eqalb_journey_readiness()`, the seventh chapter: what would have to be in place for
+the modelled intervention to be delivered. Body: `answers` (optional object keyed by
+question id; a key that is not one of the four questions is ignored) and
+`focus_question` (optional, naming the question the learner just answered). Both are
+optional, so a bare request returns the chapter's start: the case's own values for all
+four questions.
+
+**No model runs.** The whole chapter is `calculate_readiness()` — the function the
+DHT readiness tab and Part 2 use — called once per request. The question set, the
+seven domains, the seven traffic-light rules, their thresholds, the `numbers` table
+and the per-domain sentences are all that function's; nothing is re-implemented and no
+new scoring framework is introduced.
+
+**Four questions are asked, six inputs are fixed.** The study can only ask about
+choices that describe a deployment: how data is exchanged with the clinical record
+system, how the algorithm changes after deployment, how much clinician review each
+patient takes each month, and how many languages are offered — three scenario-worded
+options each, so a reader who does not know what "FHIR" means can still choose. The
+other six inputs `calculate_readiness()` needs (`target_population`, `digital_access`,
+`digital_suitability`, `readiness_year1_engagement`,
+`readiness_followup_engagement`, `accessibility_features`) are the case's own values
+and are read in R, so no answer can move them. In particular the two engagement values
+are the journey scenario's, never an answer, so the readiness result cannot contradict
+the engagement the economic chapters computed with.
+
+- `inputs.answers` — the four answers R used, by question id.
+- `inputs.readiness_key` — one opaque key naming **all ten** inputs the assessment
+  received, so a result always says which inputs it describes rather than only which
+  four fields a learner could edit.
+- `readiness.questions[]` — the four questions: `id`, `domain`, `focus` (the figure's
+  spotlight target), `caption`, `label`, and three `options[]` with `id`, `label`
+  (the scenario wording), `input_display` and `input` (the string or number
+  `calculate_readiness()` accepts).
+- `readiness.answers[]` — the answer set echoed back: `question_id`, `domain`,
+  `caption`, `label`, `option_id`, `option_label` and `input_display`, so the
+  interface prints R's wording for the answer on screen instead of remembering it.
+- `readiness.domains[]` — all seven domains, each with `domain`, `status`,
+  `input_display`, `explanation` (that domain's own `Interpretation` from
+  `calculate_readiness()`, returned unchanged) and the `question_id` / `focus` it
+  belongs to, or JSON null for the three domains that are not asked about.
+- `readiness.counts` — `green`, `amber`, `red` and `total`, straight from the
+  assessment's own `counts`. They summarise seven separate judgements; R publishes no
+  overall score and the chapter shows none.
+- `readiness.changed` — the one answer whose area the figure should bring forward:
+  `focus_question` when that answer differs from the case's value, otherwise the first
+  answer that differs, and JSON null when every answer is the case's own. An answer
+  equal to the case's value is not a change.
+- `readiness.numbers`, `readiness.assessment` — the assessment's quantitative table and
+  its own summary reading, unchanged.
+- `readiness.fixed[]` — the six held values as `label` / `value_display` rows, so the
+  interface shows them on demand without formatting a percentage or a population.
+- `readiness.notes` — `statuses` (the counts written out, naming any Red, else any
+  Amber, area). The chapter's limits are published in `readiness.disclosure` instead,
+  because its limits state carries no `note_key`; there is no per-state limits sentence
+  to map.
+- `readiness.disclosure` — `title` and `lines`: that the areas and rules come from the
+  shared assessment, that the six fixed inputs are the case's, that the thresholds are
+  illustrative teaching assumptions rather than official HTA, DiGA, regulatory,
+  cybersecurity or reimbursement standards, plus `DHT_DISCLAIMER`.
+- `notice`.
+
+An answer naming an option the chapter does not offer is refused with R's own message
+(`'interoperability' must be one of: none, basic, strong.`), never coerced to a nearest
+option; an `answers` key that is not one of the four questions is ignored.
+
+The chapter's own wording is separate from the assessment's: no state requires a Green,
+no state says the areas should be optimised, and the governance question is about how
+the algorithm changes rather than about who controls it, so a Red under that rule reads
+as an area needing attention rather than a verdict on adaptive technology.
+
+### `POST /api/tutorial/journey/survival`
+
+`eqalb_journey_survival()`, the eighth and last chapter: the same comparison drawn as
+time to a first event. Body: none — the route ignores it, because every input is fixed
+in R. The same request therefore always returns the same figure, which is what lets a
+client cache it.
+
+**No model, PSA or one-way analysis runs.** The dataset is
+`simulate_eqalb_survival()` — the function the Simulated survival tab runs — at the
+case's own effect assumption (`rrr_pct`, `engagement_year1_pct`,
+`engagement_followup_pct` from `eqalb_journey_fixed_assumptions()`) and the model's own
+annual risks (`p_mi_usual_care`, `p_stroke_usual_care`, `p_other_death` from
+eqalb_markov.R), with 1,000 people per arm, 10 years and one seed. The step coordinates
+come from the same `survival::survfit()` estimator `summarize_eqalb_survival()` uses, so
+the figure, the sentences and the tab cannot describe different runs.
+
+**What the curves estimate.** A Kaplan-Meier estimate of the time to a **first MI or
+stroke**, with other-cause death carried as a **censored** observation rather than an
+event. The complement of a curve is therefore a cause-specific quantity, not the
+real-world probability of an event, and the chapter never labels it as one. The
+chapter's own wording says the curves are simulated estimates and that other-cause
+deaths are censored; the hypothetical reading, the bands' meaning and the limit on what
+the curves say are in `survival.disclosure`.
+
+**Three times, one response.** `reads[]` carries 1, 5 and 10 years, so choosing another
+time selects a reading R has already computed and never asks again. The comparison is
+the two event-free estimates at the chosen time and the gap between them in percentage
+points; **no p-value, hazard ratio or median is published**, because the chapter
+compares two readings rather than testing them.
+
+- `inputs` — the nine inputs the simulation read, echoed, plus `survival_key`: one
+  opaque key naming all of them. The same key is published with the contract, so a
+  stored answer is reused only while it describes the same simulation and a contract
+  that changed any input could not be served the old one. The price and the
+  quality-of-life score are **not** in that key: the curves read neither, so moving
+  either lever elsewhere in the journey cannot invalidate them.
+- `survival.steps[]` — the two step sets the chart draws (`treatment`, `time_years`,
+  `survival`, `lower`, `upper`, `n_risk`, `n_event`), the same shape
+  `/api/survival` returns, so the tab's chart component renders it unchanged.
+- `survival.followup_years` — the x-axis extent.
+- `survival.reads[]` — per time: `id`, `years`, `label`; `arms[]` with `treatment`,
+  `estimate` and R's `display` (one decimal place); `reading` (R's sentence for both
+  curves at that time); `difference_points` (eQalb minus usual care, in percentage
+  points of the event-free estimate) and `compare` (R's sentence for it, which reads
+  the sign from the numbers and says "level to one decimal place" when the gap rounds
+  to zero); and `step` — the movement the second beat teaches. `step` carries
+  `treatment` (the arm its sentence is about), `from_years` / `to_years` (the interval,
+  in the same numbers the x-axis is drawn in) and `to_estimate` (the level the curve
+  reads at its end), so the figure can shade exactly the interval the sentence names;
+  then `from_label`, `to_label`, `from_display`, `to_display`, `events` (the first
+  events that arm recorded in the year) and `note`, R's sentence naming the fall and
+  the mechanic.
+- `survival.disclosure` — `title` and `lines`: what each curve estimates, why a
+  censored estimate is not the real-world chance of an event, what the 95% band
+  describes, how the two groups were simulated, and that the curves are not a test of
+  the economic results.
+- `survival.note` — `SIMULATED_EVENT_NOTE`, R's statement of the event proxy and the
+  competing-death treatment.
+- `notice`.
+
+The chapter states the illustrative nature of its data with the journey's shared notice
+plus the visible qualifier `survival.graph.qualifier`; it makes no claim about
+affordability, effectiveness or the ICER.
+
+### `POST /api/tutorial/journey/price`
+
+`eqalb_journey_price()`, the fifth chapter: where the price has to sit for the
+balance to hold. Body: `price` (optional, validated against the price control's
+range), `utility_no_event` (optional, the scenario's score, so the balance is computed
+for the same comparison as every chapter before it), `threshold` (optional,
+defaulting to the case's own reference) and `solve` (optional).
+
+**There is no price lever in this chapter.** The price it compares is the one the
+learner chose in the base case; the chapter places it on a track beside the
+manufacturer's proposal and beside the price at which the balance reaches zero.
+
+**No simulation runs.** The balance is `eqalb_price_run()` at the submitted price
+and score and `eqalb_price_nmb()` at the reference — one `run_eqalb_model()` call —
+and the price at which that balance reaches zero is `eqalb_price_solve()`, the solver
+the value-based-price analysis uses. It is reached through the same
+`run_psa_eqalb()`-free path as the other chapters: no PSA and no one-way analysis
+runs here.
+
+**Solve reuse is scenario-bound.** A posted `solve` is used only when its
+`scenario_key` matches the key R computes from the submitted price and score, and its
+threshold matches the one requested; otherwise R refuses it. Because the key folds in
+every fixed assumption including the score, a solve computed at one score cannot
+supply the marker at another. The balance beside the marker is always computed fresh.
+
+**Units.** The price is an annual rate **per person per year** — the model charges
+it to every person in the eQalb arm in every cycle, and engagement scales the
+modelled benefit rather than the charge — which is the unit of Part 1's own price
+control. The balance is a **total per person over the model's horizon**, so the two
+figures on screen are never the same unit and the disclosure says so. (The
+`/api/value-based-price` section above describes the same quantity as "per active
+user per year"; that is the price module's own pre-existing wording and is unchanged
+here.)
+
+- `price.range` — the lever's own bounds, `min` and `max`. `price.unit` is the unit
+  as a sentence reads it ("per person per year") and `price.unit_label` the same unit
+  in the control's label form ("EUR per person per year"), so a caller never decides
+  which one an amount is in.
+- `price.ticks` — whole-hundred ticks inside that range, each with `value` and R's
+  `display`.
+- `price.proposal` — the manufacturer's proposed annual price (`value`,
+  `display`), the case's own figure.
+- `price.solved` — `available`, `price`, `display`, `within_range`, `outside`
+  (`"above"`, `"below"` or `""` when it is inside or unavailable), `method`,
+  `verified` and `reason`. `price` is JSON null when the solve is unavailable.
+  The solved price is the annual price at which the model's **incremental net
+  monetary benefit is zero** at the reference; it is not a negotiated price, a
+  recommendation or an affordability verdict.
+- `price.balance` — `nmb`, `display` (R's signed formatting), `positive`,
+  `incremental_cost`, `incremental_qalys` and `axis` (`min`/`max`, always
+  containing usual care's zero).
+- `price.notes` — `balance`, `crossover` and `scope`, one sentence each, the last
+  of which states that a different price changes the balance without removing the
+  uncertainty, and that the earlier chapters' results stay at the price they were
+  computed for.
+- `price.limitation` — `EQALB_PRICE_LIMITATION`, unchanged.
+- `price.disclosure` — the quiet disclosure's `title` and `lines`.
+- `notice`.
+
+**The posted `solve`.** When the request carries the `solve` this endpoint
+returned, R reuses it instead of solving again, so moving the slider costs one
+model run rather than a solve. The payload is validated before it is used: its
+`scenario_key` must equal `eqalb_journey_price_scenario_key()` (every input the
+solve depends on, composed in R), its `threshold` must equal the requested
+reference, `available` must be a single logical, an available solve must carry a
+finite non-negative `max_acceptable_price`, and an unavailable one must carry R's
+own `reason`. A payload that fails any of these is an R error, never a number
+silently accepted. The solve supplies **only the marker**: the balance beside it is
+always a fresh model run at the submitted price.
+
+No net monetary benefit is ever drawn on the price axis, no population total is
+computed, and no ratio between the two figures is produced.
+
 ### `POST /api/survival`
 
 `simulate_eqalb_survival()` and its summarising helpers. Body: the scenario plus
@@ -465,6 +866,8 @@ Completed analyses, passed through unchanged from the other endpoints:
 |---|---|---|
 | `wtp` | EUR per QALY, ≥ 0 (default 100000) | the reference threshold; also accepted as `?wtp=` |
 | `icer` | EUR per QALY | `/api/base-case` |
+| `incremental_cost` | EUR per patient (may be negative) | `/api/base-case` |
+| `incremental_qalys` | QALYs per patient (may be negative) | `/api/base-case` |
 | `probability_cost_effective` | probability, 0–1 | `/api/psa`, at the same threshold |
 | `mean_incremental_nmb` | EUR per patient | `/api/psa` (`mean_net_monetary_benefit`) |
 | `evpi` | EUR per patient | `/api/value-of-information` |
@@ -472,6 +875,19 @@ Completed analyses, passed through unchanged from the other endpoints:
 | `evppi_table` | rows `{parameter, evppi}` | `/api/value-of-information` (`evppi.table`) |
 | `cumulative_budget_impact` | EUR | `/api/budget-impact` |
 | `bia_intervention_cost`, `bia_implementation_cost`, `bia_healthcare_savings` | EUR, ≥ 0 | the budget-impact totals |
+
+The economic rule compares the **incremental net monetary benefit** —
+`INMB = wtp × incremental_qalys − incremental_cost` — with zero, not the ICER
+with the threshold. `incremental_cost` and `incremental_qalys` are therefore what
+the verdict reads; `icer` is still accepted because the summary reports it when it
+is interpretable, and it never decides a status on its own. The distinction
+matters because a ratio's sign is the sign of the cost difference divided by the
+sign of the health difference, so one negative ICER covers both a dominant option
+(cheaper, more health) and a dominated one (dearer, less health). When the two
+differences are absent the comparison falls back to `mean_incremental_nmb`, which
+is the same quantity averaged over the PSA draws; with neither available the
+domain is `Not available`. Equality is reported as equality: an INMB of zero
+leaves the domain Amber whatever the probability of cost-effectiveness is.
 
 The scenario inputs behind the evidence-priority signals use the same names and
 units as everywhere else (`intervention_price`, `implementation_cost`,
@@ -500,7 +916,13 @@ Returns:
   `value_of_information`, `budget_impact` and `readiness` booleans,
   `missing_inputs` (the request fields behind the unassessed domains),
   `not_assessable_domains` and `assessed_domains`. The two domain lists are read
-  back from the R summary rather than recomputed here.
+  back from the R summary rather than recomputed here. `base_case` is true when
+  either `icer` or the pair `incremental_cost` / `incremental_qalys` arrived, and
+  `missing_inputs` names the two differences — never the ICER — because the
+  economic rule reads the differences: an option with no incremental health has no
+  ICER by construction, and one that costs more and adds none has a negative ratio.
+  A request that sends only an ICER is therefore reported as having supplied the
+  base case while still asking for the two values its verdict needs.
 - `rules[7]` — `HTA_RULE_ITEMS` from eqalb_ui_copy.R, the rule sentences the
   Shiny dashboard shows in its on-demand popover, verbatim.
 - `evidence_note` — `HTA_EVIDENCE_NOTE`, the note the Shiny tab shows under the
@@ -913,6 +1335,191 @@ every case and an unbound curve would otherwise return one case's numbers under
 another case's name. A curve that is not the lever's own price list, or whose
 model outputs are not usable numbers, is also an R error.
 
+### `GET /api/tutorial/journey`
+
+`eqalb_journey_contract()` from eqalb_tutorial_journey.R: the redesigned
+tutorial's contract, unchanged by a model run.
+
+- `journey` — `title`, `kicker`, `progress` (the chapter count and R's
+  "Chapter {step} of {total}. {title}" template), `navigation`, `methods`, `end` and
+  `chapters`.
+  `methods` is the same `MODULE_METHOD_NOTES` dictionary `/api/defaults` publishes,
+  republished here so a chapter can show its module's method note without a second
+  request and so a lesson and its tab cannot describe a method differently.
+  `end` is the journey's handoff, not a verdict: `title` and `body` (the completion
+  overlay's two lines), `sentence` and `note` (R's longer handoff sentences), and
+  `open_label` / `restart_label` / `exit_label`. The interface opens it as an
+  overlay after the last state of the last chapter the list has, so a chapter added
+  later moves it with the contract and no published wording has to change; it is
+  never shown in a standalone explainer. The overlay renders `title`, `body`,
+  `open_label` and `restart_label`, plus its own close control that returns the
+  learner to the final chart; `exit_label` stays published for the contract's sake
+  but is not one of the overlay's actions.
+  `chapters` lists only the chapters that exist — the case brief and eight chapters:
+  the base case, one-way sensitivity, the uncertainty view, the value of
+  information, the price, the budget, the readiness check and the simulated
+  time-to-event view — so the navigation never advertises an unbuilt chapter. The
+  time-to-event view is last, and the end overlay follows it because nothing follows
+  it in this list. Each entry's `title` is composed from its own position, so the
+  heading and the interface's `Chapter {step} of {total}` line always agree: the
+  brief is entry 1 and names itself, the base case is entry 2 and is headed
+  "Chapter 2. …", and the last chapter is numbered by the length of the list.
+- `case` — the fixed case: the decision, the two options, the proposed price,
+  the task, and the two explainers the brief keeps behind disclosures (the payer's
+  perspective, and the time horizon with its discounting). `start_label` names the
+  chapter the brief opens by its number in the list ("Start Chapter 2"), because the
+  brief itself is entry 1. QALYs are deliberately
+  not explained here: they arrive on the screen that first plots health, after the
+  learner has seen the relationship.
+- `base_case.copy` — Chapter 1 as one continuous sequence of five stages
+  (`usual_care`, `health`, `ratio`, `price`, `view`). Each stage carries a heading,
+  one sentence of guidance (`cue`), a `hint` that names the thing the learner is
+  about to act on, and the `target` it points at (`origin`, `eqalb`, `health`,
+  `ratio`, `price`, `graph`, `verdict`), which is what the interface's guide ring
+  and caret are drawn around. `usual_care` also publishes an `attention` (the
+  element to draw attention to before the learner acts on `target`) and its
+  `reveal`, the one reveal sentence that needs no calculation. The price stage
+  carries its `observation` and its `question`, because both belong to exploring
+  the price rather than to stages of their own, and the `continue_label` of the one
+  explicit forward control. No stage publishes a "next" label: the interface
+  advances when the learner acts. The stages carry no computed value and no answer
+  list, so this slice has no multiple-choice question beyond the three provisional
+  views. The two disclosures (`What is a QALY?`, `What is an ICER?`) live on the
+  stages that first need them.
+- `journey.navigation.resume` — the label of the control that returns to the stage
+  the learner stepped back from. `back` and `resume` are the chapter's only
+  navigation: it has no forward control, because a completed action is the advance.
+- `base_case.graph` — the graph's own labels: `title`, the two axis names, the two
+  point names, the two leg names, and the empty-state hint. Deliberately minimal:
+  there is no threshold line, no status colour and no annotation beyond what the
+  learner asks to reveal.
+- `base_case.controls` — the one price lever, in the tutorial's own control shape
+  but under the id `price`. Its range is narrowed to R's journey bounds (40–440)
+  so the point visibly changes its position inside the range the learner can
+  reach; the label, unit, step, default and explanation stay the tutorial's.
+- `base_case.qaly` — the QALY lesson's copy and its control. **The score is a model
+  input**, not an illustration: `control` (`min` 0.80, `max` 1.00, `step` 0.01,
+  `default` = the model's own no-event utility), `heading` (the one sentence
+  explaining what a QALY is), `formula_label` (the label that marks the one-year line
+  as the illustration it is), `formula` (the words the one-year line is composed
+  from), `fixed_title` and `fixed` (the post-MI and post-stroke utilities the
+  interaction holds fixed — these stay visible beside the slider, because a learner
+  comparing scores needs them to read the interaction), `info_title` ("How this score
+  is used") and `info` (one paragraph: what the scale means, that the score is one of
+  the model's assumptions, how the model turns scores into QALYs and what the extra
+  QALYs are), `reset_label` and `ceiling_note` (the sentence for the one score the
+  uncertainty analysis cannot draw exactly). The panel keeps only the state's caption,
+  the definition, the slider and its value and the two held values; the one-year line,
+  the response's `utility_note` for the score on screen, the `ceiling_note` and the
+  reset control all sit inside the information button with `info`, so there is no
+  second disclosure and no in-panel calculation example.
+- `base_case.verdict_options` — the three provisional views the learner records.
+- `base_case.table_headings` — R's column names, taken from the tutorial's own
+  contract. The chapter itself shows no table; the headings stay published so the
+  response and the tutorial cannot diverge if a later chapter tabulates.
+- `sensitivity` — the third chapter's `copy`, `graph` and `disclosure` (`title` and
+  `lines`: the method's name, what a flat bar means, what a long bar does not mean).
+  Those three sentences used to be states' notes beside the bars; they are published
+  here so the panel's caption stays the teaching sentence and the caveats are one
+  click away.
+- `uncertainty.copy` publishes `variation_title`, and the chapter's own result
+  publishes `variation.method_sentence` (what the repeat simulation is called) with the
+  sentences describing which assumptions it varied.
+- `price` — the fifth chapter's `copy` (its six states), `graph` (the two displays'
+  labels), `control` (the price lever's bounds and unit, used for the track and the
+  request; this chapter has no slider of its own), `threshold`, `threshold_display` and
+  `scenario_key`. `scenario_key` names every input the price solve depends on —
+  including the no-event utility — and is composed in R; the client treats it as
+  opaque, so a stored solve cannot outlive the scenario or the reference it was solved
+  for.
+- `budget` — the sixth chapter's `copy` (its ten states and the horizon note), `graph`
+  (each panel's own axis name), `control` (the coverage lever), `population`,
+  `horizon_years` and `assumptions`. It publishes no price-choice wording, because the
+  journey has one price.
+- `readiness` — the seventh chapter's `copy` (its nine states), `graph` (its own figure
+  labels), `questions` (the four the chapter asks), `defaults` (the option ids that
+  match the case's own values, which are also the start), `fixed` (the six held
+  inputs, as label/value rows), `inputs` (the ten inputs `calculate_readiness()`
+  receives at those defaults) and `module`. The statuses, rules and per-domain
+  sentences are not published here: they arrive with the chapter's own result. Its last
+  state names its own `advance_label` ("How events unfold over time"), because it opens
+  the bridge into the chapter that follows rather than moving to another part of the
+  check.
+- `readiness.module` — what the dashboard module publishes so its own panel can open
+  this chapter as a standalone explainer: `label` (the module's name), `orientation`
+  (the one sentence a reader who arrived from the module needs: which case the lesson
+  uses and that it reads none of their settings), and `enter_label` / `return_label`.
+  A chapter that publishes no `module` block cannot be opened on its own, so the
+  interface cannot invent a standalone lesson R has not written. The chapter's copy is
+  not duplicated here: the explainer shows the same states, captions and request.
+- `survival` — the eighth and last chapter's `copy` (three states, each naming its
+  `beat` — `time`, `step` or `compare` — and all three carrying `interactive` because
+  the time choice is the chapter's own control), `graph` (`title`, `qualifier` — the
+  short visible line saying the curves are simulated and other-cause deaths are
+  censored — and `times_title`, the legend of the time choice), `inputs_key` and
+  `module`. The `inputs_key` is composed in R from every input the simulation reads —
+  the sample size, the follow-up, the seed, the effect assumption and the three annual
+  risks — so the client caches against all of them rather than against the session; the
+  price and the score are deliberately absent. The curves, the readings and the
+  comparison arrive with the chapter's own result, not here.
+- `survival.module` — the same shape as `readiness.module`, with no price field: the
+  lesson is the case's own simulation and reads nothing the learner has chosen.
+- `notice` — the one illustrative-data notice the journey shell prints.
+
+The threshold is not part of this slice at all: no response contains it and no
+function compares a result with it.
+
+### `POST /api/tutorial/journey/base-case`
+
+`eqalb_journey_base_case()`, the base case for one price and one score. Body: `price`
+and `utility_no_event`, both optional, each defaulting to the case's own value and each
+validated against its own control's range (`'price' must be between 40 and 440.`,
+`'utility_no_event' must be between 0.8 and 1.`). An out-of-range value is **refused,
+never clamped**. Every other assumption is the case's own fixed value, so a journey
+request cannot read or move a dashboard or Part 1 setting.
+
+The score reaches the model exactly as submitted: it is passed to
+`eqalb_tutorial_ce()` as `tutorial_utility_no_event` and on to
+`scenario_utility_no_event`, with no rounding or rescaling.
+
+- `inputs.price` and `inputs.price_display` — the price the response was evaluated
+  with, and R's own rendering of it, so the interface never formats a currency.
+- `inputs.utility_no_event`, `inputs.utility_display` and
+  `inputs.utility_at_ceiling` — the score, R's rendering of it, and whether it is the
+  one score the uncertainty analysis cannot draw exactly.
+- `base_case.incremental_cost`, `incremental_qalys`, `icer` (JSON null when R
+  cannot interpret it), `icer_display`, `table`, `chart` — the same values
+  `POST /api/tutorial/part1` returns for the same price, score and fixed assumptions,
+  because both call `eqalb_tutorial_ce()` and therefore `run_eqalb_model()`.
+- `base_case.status` — `domain`, R's `code` (`Green`/`Amber`/`Red`/`Not
+  assessed`) and R's `interpretation`, which is the same string Part 1's cost
+  effectiveness summary row carries. The chapter shows no traffic light; the
+  fields stay published because they are R's interpretation of the result.
+- `base_case.reading` — `code` and one plain-language `sentence` covering the
+  whole result. The client renders the sentence; it never selects copy from the
+  code.
+- `base_case.notes` — `cost`, `health` and `ratio`: one sentence each, written and
+  formatted in R, so a stage can reveal one idea at a time and the interface can
+  keep each one on screen as the learner builds the picture. The `ratio` note never
+  prints a negative ratio as a price: when eQalb costs less and adds health, it
+  says so, and when there is no extra health it says there is no price per QALY to
+  read.
+- `base_case.utility_note` — one sentence tying the incremental QALYs to the score on
+  screen, so the live result is reported in R's own words rather than recomposed by
+  the client.
+- `base_case.ceiling_note` — R's sentence for the one score the uncertainty analysis
+  cannot draw exactly, or JSON null at every other score.
+- `notice`.
+
+Both tutorial families register flat handler paths in `api/plumber.R`
+(`/api/tutorial-journey`, `/api/tutorial-journey-base-case`,
+`/api/tutorial-journey-uncertainty`, `/api/tutorial-journey-sensitivity`,
+`/api/tutorial-journey-voi`, `/api/tutorial-journey-price`,
+`/api/tutorial-journey-budget`, `/api/tutorial-journey-readiness` and
+`/api/tutorial-journey-survival`) for the prefix
+reason described above; the published paths are the ones documented here, and the
+FastAPI service maps one onto the other.
+
 ## Tests and checks
 
 - `frontend` — `npm run build` runs `vue-tsc -b` (type check) and `vite build`;
@@ -946,6 +1553,46 @@ model outputs are not usable numbers, is also an R error.
   two Step-3 answers and each reachable tutorial status, must be identical. No
   PSA is run for that check: the tutorial excludes the PSA, and it has no PSA
   input.
+- The Guided Tutorial journey endpoints are checked against a direct
+  `eqalb_journey_base_case()` call in R. For the same price and fixed
+  assumptions, the journey response's incremental cost, incremental QALYs, ICER,
+  formatted ICER, table values, chart points, status code and status
+  interpretation are identical to the corresponding fields of
+  `POST /api/tutorial/part1`. A request carrying dashboard-style keys changes
+  nothing, and an out-of-range price returns R's message.
+- The journey's price chapter is checked against the same functions it calls: its
+  solved price and `method` equal a direct `eqalb_price_solve()` call at the same
+  price, threshold and argument list; its balance equals
+  `eqalb_tutorial_ce()` for the same price, so the chapter and the base case
+  cannot disagree; a lower reference yields a lower solved price; and a
+  model-run counter proves a moved price costs one `run_eqalb_model()` call when
+  the solve is posted back, against three for a fresh solve. A posted solve
+  carrying another scenario key, another threshold, a missing field, an
+  unavailable solve with no reason, or a non-finite `max_acceptable_price` is
+  asserted to raise R's own error, and a price outside the lever's range is
+  rejected with R's message.
+- The Guided Tutorial journey's budget chapter is checked against the same function
+  it calls: every year's `net`, `cumulative`, `active_users` and `new_users` equals
+  a direct `calculate_budget_impact()` call with the journey's own population and
+  constants, the running total equals the last cumulative value, and a **model-run
+  counter proves zero `run_eqalb_model()` calls**. The population is asserted to be
+  the journey's 100,000 rather than the budget-impact route's 70,000, the sweep's
+  19 steps are asserted, identical candidate prices are asserted to deduplicate, and
+  a price outside the lever is asserted to raise R's message.
+- The Guided Tutorial journey's readiness chapter is checked against
+  `calculate_readiness()` itself: the four questions are asserted to offer three
+  options each, their `input` values to be the strings and numbers that function
+  accepts, and the defaults to equal the case's own interoperability level, governance
+  approach, review minutes and language count. Every option of every question is then
+  answered on its own and the resulting `status` is asserted to equal a **direct
+  `calculate_readiness()` call** for that option's input, with `counts`, `domains` and
+  the two `notes` matching the same call. `changed` is asserted to name the edited
+  question and to be JSON null at the defaults, an engagement answer is asserted to
+  change nothing, `readiness_key` is asserted to differ per answer, to be stable for
+  the same answer and to name all ten inputs, and a **model-run counter proves zero
+  `run_eqalb_model()` calls**. An option the chapter does not offer is asserted to
+  raise R's own message, and an `answers` key that is not one of the four questions is
+  asserted to be ignored.
 - The Guided Tutorial Part 2 endpoints are checked the same way: against a direct
   `eqalb_tutorial_part2_case()` / `eqalb_tutorial_part2_evaluate()` call in R. The
   contract, all three cases (resumed by their handles and drawn by seed), each
@@ -1016,12 +1663,14 @@ model outputs are not usable numbers, is also an R error.
   defining `/api/tutorial/part1` in `api/plumber.R` alongside `/api/tutorial`
   makes plumber rebuild its route table and drop the sibling routes. The handlers
   are therefore registered there as `POST /api/tutorial-part1`,
-  `GET /api/tutorial-part2`, `POST /api/tutorial-part2-case` and
-  `POST /api/tutorial-part2-evaluate`. The published paths are
+  `GET /api/tutorial-part2`, `POST /api/tutorial-part2-case`,
+  `POST /api/tutorial-part2-evaluate`, `GET /api/tutorial-journey` and
+  `POST /api/tutorial-journey-base-case`. The published paths are
   `POST /api/tutorial/part1`, `GET /api/tutorial/part2`,
-  `POST /api/tutorial/part2/case` and `POST /api/tutorial/part2/evaluate`, which
+  `POST /api/tutorial/part2/case`, `POST /api/tutorial/part2/evaluate`,
+  `GET /api/tutorial/journey` and `POST /api/tutorial/journey/base-case`, which
   the FastAPI service serves and maps to those handlers; both services run the
-  identical `eqalb_tutorial_*()` code.
+  identical `eqalb_tutorial_*()` and `eqalb_journey_*()` code.
 - `/api/value-of-information` needs the client to hold the PSA draws, so it only
   works after a PSA has run in the same browser session.
 - Charts in the Vue client are re-implementations of the Shiny plots from the
