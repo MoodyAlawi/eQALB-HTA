@@ -381,7 +381,21 @@ eqalb_journey_base_case_copy <- function() {
         focus = "health",
         # Its own control is the slider, so activating the graph must not skip it.
         interactive = TRUE,
-        advance_label = "Change the price"
+        advance_label = "Work out the ratio"
+      ),
+      list(
+        id = "ratio",
+        # The two differences have both been named by now, so this is where the
+        # ratio that divides one by the other is read and given its name. It is a
+        # state of its own because the name, the division and the value are the
+        # idea the chapter exists to teach, and because the price state below moves
+        # the numerator while holding the denominator fixed: the learner should
+        # know what the ratio is before they start changing it. The sentence is
+        # R's (`base_case.notes.ratio`), and `lead` points the guide at the line
+        # between the two points, whose slope is the ratio itself.
+        caption = "The two differences divide to give one number.",
+        note_key = "ratio",
+        focus = "lead"
       ),
       list(
         id = "price",
@@ -1021,6 +1035,64 @@ eqalb_journey_reading <- function(incremental_cost, incremental_qalys, icer) {
   )
 }
 
+# The ICER sentence: the one place the learner is told what the ratio is called,
+# how it is formed, and what this result's value is.
+#
+# It is written here rather than in the interface because it is arithmetic on the
+# result: the cost and the health it names are the same `incremental_cost` and
+# `incremental_qalys` the response publishes, and the value it quotes is the same
+# `icer`. That is why the caller passes the one set of values it already holds
+# instead of formatting its own.
+#
+# The unit is "per additional QALY gained", not "per person": the ratio is extra
+# cost divided by extra health, so the money is per QALY, and a per-person reading
+# would attach the amount to the wrong denominator. The branches say the same
+# thing the other way round: only a positive gain can be divided into a price per
+# QALY, so a loss of health, no gain at all, a saving and a zero cost are each
+# described as what they are rather than quoted as a price of health gained.
+eqalb_journey_ratio_note <- function(cost, qalys, icer) {
+  if (qalys < 0) {
+    return(paste0(
+      "eQalb gives up ", eqalb_tutorial_qalys(abs(qalys)),
+      " QALYs, so the incremental cost-effectiveness ratio (ICER) would divide the ",
+      "extra cost by a loss of health and is not a price per additional QALY gained."
+    ))
+  }
+  if (qalys == 0) {
+    return(paste0(
+      "eQalb adds no extra QALYs, so there is no extra health to divide the extra ",
+      "cost by: no incremental cost-effectiveness ratio (ICER) can be read."
+    ))
+  }
+  if (cost < 0) {
+    return(paste0(
+      "eQalb costs ", eqalb_tutorial_money_signed(abs(cost)),
+      " less and adds ", eqalb_tutorial_qalys(qalys),
+      " QALYs, so it is better on both counts: the incremental cost-effectiveness ",
+      "ratio (ICER) is negative and is not a price per additional QALY gained."
+    ))
+  }
+  if (cost == 0) {
+    return(paste0(
+      "eQalb adds ", eqalb_tutorial_qalys(qalys),
+      " QALYs at no extra cost, so the incremental cost-effectiveness ratio (ICER) ",
+      "is ", eqalb_tutorial_money(0), " per additional QALY gained."
+    ))
+  }
+  if (!is.na(icer) && is.finite(icer)) {
+    return(paste0(
+      "Dividing the extra ", eqalb_tutorial_money_signed(cost), " by the extra ",
+      eqalb_tutorial_qalys(qalys),
+      " QALYs gives an incremental cost-effectiveness ratio (ICER) of ",
+      eqalb_tutorial_money(icer), " per additional QALY gained."
+    ))
+  }
+  paste0(
+    "The incremental cost-effectiveness ratio (ICER) is not interpretable for this ",
+    "result."
+  )
+}
+
 # The sentences that carry a value, one per reveal, so a screen can show a single
 # idea at a time. R writes the words and formats the numbers together; the
 # interface prints the sentence it is given and decides nothing.
@@ -1055,19 +1127,7 @@ eqalb_journey_notes <- function(ce) {
     "It adds no QALYs per person."
   }
 
-  ratio_note <- if (qalys <= 0) {
-    "With no extra health there is no price per QALY to read."
-  } else if (cost < 0) {
-    "It also costs less, so there is no price per QALY to pay."
-  } else if (cost == 0) {
-    "It adds health at no extra cost."
-  } else if (!is.na(icer) && is.finite(icer)) {
-    paste0(
-      "One extra QALY costs ", eqalb_tutorial_money(icer), " per person."
-    )
-  } else {
-    paste0("The ratio reads: ", EQALB_TUTORIAL_ICER_UNAVAILABLE, ".")
-  }
+  ratio_note <- eqalb_journey_ratio_note(cost, qalys, icer)
 
   list(
     cost = cost_note,

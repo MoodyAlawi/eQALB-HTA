@@ -1371,24 +1371,28 @@ tutorial's contract, unchanged by a model run.
   brief itself is entry 1. QALYs are deliberately
   not explained here: they arrive on the screen that first plots health, after the
   learner has seen the relationship.
-- `base_case.copy` — Chapter 1 as one continuous sequence of five stages
-  (`usual_care`, `health`, `ratio`, `price`, `view`). Each stage carries a heading,
-  one sentence of guidance (`cue`), a `hint` that names the thing the learner is
-  about to act on, and the `target` it points at (`origin`, `eqalb`, `health`,
-  `ratio`, `price`, `graph`, `verdict`), which is what the interface's guide ring
-  and caret are drawn around. `usual_care` also publishes an `attention` (the
-  element to draw attention to before the learner acts on `target`) and its
-  `reveal`, the one reveal sentence that needs no calculation. The price stage
-  carries its `observation` and its `question`, because both belong to exploring
-  the price rather than to stages of their own, and the `continue_label` of the one
-  explicit forward control. No stage publishes a "next" label: the interface
-  advances when the learner acts. The stages carry no computed value and no answer
-  list, so this slice has no multiple-choice question beyond the three provisional
-  views. The two disclosures (`What is a QALY?`, `What is an ICER?`) live on the
-  stages that first need them.
-- `journey.navigation.resume` — the label of the control that returns to the stage
-  the learner stepped back from. `back` and `resume` are the chapter's only
-  navigation: it has no forward control, because a completed action is the advance.
+- `base_case.copy` — Chapter 2 as one continuous sequence of eight stages on one
+  plane: `usual_care`, `add_eqalb`, `more_health`, `additional_cost`, `both`,
+  `qaly`, `ratio` and `price`. Each stage carries a `caption` (its one sentence,
+  shown until a result arrives and used as the fallback if a note does not
+  resolve), the `focus` it points the guide at — `origin`, `lead`, `health` or
+  `cost`, naming a region of the plane rather than a result — and, where the stage
+  reports a value, a `note_key` into `base_case.notes`. `interactive` marks the two
+  stages whose own control is the thing on screen (the QALY score and the price),
+  so activating the graph does not skip them, and `advance_label` names what the
+  forward control does from that stage. The chapter publishes no separate forward
+  control: the graph is the way forward, so `advance_label` is the accessible name
+  of that activation. `usual_care` and `both` name no note because they introduce a
+  position rather than report a value. The stages carry no computed value and no
+  answer list, so this chapter asks no question and shows no table.
+  The `qaly` stage carries the one interactive explanation of the chapter, and
+  `ratio` is the stage that reads the incremental cost-effectiveness ratio: it names
+  the term, states the division and quotes this result in euros per additional QALY
+  gained, which is the written intent that QALY and ICER are both explained on the
+  screen that uses them.
+- `journey.navigation` — `back`, `forward`, `exit` and `restart`. A chapter's
+  forward control is its own graph; `back` steps one beat out of the chapter's stage
+  list and, at the first beat, leaves the chapter.
 - `base_case.graph` — the graph's own labels: `title`, the two axis names, the two
   point names, the two leg names, and the empty-state hint. Deliberately minimal:
   there is no threshold line, no status colour and no annotation beyond what the
@@ -1500,10 +1504,20 @@ The score reaches the model exactly as submitted: it is passed to
   code.
 - `base_case.notes` — `cost`, `health` and `ratio`: one sentence each, written and
   formatted in R, so a stage can reveal one idea at a time and the interface can
-  keep each one on screen as the learner builds the picture. The `ratio` note never
-  prints a negative ratio as a price: when eQalb costs less and adds health, it
-  says so, and when there is no extra health it says there is no price per QALY to
-  read.
+  keep each one on screen as the learner builds the picture. `ratio` is the ICER
+  sentence and the only place the learner is told what the ratio is called, how it
+  is formed and what this result's value is: it names the incremental
+  cost-effectiveness ratio (ICER), states that it divides the extra cost by the
+  extra QALYs, and quotes the same `incremental_cost`, `incremental_qalys` and
+  `icer` the response publishes, in **euros per additional QALY gained** — never
+  per person, because the money is per QALY rather than per patient. It never
+  prints a negative ratio as a price of health gained: with a loss of health it says
+  the ratio is not a price per additional QALY, with no extra health it says no
+  ratio can be read, when eQalb costs less and adds health it says so, at zero extra
+  cost it reports a zero ICER per QALY gained, and an uninterpretable ratio is
+  described as such without quoting an amount. The note is recomputed with the
+  result, so it follows the price and the score rather than describing an earlier
+  one.
 - `base_case.utility_note` — one sentence tying the incremental QALYs to the score on
   screen, so the live result is reported in R's own words rather than recomposed by
   the client.

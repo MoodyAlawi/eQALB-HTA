@@ -92,6 +92,8 @@ cd /path/to/repo && Rscript -e 'renv::status()'
 Rscript tests/test_hta_summary_rule.R
 # R: the summary endpoint's availability gate, driven through its real handler
 Rscript tests/test_hta_availability.R
+# R: the journey's ICER teaching beat — ordering, note resolution, units, branches
+Rscript tests/test_journey_icer_beat.R
 
 # Shell scripts and workflows, if you have the tools
 bash -n deploy/backend-deploy.sh deploy/frontend-deploy.sh
