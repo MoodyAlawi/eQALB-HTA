@@ -69,21 +69,37 @@ reproduced in TypeScript. It is documented in `api/api_contract.md`.
 
 The redesigned Guided Tutorial is being built as a separate teaching sequence,
 additively and behind `/app?journey=1`, so the tutorial above stays the default
-entry and is unchanged. Its first slice — the case brief and Chapter 1 (base
+entry and is unchanged. Its first slice — the case brief and Chapter 2 (base
 case) — is implemented in `eqalb_tutorial_journey.R`, its endpoints
 (`GET /api/tutorial/journey`, `POST /api/tutorial/journey/base-case` and one per
 later chapter), an isolated session (`useTutorialJourney`) and
-`views/JourneyView.vue` with `components/journey/`. Chapter 1 is one continuous
-guided sequence: a guide ring
-and caret point at the one control to act on, and a completed action *is* the
-advance, so there is no forward button between the four exploration stages and no
-timer anywhere. The learner selects eQalb (the only model run), reveals the extra
-cost, the extra health and the ratio, then moves the price as often as they like;
-the one quiet Continue appears after the first move and carries the
-unchanged-health observation and the reflective question. A quiet Back revisits an
-earlier stage without erasing anything, and Resume returns. There is no
-multiple-choice question beyond the three provisional views, and no table,
-traffic light or threshold line. The base case goes through `eqalb_tutorial_ce()`
+`views/JourneyView.vue` with `components/journey/`. Chapter 2 is one continuous
+guided sequence of eight stages on one plane — `usual_care`, `add_eqalb`,
+`more_health`, `additional_cost`, `both`, `qaly`, `ratio` and `price`: a guide
+ring and caret point at the one thing to look at, and a completed action *is* the
+advance, so there is no forward button between the stages and no timer anywhere.
+The learner selects eQalb (the only model run), reveals the extra cost, the extra
+health and the ratio, then moves the price as often as they like. The `qaly` and
+`price` stages are the two whose own control is the thing on screen — the
+quality-of-life score and the price — so activating the graph does not skip them,
+and the price stage closes the chapter by opening the bridge into the
+assumptions behind the comparison, carrying the observation that the health gain
+stays the same at every price while only the extra cost moves. A quiet Back
+revisits an earlier stage without erasing anything, and Resume returns. There
+is no multiple-choice question beyond the three provisional views, and no table,
+traffic light or threshold line.
+
+The `ratio` stage sits between `qaly` and `price`, and it is the chapter's one
+sentence about the ratio itself: R's `base_case.notes.ratio` names the
+incremental cost-effectiveness ratio (ICER), states that it divides the extra
+cost by the extra QALYs, and quotes this result in euros per additional QALY
+gained rather than per person. Its guide focuses the lead — the line between the
+two points, whose slope is the ratio — so the sentence and the graph agree. It
+comes after the QALY stage because the division needs a named denominator, and
+before the price stage because moving the price changes the numerator while the
+denominator stays fixed.
+
+The base case goes through `eqalb_tutorial_ce()`
 and therefore `run_eqalb_model()`, so its values are the same values Part 1
 returns for the same price, score and fixed assumptions; the journey adds the
 scenario's own levers, R-owned reveal sentences and R-owned interpretation only. The
