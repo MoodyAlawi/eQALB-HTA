@@ -45,6 +45,10 @@ class RModelUnavailable(RuntimeError):
     """The R model could not be reached at all (missing R, worker died)."""
 
 
+class RModelTimeout(RModelUnavailable):
+    """A request got no answer in time; its worker was discarded, not reused."""
+
+
 def find_rscript() -> str:
     """Locate the Rscript executable used to start workers."""
     configured = os.environ.get("EQALB_RSCRIPT")
@@ -104,7 +108,16 @@ class RWorker:
             thread = threading.Thread(target=target, args=(stream,), daemon=True)
             thread.start()
 
-        ready = self._await_message(timeout=timeout)
+        try:
+            ready = self._await_message(timeout=timeout)
+        except BaseException as error:
+            # A worker that never became ready is not left running. It ran no
+            # analysis, so a start-up timeout stays an ordinary unavailability that
+            # the pool may retry once on a fresh worker.
+            self.close(force=True)
+            if isinstance(error, RModelTimeout):
+                raise RModelUnavailable(str(error)) from error
+            raise
         self.endpoints = list(ready.get("endpoints", []))
         self.worker_pid = ready.get("worker_pid")
         LOGGER.info(
@@ -144,7 +157,7 @@ class RWorker:
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise RModelUnavailable(
+                raise RModelTimeout(
                     f"The R model did not answer within {timeout:.0f} seconds."
                 )
             try:
@@ -201,11 +214,19 @@ class RWorker:
             except (BrokenPipeError, OSError) as error:
                 raise RModelUnavailable(self._death_reason()) from error
 
-            message = self._await_message(self.timeout)
+            try:
+                message = self._await_message(self.timeout)
+            except RModelUnavailable:
+                # A timed-out worker is still busy with this request and would answer
+                # it later, in place of the next one, so it is never used again.
+                self.close(force=True)
+                raise
 
         if message.get("id") != payload["id"]:
+            # Replies can no longer be matched to requests on this stream.
+            self.close(force=True)
             raise RModelUnavailable(
-                "The R model answered out of order; the worker was restarted."
+                "The R model answered out of order; the worker was discarded."
             )
         if message.get("ok") is not True:
             raise RModelError(str(message.get("error", "The R model failed.")))
@@ -218,16 +239,35 @@ class RWorker:
     def alive(self) -> bool:
         return not self._closed and self._process.poll() is None
 
-    def close(self) -> None:
+    def close(self, force: bool = False) -> None:
+        """Stop the worker; ``force`` kills it rather than letting it finish.
+
+        It runs while another error is being reported, so a pipe or process error
+        here is contained: it can neither skip the kill nor replace that error.
+        """
         self._closed = True
-        if self._process.poll() is None:
+        process = self._process
+        # Closed even when the worker has already exited, so its pipe is released.
+        if process.stdin is not None:
             try:
-                if self._process.stdin is not None:
-                    self._process.stdin.close()
-                self._process.wait(timeout=10)
-            except (subprocess.TimeoutExpired, OSError, ValueError):
-                self._process.kill()
-        for stream in (self._process.stdout, self._process.stderr):
+                process.stdin.close()
+            except Exception:  # noqa: BLE001 - without end-of-input, it must be killed
+                force = True
+        if process.poll() is None:
+            try:
+                if force:
+                    process.kill()
+                process.wait(timeout=10)
+            except (subprocess.TimeoutExpired, OSError):
+                try:
+                    process.kill()
+                    process.wait(timeout=10)
+                except (subprocess.TimeoutExpired, OSError) as error:
+                    LOGGER.error("R worker pid %s could not be stopped: %s", process.pid, error)
+                    # Its reader threads hold the stream locks until the worker
+                    # exits, so closing the streams now would block.
+                    return
+        for stream in (process.stdout, process.stderr):
             try:
                 if stream is not None:
                     stream.close()
@@ -241,7 +281,8 @@ class RModelPool:
     One worker cannot serve two requests at once (R is single-threaded), so the
     pool serialises per worker and lets independent analyses run side by side.
     Requests are pure functions of their inputs, so a request that dies with its
-    worker is retried once on a fresh one.
+    worker is retried once on a fresh one. A request that times out is not: its
+    worker is discarded and the error is returned.
     """
 
     def __init__(self, size: int, timeout: float | None = None) -> None:
@@ -301,6 +342,13 @@ class RModelPool:
             for attempt in range(2):
                 try:
                     return self._worker_for(slot).request(endpoint, query, body)
+                except RModelTimeout as error:
+                    # Not replayed: the analysis itself may be what took too long.
+                    # The worker was discarded, so the slot starts a fresh one next.
+                    LOGGER.warning(
+                        "R worker slot %s timed out on %s: %s", slot, endpoint, error
+                    )
+                    raise
                 except RModelUnavailable as error:
                     last_error = error
                     LOGGER.warning(
