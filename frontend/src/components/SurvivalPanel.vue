@@ -342,7 +342,7 @@ const presentedStale = computed(() =>
         <button
           type="button"
           class="btn btn--ghost"
-          title="Read this module's lesson on its own, in the Guided tutorial. It uses the tutorial's own worked example — 1,000 simulated people per arm at the case's effect assumptions — not your analysis settings, and returns here when you are done."
+          title="Read this module's lesson on its own, in The Journey. It uses The Journey's own worked example — 1,000 simulated people per arm at the case's effect assumptions — not your analysis settings, and returns here when you are done."
           @click="openExplainer()"
         >
           Explain this

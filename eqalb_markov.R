@@ -947,8 +947,8 @@ voi_uncertainty_status <- function(
       "unlikely to change it at this threshold."
     ),
     Amber = paste(
-      "This means there is some uncertainty, but the current decision is",
-      "fairly stable."
+      "This means there is some uncertainty about the decision at this",
+      "threshold."
     ),
     Red = paste(
       "This means the decision is genuinely uncertain at this threshold, so",
@@ -986,9 +986,9 @@ voi_uncertainty_status <- function(
 
   thresholds <- paste(
     "Educational traffic-light rules:",
-    "Red if the less-preferred option wins in at least 40% of simulations or",
-    "EVPI per patient is above \u20ac1,000;",
-    "Green if it wins in at most 1% of simulations and EVPI per patient is",
+    "Red if the option that wins less often still wins in at least 40% of",
+    "simulations or EVPI per patient is above \u20ac1,000;",
+    "Green if it wins in fewer than 1% of simulations and EVPI per patient is",
     "\u20ac1 or less; Amber otherwise."
   )
 
@@ -1280,7 +1280,7 @@ assess_hta_decision_summary <- function(
     )
   }
   economic_interpretation <- if (identical(economic, "Not available")) {
-    "Not yet assessable: run the base case and the PSA."
+    "Not yet assessable: run the PSA (the base case is used when it has been run)."
   } else {
     status_text <- switch(economic,
       Green = paste(
@@ -1348,7 +1348,7 @@ assess_hta_decision_summary <- function(
     if (is.list(uncertainty)) {
       paste(uncertainty$label, "-", uncertainty$interpretation)
     } else {
-      "Not yet assessable: run the PSA."
+      "Not yet assessable: run the PSA, then the value-of-information analysis."
     }
   )
 
@@ -1363,13 +1363,13 @@ assess_hta_decision_summary <- function(
     "Red"
   }
   budget_interpretation <- switch(budget,
-    Green = "Low five-year cumulative net budget impact under the selected uptake assumptions.",
-    Amber = "Moderate five-year cumulative net budget impact; affordability depends on uptake and price.",
-    Red = "High five-year cumulative net budget impact; affordability is a material barrier under the selected uptake assumptions.",
+    Green = "Low cumulative net budget impact over the selected horizon under the selected uptake assumptions.",
+    Amber = "Moderate cumulative net budget impact over the selected horizon; affordability depends on uptake and price.",
+    Red = "High cumulative net budget impact over the selected horizon; affordability is a material barrier under the selected uptake assumptions.",
     paste("Not yet assessable: run the budget-impact analysis.")
   )
   add_row("Budget impact", budget,
-          paste0("Five-year cumulative net budget impact ",
+          paste0("Cumulative net budget impact over the selected horizon ",
                  hta_summary_money(cumulative_budget_impact)),
           "Budget-impact analysis over the selected horizon",
           budget_interpretation)
@@ -1467,34 +1467,30 @@ assess_hta_decision_summary <- function(
   }
 
   position_text <- switch(position,
-    "Potentially favourable" = paste(
-      "Under the selected assumptions eQalb looks favourable, but this",
-      "is an illustrative educational position and not a reimbursement",
-      "recommendation."
-    ),
+    "Potentially favourable" =
+      "Under the selected assumptions eQalb looks favourable.",
     "Conditional adoption with evidence generation" = paste(
       "eQalb may provide clinical and economic benefit under favourable",
       "assumptions, but the current conclusion remains uncertain. The clinical",
-      "evidence is simulated, the budget impact may be substantial, and",
-      "implementation and engagement will influence whether the modelled",
-      "benefit is achieved. Conditional adoption with further evidence",
-      "generation is therefore an illustrative position rather than a",
-      "reimbursement recommendation."
+      "evidence is simulated, and affordability, implementation and engagement",
+      "will influence whether the modelled benefit is achieved."
     ),
     "Further evidence required" = paste(
       "The decision is genuinely uncertain at this threshold, so further",
-      "evidence could change it. This is an illustrative educational position",
-      "and not a reimbursement recommendation."
+      "evidence could change it."
     ),
     "Not favourable under current assumptions" = paste(
       "The decision is stable against eQalb at this threshold, so",
       "further evidence is unlikely to change the conclusion under the current",
-      "assumptions. This is an illustrative educational position and not a",
-      "reimbursement recommendation."
+      "assumptions."
     ),
+    # A position needs the PSA's probability of cost-effectiveness and the EVPI
+    # from the value-of-information analysis, which reuses the PSA's draws. The
+    # base case, budget impact and readiness add their own rows but are not
+    # needed for a position.
     paste(
-      "Not yet assessable: run the base case, the PSA and the budget-impact",
-      "analysis to populate the dashboard."
+      "Not yet assessable: run the PSA, then the value-of-information analysis,",
+      "which reuses the PSA's simulations; then assess the summary again."
     )
   )
 

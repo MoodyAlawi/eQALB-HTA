@@ -749,7 +749,7 @@ eqalb_journey_contract <- function() {
   total <- length(EQALB_JOURNEY_CHAPTERS)
   list(
     journey = list(
-      title = "Guided tutorial",
+      title = "The Journey",
       kicker = "Funding eQalb: from a base case to a recommendation",
       progress = list(
         total = total,
@@ -758,7 +758,7 @@ eqalb_journey_contract <- function() {
       navigation = list(
         back = "Back",
         forward = "Next",
-        exit = "Exit tutorial",
+        exit = "Exit The Journey",
         restart = "Restart journey"
       ),
       # The method note behind each module's "How this is calculated" control, the

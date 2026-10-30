@@ -47,7 +47,7 @@ const summary = computed(() => result.value?.summary ?? null)
 const stateLine = computed(() =>
   model.busy.htaSummary
     ? 'Assessing the HTA summary from the analyses run so far.'
-    : 'Run the base case, the PSA, the value of information, the budget impact and the DHT readiness analyses you want included, then select Assess HTA summary.',
+    : 'A decision position needs the PSA and then the value of information; the base case, budget impact and DHT readiness add their own rows. Run the analyses you want included, then select Assess HTA summary.',
 )
 const priorities = computed(() => result.value?.evidence_priorities.table ?? [])
 const availability = computed(() => result.value?.availability ?? null)
@@ -271,7 +271,7 @@ const presentedMissing = computed(() => {
 
 const settingsNote = computed(() =>
   model.htaSummaryStale
-    ? 'What this summary included is listed as it was assessed. An analysis has been re-run since, so the panel’s current results are not shown as the summary’s: its position describes the analyses that existed when it ran.'
+    ? 'This list records the analyses included when the summary was assessed. Current inputs or analysis results may differ.'
     : 'What this summary included is listed as R reported it for this assessment; the panel’s stored analyses still match it.',
 )
 </script>
@@ -310,7 +310,14 @@ const settingsNote = computed(() =>
       {{ model.errors.htaSummary }}
     </p>
 
-    <StaleNotice v-if="result && model.htaSummaryStale" action="Assess HTA summary" />
+    <!-- The summary goes out of date when the inputs change or when an analysis it
+         reads is run again, so it uses its own sentence rather than the shared
+         "earlier inputs" one. -->
+    <StaleNotice
+      v-if="result && model.htaSummaryStale"
+      action="Assess HTA summary"
+      message="This summary may be out of date because inputs or analysis results have changed. Select ‘Assess HTA summary’ to update it."
+    />
 
     <p v-if="!result" class="hint" role="status">
       {{ stateLine }}
