@@ -1,0 +1,41 @@
+# Linux tests for how deploy/backend-deploy.sh status reports deployment state.
+#
+# Runs tests/test_backend_deploy_status.sh and nothing else. The tests need Linux
+# file permissions and a non-root user, which the hosted ubuntu runner provides.
+# This workflow uses no secrets, no environment, no SSH and no deployment step,
+# and it can only read the repository.
+
+name: Test deploy status
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'deploy/backend-deploy.sh'
+      - 'tests/test_backend_deploy_status.sh'
+      - '.github/workflows/test-deploy-status.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-deploy-status-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  status-tests:
+    name: Deployment status tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Run the status tests as the runner's non-root user
+        run: |
+          set -euo pipefail
+          echo "user: $(id -un) (uid $(id -u))"
+          bash tests/test_backend_deploy_status.sh
