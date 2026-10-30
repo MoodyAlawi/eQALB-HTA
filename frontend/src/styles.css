@@ -4291,9 +4291,10 @@ button:focus-visible {
 
 /* --- The shared overlay box -------------------------------------------------
    One box for every overlay in the app and in The Journey: the dialogs, the chapter
-   bridges, the completion overlay and the floating information panels. Its outline is an
-   ECG perimeter and nothing else — no border, no rounded card, no second frame inside a
-   frame — and its opening is one sequence, run by `EcgOverlay`. The loading card is
+   bridges, the completion overlay and the floating information panels. Its outline is a
+   rounded ECG perimeter and nothing else — no border, no second frame inside a frame; the
+   surface sits on the line, so the line is the card's edge — and its opening is one
+   sequence, run by `EcgOverlay`. The loading card is
    deliberately not one of these: it keeps its own treatment.
 
    A host only chooses the wording, the width and the alignment; the padding, the type and
@@ -4310,13 +4311,18 @@ button:focus-visible {
 }
 
 /* The interior. It is the surface the words sit on and it has no edge of its own: it is
-   inset from the trace and soft at its corners, so it can never read as a card that the
-   trace is decorating. It arrives with the words, never before them. */
+   laid exactly on the trace — the same 9px inset and the same 16px corner radius as the
+   perimeter in `EcgFrame` — so the line is the card's edge, not a box drawn around it.
+   Its soft shadow lifts the card off the page. It arrives with the words, never before
+   them. */
 .ocard__backing {
   position: absolute;
-  inset: 4px;
-  border-radius: 14px;
+  inset: 9px;
+  border-radius: 16px;
   background: var(--ocard-surface, var(--panel));
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.12),
+    0 18px 44px -12px rgba(0, 0, 0, 0.38);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--ocard-reveal) var(--ease-move);
@@ -4336,8 +4342,19 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 2.15rem 2.1rem 1.9rem;
+  /* The scrolling box sits on the surface, inside the trace, so a long box's scrollbar
+     runs along the card's inner edge rather than across the line. Every padding below
+     is measured from the outer box as before, less this inset, so the words sit where
+     they always have. */
+  --ocard-edge: 9px;
+  margin: var(--ocard-edge);
+  border-radius: 16px;
+  padding: calc(2.15rem - var(--ocard-edge)) calc(2.1rem - var(--ocard-edge))
+    calc(1.9rem - var(--ocard-edge));
   overflow-y: auto;
+  /* A thin, quiet scrollbar, so it never reads as a second line beside the trace. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
   opacity: 0;
   visibility: hidden;
   transform: translateY(4px);
@@ -4432,7 +4449,8 @@ button:focus-visible {
 }
 
 .ocard--centre .ocard__stack {
-  padding: 2.25rem 2.4rem 2rem;
+  padding: calc(2.25rem - var(--ocard-edge)) calc(2.4rem - var(--ocard-edge))
+    calc(2rem - var(--ocard-edge));
 }
 
 .ocard--centre .ocard__actions {
@@ -4453,17 +4471,20 @@ button:focus-visible {
 }
 
 .ocard--dense .ocard__stack {
-  padding: 1.05rem 1.1rem 1rem;
+  padding: calc(1.05rem - var(--ocard-edge)) calc(1.1rem - var(--ocard-edge))
+    calc(1rem - var(--ocard-edge));
   font-size: 0.82rem;
 }
 
 @media (max-width: 520px) {
   .ocard__stack {
-    padding: 1.9rem 1.35rem 1.6rem;
+    padding: calc(1.9rem - var(--ocard-edge)) calc(1.35rem - var(--ocard-edge))
+      calc(1.6rem - var(--ocard-edge));
   }
 
   .ocard--centre .ocard__stack {
-    padding: 2.2rem 1.5rem 1.7rem;
+    padding: calc(2.2rem - var(--ocard-edge)) calc(1.5rem - var(--ocard-edge))
+      calc(1.7rem - var(--ocard-edge));
   }
 }
 
@@ -4501,7 +4522,8 @@ button:focus-visible {
    then waits off it — for as long as the box is open. One geometry, lit in turn.
 
    Every value is computed in pixels from the box's measured size (in the component), so
-   the line sits 9px inside the box and reaches at most 16px inward. The line takes no
+   the line sits 9px inside the box, turns its corners on a 16px radius and reaches at
+   most 16px inward. The line takes no
    pointer and holds up nothing. */
 
 .ecg-frame {
@@ -4536,6 +4558,9 @@ button:focus-visible {
 .ecg-frame__line {
   stroke: var(--ecg-line);
   stroke-width: 1.4px;
+  /* The sides meet end to end on the rounded corners; flat ends keep the joins from
+     doubling up into a brighter dot. */
+  stroke-linecap: butt;
   filter: drop-shadow(0 0 1.8px var(--ecg-glow));
   stroke-dasharray: var(--ecg-len);
   stroke-dashoffset: 0;
@@ -6041,6 +6066,8 @@ button:focus-visible {
   position: absolute;
   inset: 0;
   background: rgba(15, 25, 32, 0.55);
+  /* A light blur so the card reads apart from the page behind it, not against it. */
+  backdrop-filter: blur(2px);
 }
 
 /* A dialog's panel is now only its frame of reference for focus, sizing and placement:
