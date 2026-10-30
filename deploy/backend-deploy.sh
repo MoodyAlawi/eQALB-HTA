@@ -1580,11 +1580,50 @@ deploy_sha() {
   printf 'HEALTH=ok\n'
 }
 
+# Used by status only. Prints "readable", "absent" or "inaccessible" for a state
+# file. A path is "absent" only when its directory can be searched and it is not
+# there; when permissions hide whether it exists, it is "inaccessible".
+path_access() {
+  local path=$1 parent
+  if [ -e "$path" ]; then
+    if [ -r "$path" ]; then printf 'readable'; else printf 'inaccessible'; fi
+    return 0
+  fi
+  parent="$(dirname -- "$path")"
+  if [ "$parent" = "$path" ]; then
+    printf 'absent'
+  elif [ -d "$parent" ]; then
+    if [ -x "$parent" ]; then printf 'absent'; else printf 'inaccessible'; fi
+  elif [ -e "$parent" ]; then
+    printf 'absent'  # the parent is a file, so nothing can exist beneath it
+  else
+    path_access "$parent"
+  fi
+}
+
 show_status() {
   local head="" active="unknown" message="" status=0
+  local state_access pending_access state_unset="none" pending_unset="none"
 
-  read_state
-  read_pending
+  # Status may be run by an account that cannot read the deploy user's state;
+  # deploy and rollback refuse to start in that case (see preflight). Unreadable
+  # state is reported as unknown rather than as no deployment.
+  state_access="$(path_access "$STATE_FILE")"
+  pending_access="$(path_access "$PENDING_FILE")"
+  if [ "$state_access" = "readable" ]; then
+    read_state
+  elif [ "$state_access" = "inaccessible" ]; then
+    state_unset="unknown"
+  fi
+  if [ "$pending_access" = "readable" ]; then
+    read_pending
+  elif [ "$pending_access" = "inaccessible" ]; then
+    pending_unset="unknown"
+  fi
+  if [ "$state_access" = "inaccessible" ] || [ "$pending_access" = "inaccessible" ]; then
+    note "the deployment state in $STATE_DIR cannot be read by the current account, so it is reported as unknown."
+    note "run status as the SSH deploy account that owns $STATE_DIR, or read those files with that account's privileges."
+  fi
   if sudo -n -u "$APP_USER" -- true 2>/dev/null; then
     head="$(run_as_app "$GIT" -C "$PROJECT_DIR" rev-parse HEAD 2>/dev/null || true)"
   fi
@@ -1606,14 +1645,14 @@ show_status() {
     message="not resolved"
   fi
 
-  printf 'CURRENT_SHA=%s\n' "${CURRENT_SHA:-none}"
+  printf 'CURRENT_SHA=%s\n' "${CURRENT_SHA:-$state_unset}"
   printf 'CURRENT_DEPLOYED_AT=%s\n' "${CURRENT_DEPLOYED_AT:-unknown}"
-  printf 'PREVIOUS_SHA=%s\n' "${PREVIOUS_SHA:-none}"
+  printf 'PREVIOUS_SHA=%s\n' "${PREVIOUS_SHA:-$state_unset}"
   printf 'PREVIOUS_DEPLOYED_AT=%s\n' "${PREVIOUS_DEPLOYED_AT:-unknown}"
-  printf 'PENDING_SHA=%s\n' "${PENDING_SHA:-none}"
-  printf 'PENDING_ACTION=%s\n' "${PENDING_ACTION:-none}"
+  printf 'PENDING_SHA=%s\n' "${PENDING_SHA:-$pending_unset}"
+  printf 'PENDING_ACTION=%s\n' "${PENDING_ACTION:-$pending_unset}"
   printf 'PENDING_AT=%s\n' "${PENDING_AT:-unknown}"
-  printf 'PENDING_BASE_SHA=%s\n' "${PENDING_BASE_SHA:-none}"
+  printf 'PENDING_BASE_SHA=%s\n' "${PENDING_BASE_SHA:-$pending_unset}"
   printf 'CHECKOUT_HEAD=%s\n' "${head:-unknown}"
   printf 'SERVICE=%s\n' "$active"
   printf 'SERVICE_UNIT=%s\n' "${SERVICE_FRAGMENT:-unknown}"
@@ -1625,6 +1664,8 @@ show_status() {
   printf 'HEALTH_URL=%s\n' "${HEALTH_URL:-unresolved}"
   printf 'HEALTH=%s\n' "$message"
   printf 'STATE_FILE=%s\n' "$STATE_FILE"
+  printf 'STATE_ACCESS=%s\n' "$state_access"
+  printf 'PENDING_ACCESS=%s\n' "$pending_access"
   printf 'HISTORY_FILE=%s\n' "$HISTORY_FILE"
 }
 

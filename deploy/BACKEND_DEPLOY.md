@@ -410,6 +410,22 @@ rollback can choose the last known-good revision.
 - `history.log`: one tab-separated line per completed deployment or rollback.
 - `deploy.lock`: the `flock` target; two deployments cannot overlap.
 
+The `status` action reports whether it could read `state.env` and `pending.env`
+as `STATE_ACCESS` and `PENDING_ACCESS`:
+
+| Value | Meaning | SHA fields |
+|---|---|---|
+| `readable` | The file was read. | The recorded values, as before. |
+| `absent` | The file does not exist: no deployment has been recorded yet, or no attempt is pending. | `none` |
+| `inaccessible` | The file, or whether it exists, is hidden by permissions from the account running `status`. | `unknown` |
+
+Because the directory is mode 0700, another account (for example the VPS's
+interactive admin account) sees `inaccessible` and `unknown`, not `none`, and
+`status` prints a hint to stderr. Run `status` as the deploy user, or read the
+files with that account's privileges. `status` changes no permissions and does
+not use sudo to read them. Deploy and rollback are unaffected: they already stop
+before any change when the state cannot be read or written.
+
 "Previous known-good" is a Git SHA, not a copied directory: the commit and its
 lockfiles remain in the checkout's Git history, so a rollback reconstructs that
 deployment. A shallow checkout is unshallowed automatically the first time an
