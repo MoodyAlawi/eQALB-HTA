@@ -12,7 +12,7 @@
  *
  * Exactly one page renders at a time, and each one is named by its own v-if /
  * v-else-if: the analysis dashboard is the first branch below, and the public
- * pages and the eQalb subviews (Home, tutorial, project description, download
+ * pages and the eQalb subviews (Home, The Journey, project description, download
  * results) follow it. A page must never be the chain's leftover branch - the
  * download view was, and so appeared under the dashboard in every analysis tab.
  * Changing the page is what unmounts a view, so a page that is left takes its
@@ -44,7 +44,6 @@ import ValueBasedPricePanel from './components/ValueBasedPricePanel.vue'
 import HomeView from './views/HomeView.vue'
 import ProjectDescriptionView from './views/ProjectDescriptionView.vue'
 import DownloadResultsView from './views/DownloadResultsView.vue'
-import TutorialView from './views/TutorialView.vue'
 import JourneyView from './views/JourneyView.vue'
 import OpenHealthHomeView from './views/OpenHealthHomeView.vue'
 import AboutView from './views/AboutView.vue'
@@ -318,7 +317,7 @@ watch(page, (next) => {
 </script>
 
 <template>
-  <!-- The eQalb screens - Home, the tutorial, the project description - are a
+  <!-- The eQalb screens - Home, The Journey, the project description - are a
        centred column inside the app's own padding. The landing page and the blog
        are full-bleed pages laid out by their own stylesheets, so the shell steps
        aside for both: no column of its own, no padding of its own. -->
@@ -481,7 +480,6 @@ watch(page, (next) => {
       <BlogIndexView v-else-if="page === 'blog' && !postSlug" />
       <BlogPostView v-else-if="page === 'blog'" />
       <HomeView v-else-if="page === 'home'" />
-      <TutorialView v-else-if="page === 'tutorial'" />
       <JourneyView v-else-if="page === 'journey'" />
       <ProjectDescriptionView v-else-if="page === 'description'" />
       <DownloadResultsView v-else-if="page === 'export'" />
