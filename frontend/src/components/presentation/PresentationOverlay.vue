@@ -26,7 +26,10 @@ const props = withDefaults(
   defineProps<{
     /** The analysis name, as the tab's own heading has it. */
     title: string
-    /** R's notice line for the presented response, printed at the foot. */
+    /**
+     * R's notice line for the presented response, printed at the foot, or '' when
+     * the presented content already carries R's own, stronger caveat.
+     */
     notice: string
     /** The sentence naming what has moved since the run, or '' when nothing has. */
     stale?: string
@@ -175,7 +178,7 @@ function onKeydown(event: KeyboardEvent): void {
 
           <slot name="footer" />
 
-          <p class="present__notice">{{ notice }}</p>
+          <p v-if="notice" class="present__notice">{{ notice }}</p>
         </EcgOverlay>
       </div>
     </div>

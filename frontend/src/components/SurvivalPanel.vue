@@ -558,8 +558,8 @@ const presentedStale = computed(() =>
       </figure>
 
       <p class="present__interpretation">
-        Simulated illustrative data: individual patients are drawn from the annual event risks and
-        the engagement-adjusted treatment effect of this run, not observed trial data.
+        Individual patients are simulated from this run’s annual event risks and
+        engagement-adjusted treatment effect, not observed trial data.
       </p>
 
       <DataTable

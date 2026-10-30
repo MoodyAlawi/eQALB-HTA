@@ -246,6 +246,20 @@ const presentedStale = computed(() =>
     : '',
 )
 
+/**
+ * The presentation's foot notice. R's interpretation, which the presentation shows in
+ * full, already ends with its own stronger caveat ("not clinical evidence and not an
+ * official HTA recommendation"), so the generic notice would repeat it. It is left out
+ * only while that caveat is actually present: if the interpretation ever stops carrying
+ * it, the generic notice comes back, so the presentation is never without one.
+ */
+const presentedNotice = computed(() => {
+  const run = presented.value
+  if (!run) return ''
+  const interpretation = run.summary?.interpretation ?? ''
+  return interpretation.includes('not clinical evidence') ? '' : run.notice
+})
+
 /** The upstream analyses the presented summary reports as not yet included. */
 const presentedMissing = computed(() => {
   const run = presented.value
@@ -462,7 +476,7 @@ const settingsNote = computed(() =>
     <PresentationOverlay
       v-if="presented && presented.summary"
       title="HTA decision summary"
-      :notice="presented.notice"
+      :notice="presentedNotice"
       :stale="presentedStale"
       settings-label="What this summary included"
       :settings-note="settingsNote"
