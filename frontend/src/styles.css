@@ -1795,9 +1795,85 @@ code {
   font-size: 1.05rem;
 }
 
-.assumptions__header p {
-  margin: 0.15rem 0 0;
-  font-size: 0.82rem;
+.assumptions__header h2 .badge {
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
+
+/* Reset and, directly beneath it, the three illustrative scenarios: one compact
+   column at the header's end, right-aligned under the button it belongs with. */
+.assumptions__controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45rem;
+}
+
+.presets {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.presets__label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.presets__buttons {
+  display: flex;
+  gap: 0.3rem;
+}
+
+/* Each scenario is a small numbered chip in its traffic-light colour. Chosen is
+   filled; the rest are outlined, so the one in force is readable at a glance. */
+.presets__button {
+  --preset: var(--muted);
+  --preset-bg: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1.5px solid var(--preset);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--preset);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-move),
+    color var(--motion-fast) var(--ease-move);
+}
+
+.presets__button--red {
+  --preset: var(--danger);
+  --preset-bg: var(--danger-bg);
+}
+
+.presets__button--yellow {
+  --preset: var(--warning);
+  --preset-bg: var(--warning-bg);
+}
+
+.presets__button--green {
+  --preset: var(--success);
+  --preset-bg: var(--success-bg);
+}
+
+.presets__button:hover,
+.presets__button:focus-visible {
+  background: var(--preset-bg);
+}
+
+.presets__button[aria-pressed='true'] {
+  background: var(--preset);
+  color: var(--panel);
 }
 
 /* The destructive action sits on its own, below everything it can remove, so it
