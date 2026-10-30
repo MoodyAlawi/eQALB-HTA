@@ -938,7 +938,11 @@ comes from R on every response.
 `Clinical evidence maturity` is always `Red` in this app because the clinical
 inputs are simulated, so even an empty body returns an `overall_status` — that is
 R's own rule, unchanged from the Shiny tab. `position` stays `Not yet assessable`
-until the base case, the PSA and the budget impact have all been supplied. The
+until both `probability_cost_effective` (from the PSA) and `evpi` (from the value
+of information, which reuses the PSA's draws) have been supplied. The base case,
+the budget impact and readiness each add their own row but are not needed for a
+position; without the base case, the economic comparison falls back to the PSA's
+`mean_incremental_nmb`. The
 endpoint never reruns an analysis, exactly as the Shiny tab does not.
 
 ### `POST /api/value-based-price`
