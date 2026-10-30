@@ -43,6 +43,40 @@ except ImportError:  # running as `uvicorn api.main:app` from the project root
 
 LOGGER = logging.getLogger("eqalb.api")
 
+LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
+
+
+class _EqalbLogHandler(logging.StreamHandler):
+    """The stderr handler configure_logging() gives the ``eqalb`` loggers."""
+
+
+def configure_logging() -> None:
+    """Log the ``eqalb.*`` loggers to stderr at EQALB_LOG_LEVEL, however the API
+    was started.
+
+    ``uvicorn api.main:app`` never calls main(), so this runs from the lifespan
+    as well. Only the ``eqalb`` logger is configured: the root logger and
+    third-party loggers are left to whoever set them up, and ``eqalb`` records
+    do not also reach a root handler, which would print them twice. A second
+    call changes nothing.
+    """
+    logger = logging.getLogger("eqalb")
+    if any(isinstance(handler, _EqalbLogHandler) for handler in logger.handlers):
+        return
+    handler = _EqalbLogHandler()
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    logger.addHandler(handler)
+    logger.propagate = False
+
+    configured = os.environ.get("EQALB_LOG_LEVEL", "INFO")
+    level = logging.getLevelName(configured.strip().upper())
+    if isinstance(level, int):
+        logger.setLevel(level)
+    else:
+        logger.setLevel(logging.INFO)
+        LOGGER.warning("EQALB_LOG_LEVEL=%r is not a log level; using INFO.", configured)
+
+
 SIMULATED_NOTICE = "Simulated illustrative data \u2014 not clinical evidence"
 
 SERVICE_NAME = "eQalb illustrative HTA model API"
@@ -445,6 +479,8 @@ def query_docs(*parameters: tuple[str, str]) -> dict[str, Any]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Before the pool starts, so its workers' start-up messages are logged.
+    configure_logging()
     app.state.pool = None
     app.state.model_error = None
     try:
@@ -1109,10 +1145,9 @@ def main() -> None:
 
     host = os.environ.get("EQALB_API_HOST", "127.0.0.1")
     port = int(os.environ.get("EQALB_API_PORT", "8788"))
-    logging.basicConfig(
-        level=os.environ.get("EQALB_LOG_LEVEL", "INFO").upper(),
-        format="%(levelname)s %(name)s: %(message)s",
-    )
+    configure_logging()
+    # Third-party loggers log through the root at the level resolved above.
+    logging.basicConfig(level=logging.getLogger("eqalb").level, format=LOG_FORMAT)
     print(f"eQalb model API on http://{host}:{port} (docs at /docs)")
     print(SIMULATED_NOTICE + ".")
     uvicorn.run(app, host=host, port=port, log_level="info")
