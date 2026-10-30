@@ -19,9 +19,6 @@ import type {
   OwsaOutcome,
   OwsaRangeOverride,
   OwsaResponse,
-  Part2CaseResponse,
-  Part2Curve,
-  Part2EvaluateResponse,
   JourneyBaseCaseResponse,
   JourneyBudgetResponse,
   JourneyContractResponse,
@@ -40,10 +37,6 @@ import type {
   ReadinessResponse,
   ScenarioInputs,
   SurvivalResponse,
-  TutorialInputs,
-  TutorialPart1Response,
-  TutorialPart2ContractResponse,
-  TutorialResponse,
   ValueBasedPriceResponse,
   VoiResponse,
 } from './types'
@@ -311,38 +304,6 @@ export function postValueBasedPrice(
 }
 
 /**
- * The Guided Tutorial Part 1 contract: the tutorial's own defaults, its control
- * metadata (labels, units, ranges, steps and explanations) and the instructional
- * wording of all four steps. R owns every string, so the client renders the
- * tutorial's teaching copy rather than holding a copy of it.
- */
-export function fetchTutorial(): Promise<TutorialResponse> {
-  return request<TutorialResponse>('/tutorial')
-}
-
-/**
- * All four Guided Tutorial Part 1 results in one deterministic response. The
- * body carries only the tutorial's own nine controls; every other value is a
- * tutorial-owned default in R, so a tutorial request cannot read or move a
- * full-analysis setting. The response is presentation-ready: values, statuses,
- * interpretations, table rows and formatted strings all come from R.
- */
-export function postTutorialPart1(
-  inputs: TutorialInputs,
-): Promise<TutorialPart1Response> {
-  return request<TutorialPart1Response>('/tutorial/part1', undefined, inputs)
-}
-
-/**
- * The Guided Tutorial Part 2 contract: the five section names with only the
- * implemented ones marked available, R's instructional copy, the negotiated-price
- * control metadata and the chart's labels, series colours and legend entries.
- */
-export function fetchTutorialPart2(): Promise<TutorialPart2ContractResponse> {
-  return request<TutorialPart2ContractResponse>('/tutorial/part2')
-}
-
-/**
  * The Guided Tutorial journey contract: the fixed case, the chapters this slice
  * implements, Chapter 1's wording with each answer's feedback, the one price
  * lever and the provisional verdict options. Building it runs no model.
@@ -487,62 +448,4 @@ export interface JourneyReadinessRequest {
  */
 export function postTutorialJourneySurvival(): Promise<JourneySurvivalResponse> {
   return request<JourneySurvivalResponse>('/tutorial/journey/survival', undefined, {})
-}
-
-export interface TutorialPart2CaseRequest {
-  /** Omitted for a new case; the handle R issued to resume the same case. */
-  case_id?: string
-  /** Retry support: R never returns the excluded case. Not used yet. */
-  exclude_case_id?: string
-  /** Pins the draw, for a fixture. The interface never sends one. */
-  seed?: number
-}
-
-/**
- * Creates a Part 2 case, or resumes the one the caller already holds. The
- * response carries the opaque `case_id` (the only part of the draw the client
- * stores or sends), the case's facts, the brief's introduction and the case's
- * complete 43-point price curve. This call costs about forty-four model runs, so
- * it belongs behind an explicit action with progress.
- */
-export function postTutorialPart2Case(
-  body: TutorialPart2CaseRequest,
-): Promise<Part2CaseResponse> {
-  return request<Part2CaseResponse>('/tutorial/part2/case', undefined, body)
-}
-
-export interface TutorialPart2EvaluateRequest {
-  case_id: string
-  price: number
-  /** The budget-impact coverage cap; omitted takes R's tutorial default. */
-  coverage?: number
-  /**
-   * The curve this case already returned. Posting it lets R re-classify the curve
-   * instead of re-running its forty-three model runs, so a price change costs one
-   * model run. R decides every classification in either path.
-   */
-  curve?: Part2Curve
-  /**
-   * The DHT readiness exercise's four answers, sent as R's level ids. R validates
-   * each one, maps it onto the readiness input it represents and decides every
-   * status; an omitted answer takes R's default for that question.
-   */
-  interoperability?: string
-  governance?: string
-  clinical_workflow?: string
-  patient_engagement?: string
-}
-
-/**
- * The Part 2 result at one negotiated price and one coverage cap: R's
- * value-for-money state and detail, the highest acceptable price, the marker, the
- * full price curve with R's pass/fail classification, the budget-impact result
- * at the coverage cap (rows, chart series, total, affordability state and the
- * maximum affordable coverage R found), and the DHT readiness exercise's result
- * at the four submitted answers. Nothing here is derived in the client.
- */
-export function postTutorialPart2Evaluate(
-  body: TutorialPart2EvaluateRequest,
-): Promise<Part2EvaluateResponse> {
-  return request<Part2EvaluateResponse>('/tutorial/part2/evaluate', undefined, body)
 }

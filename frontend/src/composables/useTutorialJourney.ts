@@ -1,10 +1,9 @@
 /**
- * The Guided Tutorial journey's own session.
+ * The Journey's own session.
  *
- * It is deliberately separate from `useTutorialSession`: the journey has its own
+ * It is deliberately separate from the analysis app: the journey has its own
  * screen, its own case and its own one lever, and it never reads or writes the
- * tutorial's session or the `useModel` store. A journey value therefore cannot
- * move a Part 1 value, and editing the dashboard cannot move a journey result.
+ * `useModel` store, so editing the dashboard cannot move a journey result.
  *
  * Everything the learner reads comes from R. This module holds the state a
  * session needs — which chapter is on screen, which state of the chapter's single
