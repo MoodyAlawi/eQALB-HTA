@@ -95,7 +95,9 @@ OWSA_PRERUN_NOTE <- "Set the assumptions and click Run sensitivity analysis."
 # bslib popover and no calculation reads it.
 CC_INFO_TEXT <- list(
   intervention_price = paste(
-    "The annual price of eQalb for one person for one year."
+    "The annual price per person. In the cost-effectiveness model, it is",
+    "charged for every treated person alive; in budget impact, it is charged",
+    "only for active users."
   ),
   relative_risk_reduction = paste(
     "The proportional reduction in heart-attack and stroke risk for engaged",
