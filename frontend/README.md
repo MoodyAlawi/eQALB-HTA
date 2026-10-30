@@ -853,12 +853,14 @@ deployed.
 - Every overlay in the app is one box (`EcgOverlay`): the dialogs (the welcome prompt, the
     Home menu and the PSA confirmation), the journey's
     completion overlay, the chapter-transition bridges and the floating information panels.
-    Its outline is an ECG perimeter and nothing else — no card border, no corner radius and no
-    second frame inside a frame: the box's four sides are the four sides of one ECG line, with
-    one heartbeat of the same size centred on each side that has room for it, so a box shows
-    four identical deflections rather than a repeating comb. A soft interior surface sits
-    inside the trace and draws no edge of its own. The loading card is deliberately not one of
-    these and keeps its own treatment.
+    Its outline is a rounded ECG perimeter and nothing else — no card border and no second
+    frame inside a frame: the box's four sides are the four sides of one ECG line, 9px inside
+    the box and joined by corners on a 16px radius, with one heartbeat of the same size centred
+    on each side that has room for it, so a box shows four identical deflections rather than a
+    repeating comb. The interior surface sits exactly on that line, with the same inset and
+    radius and a soft shadow, so the line is the card's own edge; it draws no edge of its own.
+    A long box scrolls inside that edge, with a thin, muted scrollbar. The loading card is
+    deliberately not one of these and keeps its own treatment.
 - The opening is one sequence, run by `EcgOverlay` and timed by the constants `EcgFrame`
     exports: the two origins light at the south-west and north-east corners (220 ms), the four
     traces leave them and close the perimeter (180 ms delay, 620 ms travel), then at
