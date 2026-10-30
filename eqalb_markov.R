@@ -817,18 +817,116 @@ voi_evpi_magnitude <- function(evpi) {
   }
 }
 
+# A share of simulations as a percentage for a sentence: whole numbers where
+# they are exact, otherwise one decimal place, and never rounded to 0% or 100%
+# when at least one simulation went the other way.
+voi_percent <- function(share) {
+  value <- share * 100
+  if (value <= 0) return("0%")
+  if (value >= 100) return("100%")
+  rounded <- round(value, 1)
+  if (rounded <= 0) return("less than 0.1%")
+  if (rounded >= 100) return("more than 99.9%")
+  paste0(format(rounded, nsmall = 0, trim = TRUE), "%")
+}
+
+# The plain-language decision sentence for the uncertainty interpretation.
+#
+# It reports two different measures and never infers one from the other:
+#   - which option has the higher mean incremental net monetary benefit (the
+#     average, which also reflects how large each gain or loss is); and
+#   - how often eQalb has a positive net monetary benefit across the
+#     simulations (the probability of cost-effectiveness), with the remainder
+#     being simulations in which usual care is as good or better.
+# The two can point in different directions, and when they do the sentence says
+# so. Presentation only: nothing here feeds a status or a calculation.
+voi_decision_text <- function(mean_nmb, preferred, probability) {
+  average <- if (length(mean_nmb) == 0L || is.na(mean_nmb)) {
+    "The average net monetary benefit could not be estimated at this threshold."
+  } else if (is.na(preferred)) {
+    paste(
+      "On average, neither option is better at this threshold: the mean",
+      "incremental net monetary benefit is approximately zero."
+    )
+  } else {
+    sprintf(
+      "On average, %s has the higher net monetary benefit at this threshold.",
+      preferred
+    )
+  }
+
+  frequency <- if (is.na(probability)) {
+    paste(
+      "How often each option comes out ahead across the simulations could not",
+      "be estimated."
+    )
+  } else if (probability >= 1) {
+    "eQalb has a positive net monetary benefit in every simulation."
+  } else if (probability <= 0) {
+    paste(
+      "eQalb does not have a positive net monetary benefit in any simulation;",
+      "usual care is as good or better in all of them."
+    )
+  } else if (abs(probability - 0.5) < 1e-9) {
+    paste(
+      "The simulations are split evenly: eQalb has a positive net monetary",
+      "benefit in exactly half of them (50%), and usual care is as good or",
+      "better in the other half."
+    )
+  } else if (probability > 0.5) {
+    sprintf(
+      paste(
+        "eQalb has a positive net monetary benefit in most simulations (%s);",
+        "usual care is as good or better in the other %s."
+      ),
+      voi_percent(probability), voi_percent(1 - probability)
+    )
+  } else {
+    sprintf(
+      paste(
+        "Usual care is as good or better in most simulations (%s); eQalb has a",
+        "positive net monetary benefit in the other %s."
+      ),
+      voi_percent(1 - probability), voi_percent(probability)
+    )
+  }
+
+  majority <- if (is.na(probability) || abs(probability - 0.5) < 1e-9) {
+    NA_character_
+  } else if (probability > 0.5) {
+    "eQalb"
+  } else {
+    "usual care"
+  }
+  disagreement <- if (!is.na(preferred) && !is.na(majority) &&
+                        !identical(preferred, majority)) {
+    paste(
+      "The average and the share of simulations point in different",
+      "directions, because the average also reflects how large the gains and",
+      "losses are, not only how often each option comes out ahead."
+    )
+  } else {
+    NULL
+  }
+
+  paste(c(average, frequency, disagreement), collapse = " ")
+}
+
 # Traffic-light interpretation of decision uncertainty for the VOI tab.
 # Presentation only: it reads the already-computed EVPI and the probability of
 # cost-effectiveness and does not change any calculation.
 #
 # Educational rules:
-#   Red   - high decision uncertainty: the less-preferred option wins in at
-#           least 40% of simulations (the decision is close to a coin flip), or
-#           EVPI per patient is material (above EUR 1,000).
-#   Amber - low-to-moderate: at least 1% of simulations favour the
-#           less-preferred option, or EVPI per patient is above negligible.
-#   Green - low: the preferred option wins in at least 99% of simulations and
-#           EVPI per patient is negligible (EUR 1 or less).
+#   Red   - high decision uncertainty: the option that wins less often still
+#           wins in at least 40% of simulations (the decision is close to a coin
+#           flip), or EVPI per patient is material (above EUR 1,000).
+#   Amber - low-to-moderate: the option that wins less often wins in at least
+#           1% of simulations, or EVPI per patient is above negligible.
+#   Green - low: the option that wins more often wins in more than 99% of
+#           simulations and EVPI per patient is negligible (EUR 1 or less).
+# "Wins" here is min(p, 1 - p) of the probability of cost-effectiveness. It is
+# not the same thing as the option with the higher mean net benefit, so the
+# narrative reports the two separately (voi_decision_text()).
 voi_uncertainty_status <- function(
   probability_cost_effective,
   evpi,
@@ -880,54 +978,11 @@ voi_uncertainty_status <- function(
     Red = "High decision uncertainty"
   )
 
-  other <- if (is.na(preferred)) {
-    NA_character_
-  } else if (identical(preferred, "eQalb")) {
-    "usual care"
-  } else {
-    "eQalb"
-  }
-
-  decision_text <- if (is.na(preferred)) {
-    paste(
-      "Neither option is clearly preferred at this threshold: the mean",
-      "incremental net monetary benefit is approximately zero."
-    )
-  } else if (is.na(p_loser)) {
-    sprintf(
-      paste(
-        "%s is preferred on average, but the probability that it is",
-        "cost-effective could not be estimated at this threshold."
-      ),
-      voi_capitalize(preferred)
-    )
-  } else if (p_loser <= 1e-9) {
-    sprintf("%s is preferred in all simulations.", voi_capitalize(preferred))
-  } else if (p_loser <= 0.20) {
-    sprintf(
-      paste(
-        "%s is clearly preferred in most simulations, but %s is preferred in",
-        "a small number of scenarios."
-      ),
-      voi_capitalize(preferred), other
-    )
-  } else if (p_loser < 0.40) {
-    sprintf(
-      paste(
-        "%s is preferred, but %s is preferred in a substantial minority of",
-        "simulations."
-      ),
-      voi_capitalize(preferred), other
-    )
-  } else {
-    sprintf(
-      paste(
-        "%s is preferred on average, but the decision is close: %s is",
-        "preferred in a similar share of simulations."
-      ),
-      voi_capitalize(preferred), other
-    )
-  }
+  decision_text <- voi_decision_text(
+    mean_nmb = mean_nmb,
+    preferred = preferred,
+    probability = if (length(probability) == 0L) NA_real_ else probability
+  )
 
   evpi_text <- if (is.na(evpi)) {
     "The value of perfect information could not be estimated."
