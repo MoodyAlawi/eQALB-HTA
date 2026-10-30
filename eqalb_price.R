@@ -3,8 +3,8 @@
 # A reusable analysis module, sourced by api/plumber.R (and available to any
 # other caller that sources the model modules), so the value-based price rules
 # exist exactly once. It answers one payer question: how much can be paid per
-# active user per year for eQalb and still reach the reference willingness-to-pay
-# threshold?
+# treated person per year for eQalb (charged for each year a treated person is
+# alive) and still reach the reference willingness-to-pay threshold?
 #
 # Every figure is computed from run_eqalb_model() (eqalb_markov.R) outputs. The
 # module contains no economics of its own: it solves for the annual intervention
@@ -21,7 +21,7 @@
 
 # --- Constants ---------------------------------------------------------------
 
-# Distance in EUR per active user per year between the two model runs the price
+# Distance in EUR per treated person per year between the two model runs the price
 # solve uses. The model's incremental cost is linear in the annual intervention
 # price, so any positive step works; this value only sets the numerical scale of
 # the slope.
@@ -417,7 +417,7 @@ eqalb_price_solve <- function(base_args, wtp, current_price, run0) {
       paste0(
         "A maximum acceptable price is not reported: the annual price the model ",
         "would need is above ", eqalb_price_format_money(EQALB_PRICE_MAX_PRICE),
-        " per active user per year, the highest price this analysis accepts."
+        " per treated person per year, the highest price this analysis accepts."
       ),
       run = run0, wtp = wtp
     ))
@@ -822,7 +822,8 @@ eqalb_price_headline_interpretation <- function(headline, current_price, wtp,
   if (identical(status, EQALB_PRICE_STATUS_GREEN)) {
     paste0(
       "At ", threshold, " the model supports an annual price of up to ",
-      maximum, " per active user. The current price of ",
+      maximum, " per treated person per year, charged for each year a treated ",
+      "person is alive. The current price of ",
       eqalb_price_format_money(current_price), " is ", eqalb_price_format_money(headroom),
       share, " below that level, so it is consistent with the reference ",
       "threshold."
@@ -830,7 +831,8 @@ eqalb_price_headline_interpretation <- function(headline, current_price, wtp,
   } else {
     paste0(
       "At ", threshold, " the model supports an annual price of up to ",
-      maximum, " per active user. The current price of ",
+      maximum, " per treated person per year, charged for each year a treated ",
+      "person is alive. The current price of ",
       eqalb_price_format_money(current_price), " is ", eqalb_price_format_money(headroom),
       share, " above that level, so it does not reach the reference ",
       "threshold."

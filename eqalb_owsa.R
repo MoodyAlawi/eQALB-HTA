@@ -160,7 +160,7 @@ eqalb_owsa_range_specs <- function() {
       "Event costs", "Discounting", "Discounting", "Time horizon"
     ),
     unit = c(
-      "EUR per active user per year", "EUR per new user",
+      "EUR per treated person per year", "EUR per new user",
       "EUR per active user per year", "fraction (0-1)", "fraction (0-1)",
       "fraction (0-1)", "utility (0-1)", "utility (0-1)", "utility (0-1)",
       "EUR per person", "EUR per person", "fraction (0-1)", "fraction (0-1)",

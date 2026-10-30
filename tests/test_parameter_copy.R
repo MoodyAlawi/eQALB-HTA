@@ -8,7 +8,9 @@
 # the budget impact charges active users. The unit is now "EUR per year" and the
 # help text states both conventions. These checks pin that wording and that
 # nothing else about the price's metadata moved: its default, range, step and
-# the other inputs' units are unchanged.
+# the other inputs' units are unchanged. The one-way sensitivity analysis and the
+# value-based price describe the same cost-effectiveness price, so their wording
+# is checked here too ("per treated person per year").
 #
 # The API's definitions are evaluated the way the worker loads them, but no
 # route handler is called, no model is run and no service is contacted:
@@ -95,6 +97,36 @@ check("the implementation cost keeps its own unit",
       identical(specs$unit[specs$id == "implementation_cost"], "EUR per new user"))
 check("all 16 inputs are still published",
       nrow(specs) == 16L && !anyDuplicated(specs$id), nrow(specs))
+
+cat("\n3. The one-way sensitivity analysis's price unit\n")
+owsa <- get("eqalb_owsa_range_specs", envir = env, inherits = TRUE)()
+owsa_unit <- function(id) owsa$unit[owsa$id == id]
+check("the price's range unit is per treated person per year",
+      identical(owsa_unit("intervention_price"), "EUR per treated person per year"),
+      owsa_unit("intervention_price"))
+check("the healthcare-use saving's range unit is unchanged",
+      identical(owsa_unit("healthcare_savings"), "EUR per active user per year"),
+      owsa_unit("healthcare_savings"))
+check("the implementation cost's range unit is unchanged",
+      identical(owsa_unit("implementation_cost"), "EUR per new user"),
+      owsa_unit("implementation_cost"))
+
+cat("\n4. The value-based price sentence\n")
+interpret <- get("eqalb_price_headline_interpretation", envir = env, inherits = TRUE)
+green <- get("EQALB_PRICE_STATUS_GREEN", envir = env, inherits = TRUE)
+red <- get("EQALB_PRICE_STATUS_RED", envir = env, inherits = TRUE)
+headline <- list(available = TRUE, max_acceptable_price = 500, headroom_pct = 28)
+for (case in list(list(status = green, price = 360), list(status = red, price = 720))) {
+  sentence <- interpret(headline, current_price = case$price, wtp = 1e5,
+                        status = case$status)
+  check(
+    sprintf("%s: per treated person per year, charged while alive", case$status),
+    grepl("per treated person per year, charged for each year a treated person is alive",
+          sentence, fixed = TRUE) &&
+      !grepl("active user", sentence, fixed = TRUE),
+    sentence
+  )
+}
 
 cat(sprintf("\n%d checks, %d failed\n", checks, failures))
 if (failures > 0L) {
