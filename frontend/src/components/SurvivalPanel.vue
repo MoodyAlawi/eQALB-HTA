@@ -39,6 +39,7 @@ import MetricCard from './MetricCard.vue'
 import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
 import PresentationOverlay from './presentation/PresentationOverlay.vue'
+import TipLine from './TipLine.vue'
 import PresentationSettings, {
   type PresentationSetting,
 } from './presentation/PresentationSettings.vue'
@@ -515,6 +516,10 @@ const presentedStale = computed(() =>
     </div>
 
     <!-- Presentation mode: the run's own curves, risk table and interpretation. -->
+    <!-- A teaching tip, below the results and the actions. It is outside the
+         presentation overlay, so presentation mode and the exports never carry it. -->
+    <TipLine topic="survival" />
+
     <PresentationOverlay
       v-if="presented"
       title="Simulated Kaplan-Meier analysis"

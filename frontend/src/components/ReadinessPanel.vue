@@ -33,6 +33,7 @@ import MetricCard from './MetricCard.vue'
 import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
 import PresentationOverlay from './presentation/PresentationOverlay.vue'
+import TipLine from './TipLine.vue'
 import PresentationSettings, {
   type PresentationSetting,
 } from './presentation/PresentationSettings.vue'
@@ -496,6 +497,10 @@ const settingsNote = computed(() =>
 
     <!-- Presentation mode: the assessment's own numbers, domains and wording. No
          overall score is introduced; R's counts are the only summary shown. -->
+    <!-- A teaching tip, below the results and the actions. It is outside the
+         presentation overlay, so presentation mode and the exports never carry it. -->
+    <TipLine topic="readiness" />
+
     <PresentationOverlay
       v-if="presented"
       title="DHT readiness and implementation"

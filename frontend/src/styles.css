@@ -2510,6 +2510,69 @@ button:focus-visible {
   margin-bottom: 0.85rem;
 }
 
+/* --- Teaching tip ------------------------------------------------------------
+   One quiet line at the foot of an analysis panel, below its results and actions.
+   It is deliberately secondary: smaller and more muted than the panel's own hints,
+   set off by a hairline rather than a card, so it never competes with a result. */
+
+.tipline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--border);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.tipline__label {
+  flex: none;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--method-soft);
+  color: var(--method-ink);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tipline__text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  max-width: 62rem;
+}
+
+.tipline__next {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-top: -0.15rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-move),
+    border-color var(--motion-fast) var(--ease-move);
+}
+
+.tipline__next:hover,
+.tipline__next:focus-visible {
+  border-color: currentColor;
+  color: var(--text);
+}
+
 /* Shiny's one-way sensitivity-analysis summary (a <pre> there). The line breaks
    R puts in the narrative are preserved; pre-wrap rather than pre so a long line
    wraps instead of widening the page at 390px. */
