@@ -1280,7 +1280,7 @@ assess_hta_decision_summary <- function(
     )
   }
   economic_interpretation <- if (identical(economic, "Not available")) {
-    "Not yet assessable: run the base case and the PSA."
+    "Not yet assessable: run the PSA (the base case is used when it has been run)."
   } else {
     status_text <- switch(economic,
       Green = paste(

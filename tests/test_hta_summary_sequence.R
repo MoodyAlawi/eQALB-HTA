@@ -76,6 +76,10 @@ uncertainty_row <- function(summary) {
   summary$domains[summary$domains$Domain == "Decision uncertainty", ]
 }
 
+economic_row <- function(summary) {
+  summary$domains[summary$domains$Domain == "Economic value", ]
+}
+
 cat("\n1. Nothing run yet\n")
 empty <- summary_with()
 check("position is not yet assessable", identical(empty$position, "Not yet assessable"))
@@ -90,6 +94,12 @@ check(
   empty$interpretation
 )
 check(
+  "the economic row asks for the PSA, not for the base case and the PSA",
+  contains(economic_row(empty)$Interpretation, "run the PSA") &&
+    !contains(economic_row(empty)$Interpretation, "the base case and the PSA"),
+  economic_row(empty)$Interpretation
+)
+check(
   "the simulated-data caveat is kept",
   contains(empty$interpretation, "Simulated illustrative analysis") &&
     contains(empty$interpretation, "not clinical evidence"),
@@ -102,6 +112,11 @@ check(
   "a PSA alone is not enough for a position",
   identical(psa_only$position, "Not yet assessable"),
   psa_only$position
+)
+check(
+  "PSA values alone are enough for the economic row",
+  !identical(economic_row(psa_only)$Status, "Not available"),
+  economic_row(psa_only)$Status
 )
 check(
   "the uncertainty row names the value-of-information step",
