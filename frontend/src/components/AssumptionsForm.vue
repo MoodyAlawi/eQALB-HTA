@@ -13,6 +13,7 @@ import type { ParameterSpec } from '../api/types'
 import { formatEuro } from '../format'
 import { useModel } from '../composables/useModel'
 import InfoTip from './InfoTip.vue'
+import { PRESETS, type Preset, type PresetId } from '../content/presets'
 
 const model = useModel()
 
@@ -114,6 +115,41 @@ const changedCount = computed(() => model.changedParameters.length)
 const wtpChanged = computed(() => Math.abs(model.wtp - model.referenceWtp) > 1e-9)
 
 /** Inline confirmation for the separate destructive action. */
+/**
+ * The three illustrative scenarios. Applying one writes all 16 model inputs and the
+ * reference threshold in one action through the store's own `setInput`: the inputs the
+ * scenario names take its values, every other input takes R's base-case default, and
+ * the threshold is R's reference. It runs nothing and changes no calculation.
+ */
+function presetValue(preset: Preset, spec: ParameterSpec): number {
+  return preset.values[spec.id] ?? spec.default
+}
+
+function applyPreset(preset: Preset): void {
+  for (const spec of model.defaults?.parameters ?? []) {
+    model.setInput(spec.id, presetValue(preset, spec))
+  }
+  model.wtp = model.referenceWtp
+  clamped.value = new Set()
+}
+
+/** The scenario the current inputs match exactly, if any, so its button reads as chosen. */
+const activePreset = computed<PresetId | null>(() => {
+  const specs = model.defaults?.parameters ?? []
+  if (specs.length === 0 || Math.abs(model.wtp - model.referenceWtp) > 1e-9) return null
+  const match = PRESETS.find((preset) =>
+    specs.every((spec) => {
+      const current = model.inputs[spec.id as keyof typeof model.inputs]
+      return typeof current === 'number' && Math.abs(current - presetValue(preset, spec)) < 1e-12
+    }),
+  )
+  return match?.id ?? null
+})
+
+function presetLabel(preset: Preset): string {
+  return `Illustrative scenario ${preset.number}: ${preset.intent}`
+}
+
 const confirmingClear = ref(false)
 
 function clearAllResults(): void {
@@ -125,27 +161,48 @@ function clearAllResults(): void {
 <template>
   <section class="assumptions" aria-label="Model assumptions">
     <header class="assumptions__header">
-      <div>
-        <h2>Assumptions</h2>
-        <p class="muted">
-          Base case from the model's reference assumptions.
-          <span v-if="changedCount > 0" class="badge badge--warning">{{ changedCount }} changed</span>
-        </p>
+      <h2>
+        Assumptions
+        <span v-if="changedCount > 0" class="badge badge--warning">{{ changedCount }} changed</span>
+      </h2>
+      <div class="assumptions__controls">
+        <button
+          type="button"
+          class="btn btn--ghost"
+          :disabled="!model.modelInputsChanged"
+          title="Restore the 16 model assumptions and the reference WTP threshold to the R base case. Analysis settings — PSA, Kaplan-Meier, budget impact, readiness and the target population — and every completed result are kept."
+          @click="model.resetModelInputs()"
+        >
+          Reset model inputs
+        </button>
+        <div
+          class="presets"
+          role="group"
+          aria-labelledby="presets-label"
+          aria-describedby="assumptions-intro"
+        >
+          <span id="presets-label" class="presets__label">Illustrative scenario</span>
+          <div class="presets__buttons">
+            <button
+              v-for="preset in PRESETS"
+              :key="preset.id"
+              type="button"
+              class="presets__button"
+              :class="`presets__button--${preset.id}`"
+              :aria-pressed="activePreset === preset.id"
+              :aria-label="presetLabel(preset)"
+              :title="`${presetLabel(preset)}. Sets all 16 model assumptions and the reference threshold; runs nothing.`"
+              @click="applyPreset(preset)"
+            >
+              {{ preset.number }}
+            </button>
+          </div>
+        </div>
       </div>
-      <button
-        type="button"
-        class="btn btn--ghost"
-        :disabled="!model.modelInputsChanged"
-        title="Restore the 16 model assumptions and the reference WTP threshold to the R base case. Analysis settings — PSA, Kaplan-Meier, budget impact, readiness and the target population — and every completed result are kept."
-        @click="model.resetModelInputs()"
-      >
-        Reset model inputs
-      </button>
     </header>
 
-    <p class="hint">
-      Reset restores the 16 model assumptions and the threshold only; every completed result is
-      kept.
+    <p id="assumptions-intro" class="hint">
+      Choose an illustrative scenario (1–3) or adjust the assumptions and run a custom analysis.
     </p>
 
     <div class="field field--threshold">

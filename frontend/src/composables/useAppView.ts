@@ -18,7 +18,7 @@
  *                 the view, so this store never reads a post - and an address
  *                 naming no post is still a blog address: the view answers it
  *                 with a readable not-found state rather than a redirect
- *   /app          eQalb - its own Home screen, the tutorial, the project
+ *   /app          eQalb - its own Home screen, The Journey, the project
  *                 description, the download view and the analysis dashboard all
  *                 live here, so one Back or Forward step moves between the
  *                 public pages instead of unwinding a dashboard session screen
@@ -41,7 +41,6 @@ export type AppPage =
   | 'about'
   | 'blog'
   | 'home'
-  | 'tutorial'
   | 'journey'
   | 'description'
   | 'export'
@@ -92,7 +91,6 @@ const PAGE_PATHS: Record<AppPage, string> = {
   about: ABOUT_PATH,
   blog: BLOG_PATH,
   home: APP_PATH,
-  tutorial: APP_PATH,
   journey: APP_PATH,
   description: APP_PATH,
   export: APP_PATH,
@@ -147,9 +145,9 @@ function pageForPath(pathname: string, search = ''): AppPage {
   if (path === ABOUT_PATH) return 'about'
   if (isBlogPath(path)) return 'blog'
   if (path === APP_PATH) {
-    // The redesigned journey is reached by an explicit flag on the application's
-    // own address, so the current tutorial stays the default entry and neither
-    // screen needs an address of its own.
+    // The Journey is reached by an explicit flag on the application's own
+    // address, so Home stays the default entry and neither screen needs an
+    // address of its own.
     return new URLSearchParams(search).get('journey') === '1' ? 'journey' : 'home'
   }
   return 'openhealth'

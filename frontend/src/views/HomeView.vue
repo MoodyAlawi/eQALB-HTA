@@ -74,13 +74,6 @@ interface Explanation {
   page: AppPage | null
 }
 
-/**
- * The guided tutorial's own screen, kept in the app but no longer offered from Home:
- * the narrative tutorial replaced it in the menu. Its view, its session composable and
- * its route are untouched, so it stays reachable by its own address while the menu
- * offers one tutorial rather than two.
- */
-
 const EXPLANATIONS: Record<MenuChoice, Explanation> = {
   workspace: {
     title: 'Explore the model',
@@ -252,9 +245,8 @@ const TRACE_TRAIL = 'M0 64 H20 Q30 48 40 64 L46 74 L56 30 L70 88 L82 64 H96 Q108
         </button>
         <!-- The tutorial the menu offers is the narrative one, "The Journey". It keeps
              the explanation-before-navigation pattern the other entry point uses, and
-             its wording follows the session: "Resume" once the journey has moved. The
-             legacy guided tutorial is no longer listed here; its screen and session are
-             unchanged, so it remains reachable by its own address. -->
+             its wording follows the session: "Resume" once the journey has moved. It is
+             the app's only tutorial. -->
         <button
           ref="journeyButton"
           type="button"

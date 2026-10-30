@@ -24,6 +24,7 @@ import StaleNotice from './StaleNotice.vue'
 import VoiEvpiChart from './charts/VoiEvpiChart.vue'
 import EvppiChart from './charts/EvppiChart.vue'
 import PresentationOverlay from './presentation/PresentationOverlay.vue'
+import TipLine from './TipLine.vue'
 import PresentationSettings, {
   type PresentationSetting,
 } from './presentation/PresentationSettings.vue'
@@ -313,6 +314,10 @@ const settingsNote = computed(() =>
 
     <!-- Presentation mode: the run's own EVPI and EVPPI, per patient, at the
          threshold it read the draws at. -->
+    <!-- A teaching tip, below the results and the actions. It is outside the
+         presentation overlay, so presentation mode and the exports never carry it. -->
+    <TipLine topic="voi" />
+
     <PresentationOverlay
       v-if="presented"
       title="Value of information"

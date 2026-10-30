@@ -12,7 +12,7 @@
  *
  * Exactly one page renders at a time, and each one is named by its own v-if /
  * v-else-if: the analysis dashboard is the first branch below, and the public
- * pages and the eQalb subviews (Home, tutorial, project description, download
+ * pages and the eQalb subviews (Home, The Journey, project description, download
  * results) follow it. A page must never be the chain's leftover branch - the
  * download view was, and so appeared under the dashboard in every analysis tab.
  * Changing the page is what unmounts a view, so a page that is left takes its
@@ -27,7 +27,7 @@
  * and no run is started by looking around the app.
  */
 
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useModel } from './composables/useModel'
 import { useTheme } from './composables/useTheme'
 import { useAppView, type DashboardTabId as TabId } from './composables/useAppView'
@@ -44,7 +44,6 @@ import ValueBasedPricePanel from './components/ValueBasedPricePanel.vue'
 import HomeView from './views/HomeView.vue'
 import ProjectDescriptionView from './views/ProjectDescriptionView.vue'
 import DownloadResultsView from './views/DownloadResultsView.vue'
-import TutorialView from './views/TutorialView.vue'
 import JourneyView from './views/JourneyView.vue'
 import OpenHealthHomeView from './views/OpenHealthHomeView.vue'
 import AboutView from './views/AboutView.vue'
@@ -83,27 +82,30 @@ const TABS: readonly Tab[] = [
 
 const model = useModel()
 const { theme, toggle } = useTheme()
-const { page, show, postSlug, dashboardTab: activeTab, setDashboardTab } = useAppView()
+const { page, show, showJourney, postSlug, dashboardTab: activeTab, setDashboardTab } =
+  useAppView()
 
 /**
  * The welcome overlay.
  *
- * It is asked once per browser session, the first time the analysis dashboard is
- * opened, and it is what the reference Shiny app asks at the same moment ("New to
- * economic evaluation or HTA?"). The session flag is marked when the overlay is
- * shown, as the reference app does, so it cannot come back later in the session
- * — not after either button, not after Escape, and not after entering the
- * tutorial by any other route. It is an overlay, not a gate: the two buttons
- * choose a destination, Escape or the backdrop simply dismisses it, and the
- * dashboard it appears over is already open behind it.
+ * It is asked once per browser, the first time the eQalb Home screen is reached,
+ * and it offers The Journey to a learner who is new to HTA. The flag is kept in
+ * local storage and marked when the overlay is shown, so it cannot come back —
+ * not after either button, not after Escape, not after a reload, and not after
+ * entering the Journey by any other route (the Home menu, a direct link, Back or
+ * Forward). It is an overlay, not a gate: one button opens the Journey, the other,
+ * Escape and the backdrop simply dismiss it, and Home is already open behind it.
+ *
+ * The key is versioned: the earlier, per-session question offered the legacy
+ * tutorial, so a browser that answered that one is asked this one once.
  */
-const WELCOME_SESSION_KEY = 'eqalb.welcome'
+const WELCOME_STORAGE_KEY = 'eqalb.welcome.v2'
 
 function welcomeAlreadySeen(): boolean {
   try {
-    return sessionStorage.getItem(WELCOME_SESSION_KEY) === '1'
+    return localStorage.getItem(WELCOME_STORAGE_KEY) === '1'
   } catch {
-    // A browser that refuses session storage shows the overlay once per load
+    // A browser that refuses local storage shows the overlay once per load
     // rather than never showing it.
     return false
   }
@@ -111,7 +113,7 @@ function welcomeAlreadySeen(): boolean {
 
 function markWelcomeSeen(): void {
   try {
-    sessionStorage.setItem(WELCOME_SESSION_KEY, '1')
+    localStorage.setItem(WELCOME_STORAGE_KEY, '1')
   } catch {
     /* the flag is best-effort; the overlay is presentation only */
   }
@@ -119,40 +121,47 @@ function markWelcomeSeen(): void {
 
 const welcomeOpen = ref(false)
 const welcomeModal = ref<HTMLElement | null>(null)
-const welcomeTutorial = ref<HTMLButtonElement | null>(null)
-/** True once the question has been settled, one way or another, this session. */
+const welcomeJourney = ref<HTMLButtonElement | null>(null)
+/** True once the question has been settled, one way or another, in this browser. */
 let welcomeSettled = welcomeAlreadySeen()
 
 /**
- * The dashboard is what triggers the question, so it is only ever asked on the
- * first transition into that page: never on load, never on the Home screen, and
- * never twice. The flag is written before the overlay opens, so closing the page
- * or reloading while it is up cannot make it ask again.
+ * The Home screen is what triggers the question, so it is asked on the first
+ * arrival there — by a direct load of /app as well as by the landing page's way in
+ * — and never twice. Entering the Journey settles it without asking. The flag is
+ * written before the overlay opens, so closing the page or reloading while it is
+ * up cannot make it ask again.
+ *
+ * The page the document loads on is checked once the shell has mounted rather
+ * than during setup, so the overlay opens as a change the modal focus handling
+ * below sees, exactly as it does for a later arrival.
  */
-watch(page, (next) => {
-  if (next === 'tutorial') {
+function settleWelcome(next: string): void {
+  if (welcomeSettled) return
+  if (next === 'journey') {
     welcomeSettled = true
     markWelcomeSeen()
     return
   }
-  if (next !== 'dashboard' || welcomeSettled) return
+  if (next !== 'home') return
   welcomeSettled = true
   markWelcomeSeen()
   welcomeOpen.value = true
-})
+}
+
+watch(page, settleWelcome)
+onMounted(() => settleWelcome(page.value))
 
 /**
  * The question is a real modal dialog: the focus moves to its first action, Tab
- * stays inside it, the dashboard behind it cannot be reached until it is
- * answered, and the focus goes back to what the learner was using. The question
- * is asked without a click — the dashboard is arrived at, not opened from a
- * button here — so the element that opened it is usually gone by the time it
- * closes; the selected analysis tab is then the sensible place to land, since it
- * is the way into the dashboard the question was standing in front of.
+ * stays inside it, Home behind it cannot be reached until it is answered, and the
+ * focus goes back to what the learner was using. The question is asked without a
+ * click, so there is usually no opener to return to; Home's first menu choice is
+ * then the sensible place to land.
  */
 useModalFocus(welcomeOpen, welcomeModal, {
-  initialFocus: () => welcomeTutorial.value,
-  fallbackFocus: () => document.getElementById(tabId(activeTab.value)),
+  initialFocus: () => welcomeJourney.value,
+  fallbackFocus: () => document.querySelector<HTMLElement>('.home__action'),
 })
 
 function dismissWelcome(): void {
@@ -161,13 +170,13 @@ function dismissWelcome(): void {
   markWelcomeSeen()
 }
 
-function welcomeStartTutorial(): void {
+function welcomeStartJourney(): void {
   dismissWelcome()
-  show('tutorial')
+  showJourney()
 }
 
-function welcomeOpenAnalysis(): void {
-  // The dashboard is already open behind the overlay; this only puts it away.
+function welcomeExplore(): void {
+  // Home is already open behind the overlay; this only puts it away.
   dismissWelcome()
 }
 
@@ -308,7 +317,7 @@ watch(page, (next) => {
 </script>
 
 <template>
-  <!-- The eQalb screens - Home, the tutorial, the project description - are a
+  <!-- The eQalb screens - Home, The Journey, the project description - are a
        centred column inside the app's own padding. The landing page and the blog
        are full-bleed pages laid out by their own stylesheets, so the shell steps
        aside for both: no column of its own, no padding of its own. -->
@@ -471,7 +480,6 @@ watch(page, (next) => {
       <BlogIndexView v-else-if="page === 'blog' && !postSlug" />
       <BlogPostView v-else-if="page === 'blog'" />
       <HomeView v-else-if="page === 'home'" />
-      <TutorialView v-else-if="page === 'tutorial'" />
       <JourneyView v-else-if="page === 'journey'" />
       <ProjectDescriptionView v-else-if="page === 'description'" />
       <DownloadResultsView v-else-if="page === 'export'" />
@@ -491,10 +499,10 @@ watch(page, (next) => {
          events - so the app it is dissolving over is live underneath it. -->
     <LaunchTransition />
 
-    <!-- The once-per-session welcome question. It reuses the app's existing
-         modal pattern, and closing it never blocks the app: the page underneath
-         is already the Home screen. It arrives and leaves through the shared
-         dialog transition. -->
+    <!-- The first-visit welcome question. It reuses the app's existing modal
+         pattern, and closing it never blocks the app: the page underneath is
+         already the Home screen. It arrives and leaves through the shared dialog
+         transition. -->
     <Transition :name="DIALOG_TRANSITION_NAME" @leave="onDialogLeave">
       <div
         v-if="welcomeOpen"
@@ -503,27 +511,28 @@ watch(page, (next) => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="welcome-title"
+        aria-describedby="welcome-text"
         @keydown="onWelcomeKeydown"
       >
         <div class="modal__backdrop" @click="dismissWelcome()"></div>
         <div class="modal__panel modal__panel--welcome">
           <EcgOverlay variant="centre">
             <h2 id="welcome-title" class="modal__title">New to health economics?</h2>
-            <p class="page__prose">
-              Take the short guided tutorial to learn the main ideas before using the full
-              analysis.
+            <p id="welcome-text" class="page__prose">
+              The Journey works through one case from the base case to the recommendation, one
+              lesson at a time.
             </p>
             <template #actions>
               <button
-                ref="welcomeTutorial"
+                ref="welcomeJourney"
                 type="button"
-                class="btn btn--success"
-                @click="welcomeStartTutorial()"
+                class="btn btn--primary"
+                @click="welcomeStartJourney()"
               >
-                Start tutorial
+                Start The Journey
               </button>
-              <button type="button" class="btn btn--primary" @click="welcomeOpenAnalysis()">
-                Open analysis
+              <button type="button" class="btn btn--ghost" @click="welcomeExplore()">
+                Explore on my own
               </button>
             </template>
           </EcgOverlay>

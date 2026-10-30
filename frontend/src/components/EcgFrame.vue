@@ -31,10 +31,11 @@ export const ECG_SIGNAL_HALF_MS = ECG_SIGNAL_MS / 2
 /**
  * The ECG perimeter: the trace *is* the box's outline.
  *
- * There is no card border, no corner radius and no second track inside a frame. The
- * four sides of the box are the four sides of one ECG line, and that line is the only
- * thing drawn around the content. The interior is a plain surface underneath, supplied
- * by the host through `EcgOverlay`; it never draws an edge of its own.
+ * There is no card border and no second track inside a frame. The four sides of the box
+ * are the four sides of one ECG line, joined by rounded corners, and that line is the
+ * only thing drawn around the content. The interior is a plain surface supplied by the
+ * host through `EcgOverlay`, laid exactly on the line with the same corner radius, so
+ * the line reads as the card's own edge; it never draws an edge of its own.
  *
  * It opens the way the Home screen's signal behaves rather than the way a border
  * appears. Nothing is drawn first: two luminous origins light at the south-west and
@@ -69,8 +70,16 @@ const BEAT_DEPTH = 7
 /** One heartbeat's width along an edge, in px. */
 const BEAT_WIDTH = 64
 
-/** How much edge a side needs before it is given a heartbeat of its own. */
+/** How much straight edge a side needs before it is given a heartbeat of its own. */
 const BEAT_ROOM = BEAT_WIDTH + 44
+
+/**
+ * The corner radius of the perimeter, in px. The interior surface is drawn on the
+ * trace's own line with the same radius (`.ocard__backing` in the stylesheet keeps
+ * `inset` at `INSET` and `border-radius` at this value), so the trace is the card's
+ * edge rather than an outline around it.
+ */
+const CORNER = 16
 
 /** The box the perimeter is drawn for, in px. */
 const host = ref<SVGSVGElement | null>(null)
@@ -146,24 +155,48 @@ function round(value: number): number {
   return Math.round(value * 100) / 100
 }
 
+/** The corner radius a box of this size can actually take. */
+function cornerFor(w: number, h: number): number {
+  return Math.max(0, Math.min(CORNER, (w - 2 * INSET) / 2, (h - 2 * INSET) / 2))
+}
+
+/** The direction the perimeter turns into at the end of each side — clockwise. */
+const NEXT_AXIS = { up: 'right', right: 'down', down: 'left', left: 'up' } as const
+
+function direction(axis: 'up' | 'right' | 'left' | 'down'): [number, number] {
+  if (axis === 'right') return [1, 0]
+  if (axis === 'left') return [-1, 0]
+  if (axis === 'down') return [0, 1]
+  return [0, -1]
+}
+
 /**
- * One side as a path: the run between the two corners it joins, starting at its own
- * origin, with a single heartbeat centred on it when the side is long enough to hold one.
+ * One side as a path: the straight run between the two rounded corners it joins,
+ * starting where its own corner's arc ends, with a single heartbeat centred on the run
+ * when it is long enough to hold one, and then the arc of the corner it ends at. The
+ * four sides run clockwise and each ends where the next begins, so together they are
+ * one closed rounded perimeter.
  */
 function edgePath(axis: 'up' | 'right' | 'left' | 'down', w: number, h: number): string {
   const x0 = INSET
   const y0 = INSET
   const x1 = w - INSET
   const y1 = h - INSET
-  const run = axis === 'up' || axis === 'down' ? y1 - y0 : x1 - x0
-  if (run <= 0) return ''
+  const r = cornerFor(w, h)
+  const side = axis === 'up' || axis === 'down' ? y1 - y0 : x1 - x0
+  const run = side - 2 * r
+  if (side <= 0) return ''
 
-  const startX = axis === 'right' || axis === 'up' ? x0 : x1
-  const startY = axis === 'left' || axis === 'up' ? y1 : y0
-  const dirX = axis === 'right' ? 1 : axis === 'left' ? -1 : 0
-  const dirY = axis === 'down' ? 1 : axis === 'up' ? -1 : 0
+  // The corner the side leaves from: the left side climbs from the south-west, the top
+  // runs from the north-west, the right side drops from the north-east and the bottom
+  // returns from the south-east.
+  const cornerX = axis === 'right' || axis === 'up' ? x0 : x1
+  const cornerY = axis === 'left' || axis === 'up' ? y1 : y0
+  const [dirX, dirY] = direction(axis)
   const inwardX = axis === 'up' ? 1 : axis === 'down' ? -1 : 0
   const inwardY = axis === 'right' ? -1 : axis === 'left' ? 1 : 0
+  const startX = cornerX + dirX * r
+  const startY = cornerY + dirY * r
 
   const commands: string[] = []
   function point(along: number, reach: number): void {
@@ -177,7 +210,14 @@ function edgePath(axis: 'up' | 'right' | 'left' | 'down', w: number, h: number):
     const offset = (run - BEAT_WIDTH) / 2
     for (const [distance, reach] of BEAT) point(offset + distance, reach)
   }
-  point(run, 0)
+  point(Math.max(run, 0), 0)
+
+  if (r > 0) {
+    const [nextX, nextY] = direction(NEXT_AXIS[axis])
+    const endX = cornerX + dirX * side + nextX * r
+    const endY = cornerY + dirY * side + nextY * r
+    commands.push(`A${round(r)} ${round(r)} 0 0 1 ${round(endX)} ${round(endY)}`)
+  }
 
   return commands.join(' ')
 }
@@ -190,12 +230,16 @@ const edges = computed(() => {
   return EDGES.map((edge) => ({ ...edge, d: edgePath(edge.axis, width.value, height.value) }))
 })
 
-/** The two origins, at the corners the traces grow from. */
+/**
+ * The two origins, at the south-west and north-east corners the traces grow from — on
+ * the line itself, where each corner's arc meets the side that leaves it.
+ */
 const origins = computed(() => {
   if (!ready.value) return []
+  const r = cornerFor(width.value, height.value)
   return [
-    { key: 'sw', cx: INSET, cy: height.value - INSET },
-    { key: 'ne', cx: width.value - INSET, cy: INSET },
+    { key: 'sw', cx: INSET, cy: height.value - INSET - r },
+    { key: 'ne', cx: width.value - INSET, cy: INSET + r },
   ]
 })
 

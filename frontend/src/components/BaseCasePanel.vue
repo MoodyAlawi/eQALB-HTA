@@ -49,6 +49,7 @@ import ResultTrace from './ResultTrace.vue'
 import StaleNotice from './StaleNotice.vue'
 import BaseCasePlane from './charts/BaseCasePlane.vue'
 import PresentationOverlay from './presentation/PresentationOverlay.vue'
+import TipLine from './TipLine.vue'
 import PresentationSettings, { type PresentationSetting } from './presentation/PresentationSettings.vue'
 import { movedSentence, supersededSentence, scenarioSettingRows, settingRow } from './presentation/settings'
 import type { Column } from './table'
@@ -383,6 +384,10 @@ const assumptionRows = computed<PresentationSetting[]>(() => {
          and focus containment) with this tab's run inside it. It sits outside the
          result reveal: that container plays the result's own entrance, and the
          overlay must not be inside anything that animates. -->
+    <!-- A teaching tip, below the results and the actions. It is outside the
+         presentation overlay, so presentation mode and the exports never carry it. -->
+    <TipLine topic="baseCase" />
+
     <PresentationOverlay
       v-if="presented"
       title="Base-case cost-effectiveness"
