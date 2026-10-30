@@ -23,9 +23,9 @@
  *    whole wait: nothing rotates, and a preference that changes during the wait
  *    stops the rotation and drops any crossfade in flight.
  *
- * The messages are deliberately about the modelling rather than about people: they
- * never suggest how far along a run is, what it will conclude, or that anyone
- * clinical is involved.
+ * The messages are light HTA asides rather than results: none of them reports how far
+ * along a run is or what it will conclude, and they are shown only in the loading
+ * card — never in a results panel, an export or an interpretation.
  */
 
 import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
@@ -36,30 +36,26 @@ import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
  * longest of them, so a longer message only makes that area a little taller.
  */
 export const LOADING_MESSAGES: readonly string[] = [
-  'Exploring our options. All several thousand of them.',
-  'Taking uncertainty very seriously. Ourselves, less so.',
-  'Giving the assumptions a little sensitivity training.',
-  'The willingness to wait threshold is being tested.',
-  'Checking whether “it depends” is statistically robust.',
-  'Somewhere, a spreadsheet is feeling threatened.',
-  'Putting the ‘probable’ in probabilistic.',
-  'The model has entered its ‘what if’ era.',
-  'Our relationship with certainty remains complicated.',
-  'A little less guesswork. A lot more iterations.',
-  'The assumptions have been called in for questioning.',
-  'Looking for value in all the right distributions.',
-  'The confidence interval would like some personal space.',
-  'Asking ‘what if?’ with considerably more computing power.',
-  'The spreadsheet walked so this model could run.',
-  'No crystal ball. Just a rather busy model.',
-  'Some assumptions are doing more heavy lifting than others.',
-  'Making room for a healthy amount of doubt.',
-  'The model is working through its options. Relatable.',
-  'Opportunity cost: what you could be doing while this runs.',
-  'Still a better loading screen than a frozen spreadsheet.',
-  'We asked for a simple answer. The model requested a distribution.',
-  'Keeping our expectations appropriately uncertain.',
-  'This is what happens when ‘it depends’ gets a Run button.',
+  'Negotiating down the ICER with the virtual payer...',
+  'Sampling from a Beta distribution and hoping it stays between 0 and 1...',
+  "Discounting future health benefits at 3% because tomorrow's QALYs are worth less...",
+  'Checking if this intervention is dominant or just aggressively overpriced...',
+  'Extrapolating 12-week trial survival out to a 40-year time horizon...',
+  "Convincing clinicians that the new digital therapeutic won't ruin their workflow...",
+  "Running 1,000 Monte Carlo draws so you don't have to do it in Excel...",
+  'Looking for the exact willingness-to-pay threshold where this finally makes sense...',
+  "Applying a half-cycle correction to people who didn't ask for one...",
+  'Reconciling the per-patient ICER with a five-year budget ceiling...',
+  'All models are wrong, but some get past the reimbursement committee.',
+  "In health economics, \"dominant\" isn't a personality trait—it's just cheaper and more effective.",
+  'Cost-effective does not mean cost-saving. Please stop telling the finance director it does.',
+  'A tornado diagram is just a polite way of showing which assumption ruins your whole business case.',
+  'Wait—our incremental QALY gain is 0.008? Quick, zoom in on the cost-effectiveness plane.',
+  'Expected Value of Perfect Information (EVPI): the exact euro value of wishing we ran a better clinical trial.',
+  'The Markov property means the model has no memory of the past. Much like payers during price negotiations.',
+  'If the ICER is too high, have you tried calling it "unmeasured societal spillover benefit"?',
+  'Nothing builds character quite like watching 98% of your PSA scatter cloud land in the wrong quadrant.',
+  'Usual care costs €0 in this model, which would be a huge surprise to the hospital billing department.',
 ]
 
 /** How long a wait must last before a message appears at all. */
