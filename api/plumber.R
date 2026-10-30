@@ -429,7 +429,9 @@ parameter_specs <- function() {
       "Discounting", "Discounting", "Time horizon"
     ),
     unit = c(
-      "EUR per active user per year", "EUR per new user",
+      # The price's unit is per person-year: the cost-effectiveness model and the
+      # budget impact charge it to different people, which its help text explains.
+      "EUR per year", "EUR per new user",
       "EUR per active user per year",
       "percent", "percent", "percent",
       "utility (0-1)", "utility (0-1)", "utility (0-1)",

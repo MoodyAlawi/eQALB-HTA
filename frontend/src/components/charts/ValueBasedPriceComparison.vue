@@ -61,7 +61,7 @@ const option = computed<EChartsCoreOption>(() => {
         const value = item.dataIndex === 0 ? maximum : current
         return [
           `<strong>${label}</strong>`,
-          `${formatEuro(value, 2)} per active user per year`,
+          `${formatEuro(value, 2)} per treated person per year, charged while they are alive`,
           `R's status for the current price: ${props.status}`,
         ].join('<br/>')
       },
@@ -82,7 +82,7 @@ const option = computed<EChartsCoreOption>(() => {
     },
     series: [
       {
-        name: 'Annual price per active user',
+        name: 'Annual price per treated person',
         type: 'bar',
         barMaxWidth: 30,
         data: [

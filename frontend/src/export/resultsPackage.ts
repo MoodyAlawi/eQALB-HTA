@@ -332,7 +332,7 @@ export function buildResultsPackage(now: Date = new Date()): ResultsPackage {
       `Exported: ${packageTimestamp(now)}`,
       '',
       `Reference threshold: EUR ${formatCount(valueBasedPrice.wtp, 0)} per QALY`,
-      `Current annual price: ${formatEuro(valueBasedPrice.current_price, 2)} per active user per year`,
+      `Current annual price: ${formatEuro(valueBasedPrice.current_price, 2)} per treated person per year, charged for each year a treated person is alive`,
       `R method: ${valueBasedPrice.method}`,
       '',
       'Supported price',

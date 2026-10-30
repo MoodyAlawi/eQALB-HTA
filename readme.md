@@ -147,6 +147,16 @@ Value-based Price and HTA Decision Summary. See `api/api_contract.md` and
 `frontend/README.md`, and `FRONTEND_PLAN.md` for what is still planned. Everything
 it shows is simulated illustrative data, exactly as in the Shiny application.
 
+The browser application's tutorial is The Journey, a guided walk through one case
+from the base case to a recommendation. The first time you reach its Home screen,
+a short welcome asks whether you are new to health economics and offers The
+Journey; your answer is remembered in that browser, so it is not asked again. The
+Shiny application's own guided tutorial described above is not part of the
+browser application. Under "Reset model inputs", three numbered illustrative
+scenarios (1 red, 2 yellow, 3 green) set the assumptions to a clearly unfavourable,
+a borderline and a clearly favourable starting point; they change inputs only, run
+nothing, and are teaching examples rather than validated clinical cases.
+
 The browser build also carries the public OpenHealth shell: the landing page, the
 About page and the blog for news and updates.
 

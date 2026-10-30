@@ -732,10 +732,9 @@ supply the marker at another. The balance beside the marker is always computed f
 it to every person in the eQalb arm in every cycle, and engagement scales the
 modelled benefit rather than the charge — which is the unit of Part 1's own price
 control. The balance is a **total per person over the model's horizon**, so the two
-figures on screen are never the same unit and the disclosure says so. (The
-`/api/value-based-price` section above describes the same quantity as "per active
-user per year"; that is the price module's own pre-existing wording and is unchanged
-here.)
+figures on screen are never the same unit and the disclosure says so. The
+`/api/value-based-price` section above uses the same unit, per treated person per
+year.
 
 - `price.range` — the lever's own bounds, `min` and `max`. `price.unit` is the unit
   as a sentence reads it ("per person per year") and `price.unit_label` the same unit
@@ -948,8 +947,10 @@ endpoint never reruns an analysis, exactly as the Shiny tab does not.
 ### `POST /api/value-based-price`
 
 `calculate_value_based_price()` from eqalb_price.R — the module that answers how
-much the model supports paying per active user per year at the reference
-threshold. It reads `run_eqalb_model()` outputs only, so the supported price
+much the model supports paying per treated person per year at the reference
+threshold. The price is charged for each year a treated person is alive, whether
+or not they stay engaged, exactly as in the cost-effectiveness model. It reads
+`run_eqalb_model()` outputs only, so the supported price
 comes from the same model every other endpoint uses, and it re-runs the model at
 the price it solves for and reports the verification residual rather than
 asserting the answer.
@@ -961,7 +962,7 @@ Body: any of the 16 `ScenarioInputs` fields, plus:
 
 | Field | Unit | Meaning |
 |---|---|---|
-| `current_price` | EUR per active user per year, 0–1,000,000 | The annual intervention price the analysis runs at and compares the supported price against. It is an alias for `intervention_price` and takes precedence over it (the response's `warnings` says so when the two differ). Omitted, the scenario's own price — or the model's base-case constant — is used, so the model run, the price solve and the headroom always describe one price. |
+| `current_price` | EUR per treated person per year, 0–1,000,000 | The annual intervention price the analysis runs at and compares the supported price against. It is an alias for `intervention_price` and takes precedence over it (the response's `warnings` says so when the two differ). Omitted, the scenario's own price — or the model's base-case constant — is used, so the model run, the price solve and the headroom always describe one price. |
 | `wtp` | EUR per QALY, ≥ 0 | The reference threshold, as the query parameter. |
 
 Returns, with every number, status, band, label and sentence computed in R:
@@ -1048,6 +1049,11 @@ incremental net monetary benefit is non-negative) and against a direct
 where a change touches PSA code, and then at `n_sim = 100` with `seed = 12345`.
 
 ### `GET /api/tutorial`
+
+> The browser application no longer calls this endpoint, `POST /api/tutorial/part1`
+> or the three `/api/tutorial/part2*` endpoints: its legacy Guided Tutorial screen
+> was retired in favour of The Journey (`/api/tutorial/journey*`). The endpoints and
+> `eqalb_tutorial.R` remain available and are documented as they are.
 
 `eqalb_tutorial_contract()` from eqalb_tutorial.R: the Guided Tutorial Part 1
 contract, returned as `part1`, so the browser interface cannot drift from the
