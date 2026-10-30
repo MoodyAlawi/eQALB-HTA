@@ -23,12 +23,14 @@ HTA_SUMMARY_RULE_NOTE <- paste(
   "zero. A negative ICER never decides on its own: it arises both when eQalb",
   "costs less and adds health and when it costs more and adds none, and the",
   "net benefit separates those cases. Decision uncertainty reuses",
-  "the value-of-information rule (Red only when the less-preferred option wins",
-  "in at least 40% of simulations or EVPI exceeds \u20ac1,000 per patient).",
+  "the value-of-information rule (Red only when the option that wins less",
+  "often still wins in at least 40% of simulations or EVPI exceeds \u20ac1,000",
+  "per patient).",
   "Budget impact is Green at or below \u20ac1m, Amber up to \u20ac10m and Red above.",
   "Clinical evidence maturity is always Red because the evidence is simulated.",
-  "Implementation readiness is Amber when any readiness domain is Amber, and",
-  "Red when more than a quarter of domains are Red. The overall status is the",
+  "Implementation readiness is Green only when every readiness domain is",
+  "Green, Red when more than a quarter of domains are Red, and Amber",
+  "otherwise. The overall status is the",
   "least favourable assessed domain. These are presentation rules for this",
   "teaching app, not official NICE or payer criteria."
 )
@@ -58,14 +60,15 @@ HTA_RULE_ITEMS <- c(
   ),
   paste(
     "Decision uncertainty reuses the value-of-information rule: Red only when",
-    "the less-preferred option wins in at least 40% of simulations or EVPI",
-    "exceeds \u20ac1,000 per patient."
+    "the option that wins less often still wins in at least 40% of simulations",
+    "or EVPI exceeds \u20ac1,000 per patient."
   ),
   "Budget impact is Green at or below \u20ac1m, Amber up to \u20ac10m, and Red above.",
   "Clinical evidence maturity is always Red because the evidence is simulated.",
   paste(
-    "Implementation readiness is Amber when any readiness domain is Amber, and",
-    "Red when more than a quarter of domains are Red."
+    "Implementation readiness is Green only when every readiness domain is",
+    "Green, Red when more than a quarter of domains are Red, and Amber",
+    "otherwise."
   ),
   "The overall status is the least favourable assessed domain.",
   paste(
@@ -92,10 +95,11 @@ OWSA_PRERUN_NOTE <- "Set the assumptions and click Run sensitivity analysis."
 # bslib popover and no calculation reads it.
 CC_INFO_TEXT <- list(
   intervention_price = paste(
-    "The cost of the digital intervention per user over the modelled period."
+    "The annual price of eQalb for one person for one year."
   ),
   relative_risk_reduction = paste(
-    "The proportional reduction in event risk compared with usual care."
+    "The proportional reduction in heart-attack and stroke risk for engaged",
+    "users, compared with usual care."
   ),
   year1_engagement = paste(
     "The proportion of eligible users who engage with the intervention during",
@@ -111,9 +115,12 @@ CC_INFO_TEXT <- list(
   population_size = paste(
     "The number of people in the eligible population used in the analysis."
   ),
-  uptake = "The proportion of eligible people who adopt the intervention.",
+  uptake = paste(
+    "The share of the covered population (eligible people × coverage)",
+    "enrolled by each year."
+  ),
   intervention_cost = paste(
-    "The cost applied to each person receiving the intervention."
+    "A one-off cost for each new user, charged in their first year only."
   ),
   review_minutes = paste(
     "The clinician time required to review or support each active user."
@@ -122,15 +129,18 @@ CC_INFO_TEXT <- list(
     "The maximum amount considered acceptable to pay for one additional QALY."
   ),
   reference_wtp = paste(
-    "The amount used to judge whether the intervention is cost-effective for",
-    "the main PSA result, expressed as euros per QALY."
+    "The amount the payer is assumed to be willing to pay for one extra QALY,",
+    "in euros."
   ),
   psa_simulations = paste(
     "The number of simulations used to explore uncertainty in the model",
     "inputs."
   ),
   random_seed = "A fixed number that makes simulation results reproducible.",
-  evpi = "The value of completely eliminating uncertainty about the decision.",
+  evpi = paste(
+    "The most it could be worth, per patient, to remove all uncertainty about",
+    "the decision at this threshold."
+  ),
   evppi = paste(
     "The value of eliminating uncertainty about selected groups of inputs."
   ),
@@ -145,9 +155,9 @@ CC_INFO_TEXT <- list(
     "splits that average into time in each health state."
   ),
   healthcare_savings = paste(
-    "Estimated healthcare costs avoided because the intervention reduces",
-    "modelled clinical events. This is illustrative and does not represent",
-    "observed savings."
+    "An assumed annual saving in other healthcare use, separate from the",
+    "savings from fewer heart attacks and strokes, which the model calculates",
+    "itself. This is illustrative and does not represent observed savings."
   ),
   # Guided-tutorial explanations. These are the texts that used to sit
   # permanently under the step-1 sliders; they are now shown on demand so the
@@ -283,7 +293,7 @@ MODULE_METHOD_NOTES <- list(
       paste(
         "A cohort starts with no prior cardiovascular event and moves between four",
         "states — no event, after a heart attack, after a stroke, death — one year at",
-        "a time, for the horizon in force (ten years by default)."
+        "a time, for the horizon in force."
       ),
       paste(
         "Each year, everyone in the no-event state faces an annual heart-attack risk,",
@@ -306,9 +316,10 @@ MODULE_METHOD_NOTES <- list(
         "A year of health is one year in that state times its utility."
       ),
       paste0(
-        "Costs and QALYs are each discounted at the rate in force — the amount in ",
-        "year $t$ is divided by $(1+r)^{t}$, with $t$ counted from the first ",
-        "modelled year — and summed over the horizon, per person."
+        "Costs and QALYs are each discounted at the rate in force and summed over ",
+        "the horizon, per person. The first year is not discounted; the amount in ",
+        "year $t$ is divided by $(1+r)^{t-1}$, so at 3% year 2 counts about 0.971 ",
+        "of its value and year 3 about 0.943."
       )
     ),
     definitions = list(
@@ -318,15 +329,19 @@ MODULE_METHOD_NOTES <- list(
       list(symbol = "$\\lambda$", meaning = "Willingness-to-pay threshold, euros per QALY.")
     ),
     interpretation = paste0(
-      "The ICER is the extra euros per extra QALY. The general decision rule is the ",
-      "incremental net monetary benefit, $\\mathrm{INMB} = \\lambda\\,\\Delta E - ",
-      "\\Delta C$: positive favours eQalb, negative favours usual care, and zero means ",
-      "eQalb gives exactly the same net benefit as usual care. The ICER is a ",
-      "restatement of that rule only when $\\Delta E > 0$ — there, ",
-      "$\\Delta C/\\Delta E \\le \\lambda$ is equivalent to $\\mathrm{INMB} \\ge 0$. ",
-      "When $\\Delta E \\le 0$ the ratio is not a price per QALY: at $\\Delta E < 0$ ",
-      "eQalb produces less health, and a positive ICER there must not be read as good ",
-      "value."
+      "$\\Delta C$ is what eQalb costs on top of usual care and $\\Delta E$ the ",
+      "health it adds, both per person. The decision rule is the incremental net ",
+      "monetary benefit, $\\mathrm{INMB} = \\lambda\\,\\Delta E - \\Delta C$: ",
+      "positive favours eQalb, negative favours usual care, and zero means the two ",
+      "give the same net benefit. How to read the ICER depends on the sign of ",
+      "$\\Delta E$. If eQalb adds health at extra cost, the ICER is the price of each ",
+      "extra QALY, and an ICER at or below $\\lambda$ means $\\mathrm{INMB} \\ge 0$. ",
+      "If it adds health and also saves money, it dominates usual care: the ICER is ",
+      "negative for a good reason. A negative ICER also arises when eQalb costs more ",
+      "and adds less health, so a negative ICER alone says nothing. If eQalb gives ",
+      "less health at a lower cost, the 'below the threshold' reading is reversed: ",
+      "it is favoured only if the saving per QALY lost is above $\\lambda$. If ",
+      "$\\Delta E$ is zero there is no ICER, and the cost difference alone decides."
     ),
     assumptions = c(
       "Per person over the horizon, health-payer perspective, in 2025 euros.",
@@ -362,13 +377,10 @@ MODULE_METHOD_NOTES <- list(
       "Each is run twice, at its low and at its high value, and the results at the two ends are recorded.",
       "An assumption's swing is the gap between those two results: the larger minus the smaller.",
       "Assumptions are ranked by their swing in extra cost and, separately, by their swing in extra QALYs. The two rankings are never merged into one score.",
-      paste(
-        "Each range is built around the value in force rather than taken from a",
-        "textbook: a fixed offset from the current value (the annual price moves by",
-        "±€180 and stays inside €0–€2,000; the risk reduction moves by ±0.05), two",
-        "policy values for a discount rate (none, and twice the current rate), or the",
-        "nearest distinct whole-year horizons."
-      )
+      "Each range is built around the value in force, not taken from a textbook.",
+      "Each discount rate is tested at two policy values: no discounting, and twice the current rate.",
+      "The horizon is tested at the nearest distinct whole-year horizons.",
+      "Every other assumption moves by a fixed offset from its current value: for example, the annual price moves by ±€180 and stays inside €0–€2,000, and the risk reduction moves by ±0.05."
     ),
     definitions = list(
       list(symbol = "$\\Delta(\\theta)$", meaning = "The result at one tested value $\\theta$: extra cost in euros per person, or extra QALYs per person."),
@@ -418,22 +430,19 @@ MODULE_METHOD_NOTES <- list(
         "The summary is the average of the draws, and the ICER is summarised as the",
         "median of the draws that add health, since a mean of ratios is unstable."
       ),
-      paste0(
-        "At each willingness-to-pay value $\\lambda$ the share of draws with a ",
-        "positive net monetary benefit gives the acceptability curve."
-      ),
+      "Working out the probability of cost-effectiveness at every willingness-to-pay value gives the acceptability curve.",
       "A fixed random seed makes the whole run reproducible: the same seed and the same number of draws give the same figures."
     ),
     definitions = list(
       list(symbol = "$N$", meaning = "Number of iterations (the simulation count)."),
       list(symbol = "$\\Delta C_i,\\ \\Delta E_i$", meaning = "Extra cost (euros per person) and extra QALYs (per person) in iteration $i$."),
-      list(symbol = "$\\mathrm{INMB}_i$", meaning = "$\\lambda\\,\\Delta E_i - \\Delta C_i$, in euros per person; positive means eQalb is the better buy in that draw."),
+      list(symbol = "$\\mathrm{INMB}_i$", meaning = "Net monetary benefit in iteration $i$, in euros per person; positive means eQalb is the better buy in that draw."),
       list(symbol = "$\\lambda$", meaning = "Willingness-to-pay threshold, euros per QALY.")
     ),
     interpretation = paste(
-      "A probability of 0.39 at the threshold means 39% of the draws came out",
-      "cost-effective. It describes the assumptions, not the chance that the decision",
-      "is right. A wide cloud means the answer depends heavily on which values are",
+      "For example, a probability of 0.39 would mean that 39% of the draws came out",
+      "cost-effective. It reflects the uncertainty put into the model, not the",
+      "probability that the decision is correct. A wide cloud means the answer depends heavily on which values are",
       "true; a cloud sitting mostly on one side of the threshold line means the",
       "decision is fairly robust to the uncertainty described."
     ),
@@ -473,17 +482,24 @@ MODULE_METHOD_NOTES <- list(
       ),
       "The difference between those two values is the expected value of perfect information, per person.",
       paste(
-        "For one assumption (or one group of assumptions) the same expression is",
-        "applied to how NMB moves with it: a smooth curve is fitted through the",
-        "draws, its conditional mean replaces the plain average, and the result is the",
-        "expected value of partial perfect information."
+        "EVPI is about removing all uncertainty at once. The expected value of",
+        "partial perfect information (EVPPI) asks a narrower question: what would",
+        "it be worth to learn one assumption (or one group of assumptions)",
+        "exactly, while everything else stays uncertain?"
+      ),
+      paste(
+        "To estimate it, a smooth curve is fitted through the existing draws that",
+        "predicts net monetary benefit from that assumption's value (or the",
+        "group's values) alone. The curve stands in for what we would expect once",
+        "those values are known, and",
+        "the same calculation as for EVPI is applied to it."
       )
     ),
     definitions = list(
       list(symbol = "$\\mathrm{NMB}$", meaning = "$\\lambda\\,\\Delta E - \\Delta C$, in euros per person."),
       list(symbol = "$\\max(\\mathrm{NMB}, 0)$", meaning = "Keeping the better of eQalb and usual care in each iteration."),
       list(symbol = "$\\mathrm{EVPI}$", meaning = "Expected value of perfect information: the most that resolving every uncertain assumption could be worth, euros per person."),
-      list(symbol = "$\\mathrm{EVPPI}$", meaning = "The same value for one assumption or group of assumptions."),
+      list(symbol = "$\\mathrm{EVPPI}$", meaning = "Expected value of partial perfect information: the value of learning one assumption or group of assumptions exactly while the others stay uncertain, euros per person."),
       list(symbol = "$\\lambda$", meaning = "Willingness-to-pay threshold, euros per QALY.")
     ),
     interpretation = paste(
@@ -494,7 +510,7 @@ MODULE_METHOD_NOTES <- list(
     ),
     assumptions = c(
       "All values are per person, before any population size is applied.",
-      "The group values are a regression-based single-loop approximation of the conditional expectation, not a separate nested simulation."
+      "EVPPI is estimated from the existing draws with a statistical shortcut (a regression) rather than a second, nested simulation, so it is an approximation."
     )
   ),
   price = list(
@@ -531,7 +547,7 @@ MODULE_METHOD_NOTES <- list(
     ),
     definitions = list(
       list(symbol = "$p$", meaning = "Annual price per treated person, euros per person-year."),
-      list(symbol = "$p^{*}$", meaning = "Break-even annual price: the highest price at which net monetary benefit is still zero, euros per person-year."),
+      list(symbol = "$p^{*}$", meaning = "Break-even annual price: the price at which net monetary benefit is exactly zero, euros per person-year. In this model extra cost rises with price while health does not change, so any higher price gives negative net monetary benefit."),
       list(symbol = "$\\lambda$", meaning = "Willingness-to-pay threshold, euros per QALY."),
       list(symbol = "$s$", meaning = "Slope of extra cost against price, in euros of extra cost per €1 of price — the treated years per person."),
       list(symbol = "$c_0$", meaning = "Extra cost with the price set to zero, euros per person."),
@@ -585,8 +601,7 @@ MODULE_METHOD_NOTES <- list(
       ),
       paste(
         "Annual net impact is spending minus offsets; the running total is the sum of",
-        "those annual amounts across the horizon. Nothing is discounted, and no budget",
-        "ceiling is applied."
+        "those annual amounts across the horizon."
       )
     ),
     definitions = list(
@@ -604,12 +619,11 @@ MODULE_METHOD_NOTES <- list(
       "the cumulative figure is the plain sum of those years across the horizon. They",
       "are different quantities — a multi-year total is not the annual figure",
       "multiplied by the number of years, because uptake and the number of new users",
-      "change each year — and neither is discounted, so both describe cash flow rather",
-      "than present value. No budget ceiling is applied, so no affordability verdict is",
+      "change each year. No budget ceiling is applied, so no affordability verdict is",
       "produced."
     ),
     assumptions = c(
-      "Nothing is discounted or inflated; the horizon, the uptake path and the savings are the values in force (the panel starts at five years, 10% year-1 uptake and a 5-point annual rise).",
+      "Nothing is discounted or inflated, so the figures are cash amounts rather than present values; the horizon, the uptake path and the savings are the values in force (the panel starts at five years, 10% year-1 uptake and a 5-point annual rise).",
       "The annual price is charged for active users only, not for everyone enrolled."
     )
   ),
@@ -626,9 +640,9 @@ MODULE_METHOD_NOTES <- list(
         "people who could be offered the programme at all."
       ),
       paste0(
-        "Active users $=$ reach $\\times$ engagement. Clinician time per year ",
-        "$=$ active users in year 1 $\\times$ review minutes $\\times$ 12 reviews ",
-        "$\\div$ 60."
+        "Active users $=$ reach $\\times$ engagement. Clinician hours per year ",
+        "$=$ year-1 active users $\\times$ review minutes per patient per month ",
+        "$\\times$ 12 $\\div$ 60."
       ),
       paste0(
         "Retention $=$ follow-up engagement $\\div$ year-1 engagement, as a percentage."
@@ -705,7 +719,7 @@ MODULE_METHOD_NOTES <- list(
     ),
     assumptions = c(
       "The data are simulated and illustrative, not clinical evidence.",
-      "The event is a first heart attack or stroke; a cardiovascular-death risk is not part of the model, so other-cause death is treated as a competing censoring event.",
+      "The event is a first heart attack or stroke. Before a first event, the only way to die in this simulation is from another cause; those deaths are censored, as is everyone still event-free at the end of follow-up. This simulation is separate from the cost-effectiveness model, which also includes deaths after a heart attack or stroke.",
       "The band around each curve is the estimator's uncertainty for this simulation, not a claim about a real trial."
     )
   )
