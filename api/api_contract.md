@@ -1049,6 +1049,11 @@ where a change touches PSA code, and then at `n_sim = 100` with `seed = 12345`.
 
 ### `GET /api/tutorial`
 
+> The browser application no longer calls this endpoint, `POST /api/tutorial/part1`
+> or the three `/api/tutorial/part2*` endpoints: its legacy Guided Tutorial screen
+> was retired in favour of The Journey (`/api/tutorial/journey*`). The endpoints and
+> `eqalb_tutorial.R` remain available and are documented as they are.
+
 `eqalb_tutorial_contract()` from eqalb_tutorial.R: the Guided Tutorial Part 1
 contract, returned as `part1`, so the browser interface cannot drift from the
 tutorial's own values or wording. Building it runs no model.

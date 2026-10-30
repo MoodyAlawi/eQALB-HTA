@@ -102,11 +102,10 @@ src/
     useAppView.ts       # which page is shown, plus the /, /blog, /blog/<slug>, /app and /about addresses, the history entries and the document title
     useDisclosure.ts    # Escape closes the disclosure the focus is inside, app-wide
     useAppBusy.ts       # the app-wide busy state the loading indicator shows: ref-counted start/finish, label, isActive
-    useTutorialSession.ts  # Guided Tutorial: Part 1's inputs/results/step and Part 2's case, price, coverage, readiness answers and section; never touches useModel
-    useTutorialJourney.ts  # the redesigned tutorial's own session: chapter/screen, reveal state, one price lever, the initial and moved base case, the provisional view and the price the learner called reasonable; separate from useTutorialSession and useModel
+    useTutorialJourney.ts  # The Journey's own session: chapter/screen, reveal state, one price lever, the initial and moved base case, the provisional view and the price the learner called reasonable; separate from useModel
     useResultEntrance.ts   # the one-shot result entrance: an analysis's committed revision becomes an alternating animation class, once per revision, remembered across a panel's unmount
     useTabUnderline.ts     # places the analysis tab strip's indicator from the selected tab's own box: 190 ms slide between tabs on one row, a jump across a wrap, a resize or a font change, cleaned up on unmount
-    useLoadingMessages.ts  # the lighthearted line under a long operation's factual status: one list of 24 sentences, a 1 s grace, a 7 s interval, a 280 ms opacity-only crossfade, and a static line under reduced motion
+    useLoadingMessages.ts  # the lighthearted line under a long operation's factual status: one list of 20 sentences, a 1 s grace, a 7 s interval, a 280 ms opacity-only crossfade, and a static line under reduced motion
     useDownloadNotice.ts   # the prepared-download notice: one module-level notice, prepared/failed wording, a 7 s auto-dismiss only for successes
     useDialogTransition.ts # the shared dialog transition's name and its leave hook, which makes the outgoing dialog inert
     useModalFocus.ts       # a dialog's keyboard containment: focus moved in on open, a Tab loop inside, the page behind it inert (through the dialog's relatives, each element's prior state restored), focus returned to the opener when it closes
@@ -127,8 +126,7 @@ src/
     BlogPostView.vue            # one post at /blog/<slug> : the title, its date and the post's own blocks in a
                                 # narrow reading column, or a readable not-found state when the slug names no post
     HomeView.vue                # eQalb's own start screen at /app : eQalb wordmark with ECG pulse, credit, actions, links
-    TutorialView.vue            # Guided Tutorial: Part 1 (four steps, completion) and the Part 2 shell
-    JourneyView.vue             # redesigned Guided Tutorial at /app?journey=1 : the shell, the notice and the chapter navigation
+    JourneyView.vue             # The Journey at /app?journey=1 : the shell, the notice and the chapter navigation
     ProjectDescriptionView.vue  # what the model is, what it covers, contact
     DownloadResultsView.vue     # what this session produced, and the ZIP download
   export/
@@ -160,9 +158,8 @@ src/
     ResultTrace.vue              # the ECG trace that passes under a panel heading: one short line whose draw follows a teal highlight, then gone
     ButtonLabel.vue              # the two-label run button: idle and pending in one grid cell, with the small ECG on the pending label
     DownloadNotice.vue           # the prepared-download card in the corner, role="status" / role="alert"
-    tutorial/           # Guided Tutorial: stepper, step stage (the transition between steps), control, status card,
-                        # plane, Part 1's four steps and completion card, and Part 2's shell, case brief, price
-                        # curve, value-for-money, budget-impact, readiness and recommendation sections
+    tutorial/           # the two pieces The Journey reuses: TutorialControl (a labelled input control)
+                        # and TutorialStepStage (the fade between steps)
   journey/            # the redesigned tutorial: the case brief, the guided Chapter 1 beats, the
                         # cost-effectiveness plane the beats reveal one element at a time, the later
                         # chapters' own figures (the one-way tornado, the price track, the budget bars,
@@ -227,6 +224,15 @@ src/
   result; the "Clear all results" action is separately confirmed and names what it
   removes. Readiness has Shiny's own "Reset values" (seven readiness inputs,
   readiness result only).
+- **Illustrative scenarios.** Three numbered buttons under "Reset model inputs"
+  (1 red: eQalb clearly not preferred; 2 yellow: uncertain, borderline; 3 green:
+  eQalb clearly preferred) each set all 16 model inputs and the reference WTP
+  threshold in one action through `model.setInput`. A scenario names only the
+  inputs it moves (`src/content/presets.ts`); every other input takes R's
+  base-case default and the threshold is R's reference. Applying one runs
+  nothing and changes no calculation, and the button reads as chosen while the
+  inputs match it. They are illustrative starting points, not validated clinical
+  cases.
 - **Explanations are R's text.** The small "i" controls (`InfoTip.vue`) show the
   wording `GET /api/defaults` publishes (`info_text` and each parameter's `info`),
   which is `CC_INFO_TEXT` from `eqalb_ui_copy.R` — the same strings Shiny shows.
@@ -640,7 +646,13 @@ deployed.
   table, including the four raw readiness and HTA tables), and the remaining
   findings are deferred, three of them needing backend work. No deferred item is
   started without approval. See [`../FRONTEND_PLAN.md`](../FRONTEND_PLAN.md).
-- The Guided Tutorial Part 1 is implemented in Vue and is a self-contained
+- **Historical — retired from the frontend.** The next three items describe the
+  legacy Guided Tutorial (Part 1 and Part 2) as it was delivered. Its screen had no
+  route after The Journey replaced it, and its Vue view, session and components
+  have since been removed. The R module (`eqalb_tutorial.R`) and its
+  `/api/tutorial`, `/api/tutorial/part1` and `/api/tutorial/part2*` endpoints
+  remain; the browser app no longer calls them.
+- The Guided Tutorial Part 1 was implemented in Vue as a self-contained
   session: it has its own screen, its own inputs and its own results, and it never
   reads or writes the `useModel` store. Its defaults, labels, ranges, statuses,
   thresholds, interpretations and formatted strings all come from
@@ -706,8 +718,9 @@ deployed.
   Case brief and restores R's own defaults for the price, the coverage cap and the
   four readiness answers.
 - The redesigned Guided Tutorial's first slice is implemented behind
-  `/app?journey=1`, so the tutorial described above is still the default entry and
-  is unchanged. It covers the case brief and Chapter 1 (base case): `JourneyView`
+  `/app?journey=1` (at the time, the tutorial described above stayed the default
+  entry; The Journey has since replaced it), and the legacy tutorial was left
+  unchanged at that stage. It covers the case brief and Chapter 1 (base case): `JourneyView`
   renders the shell, `useTutorialJourney` holds the session, and
   `components/journey/` holds the brief, the chapter's screens and the
   cost-effectiveness plane. R owns the case, the wording, every reveal sentence and
@@ -838,7 +851,7 @@ deployed.
   journey-only semantics. The shell is built for reuse, but only the end of the journey
   opens it.
 - Every overlay in the app is one box (`EcgOverlay`): the dialogs (the welcome prompt, the
-    Home menu, the PSA confirmation, the Part 2 case facts and congratulations), the journey's
+    Home menu and the PSA confirmation), the journey's
     completion overlay, the chapter-transition bridges and the floating information panels.
     Its outline is an ECG perimeter and nothing else — no card border, no corner radius and no
     second frame inside a frame: the box's four sides are the four sides of one ECG line, with
@@ -865,9 +878,9 @@ deployed.
     `2.25rem 2.4rem 2rem` for a centred box), one type scale (1.12rem/700 heading, 0.92rem body),
     one rhythm (0.5rem under the heading, 1.25rem above the actions). `centre` boxes size to
     `min(27rem, 100%)` and centre the heading, the sentence and the action group — the completion
-    overlay, the chapter bridges, the welcome prompt, the menu explanation, the PSA confirmation
-    and the Part 2 congratulations; `reading` boxes stay left-aligned in the host's column (the
-    case facts and presentation mode); `dense` is the floating popover. On a narrow screen the
+    overlay, the chapter bridges, the welcome prompt, the menu explanation and the PSA
+    confirmation; `reading` boxes stay left-aligned in the host's column (presentation mode);
+    `dense` is the floating popover. On a narrow screen the
     centred box's actions stack at full width rather than shrinking. The close control sits at one
     consistent inset (16px from the top and right) above the content and clear of the trace.
 - The chapter-transition boxes are the bridges rendered by `JourneyChapter.vue` (`.recap`),
@@ -880,8 +893,15 @@ overlays, and are not framed.
   guided tutorial, and offers it once: the separate Start/Resume button is gone. The
   choice keeps the explanation-before-navigation pattern the workspace entry uses, and
   its action reads "Start" or "Resume" from the journey's own session without making a
-  request. The legacy tutorial's view, session and route are untouched and it remains
-  reachable by its own address.
+  request. The legacy tutorial is no longer reachable: its route was removed, and its
+  frontend code has since been deleted.
+- On the first arrival at the `/app` Home screen, a welcome overlay asks "New to health
+  economics?" and offers "Start The Journey" or "Explore on my own". Either answer, Escape
+  or the backdrop settles it, and entering The Journey by any route (the Home menu, a direct
+  link, Back or Forward) settles it too. The choice is kept in `localStorage` under
+  `eqalb.welcome.v2`, so it persists across browser sessions rather than being asked once
+  per session; a browser that answered the earlier per-session question is asked this one
+  once.
 - Each analysis module's heading carries a "How this is calculated" control
   (`MethodInfo`), a muted periwinkle button distinct from the teal accent, that opens R's
   method note in place. The note is written for a reader who knows mathematics and nothing
@@ -1075,8 +1095,8 @@ overlays, and are not framed.
   moves to the dialog's own first action, Tab and Shift+Tab wrap inside it, the page
   behind it is inert (through the dialog's relatives, never an ancestor, with each
   element's prior state remembered and restored), and the focus returns to the
-  opener — or, for the welcome question, to the selected analysis tab, since it is
-  asked on arrival rather than opened from a button. An opener that is present but
+  opener — or, for the welcome question, to the Home screen's first menu choice, since
+  it is asked on arrival rather than opened from a button. An opener that is present but
   disabled (Continue, which disables the run button as it starts the run) leaves the
   focus where the dialog left it, and nothing is returned into a page that has been
   left. A dialog whose leave is cancelled by a quick reopen clears its own `inert`

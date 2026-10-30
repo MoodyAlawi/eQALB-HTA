@@ -52,9 +52,13 @@ scenario rows and the duplicate illustrative-data notice are gone from the
 interface, and what remains sits in exactly two closed disclosures. Details are kept in the private project record.
 The existing Shiny application (`app.R`, `run_app.R`, `eqalb_*.R`) is unchanged
 and still runs on `127.0.0.1:7788`; it is read-only historical reference
-behaviour. The Vue application is the supported user-facing product, and the
-Guided Tutorial (Part 1 in full, and all five Part 2 sections) is available from
-its Home screen. Part 1 was delivered as
+behaviour. The Vue application is the supported user-facing product, and its
+tutorial is The Journey (below), which a first-visit welcome on the `/app` Home
+screen offers. The earlier Guided Tutorial (Part 1 in full, and all five Part 2
+sections) was delivered first and has since been retired from the frontend: its
+screen lost its route when The Journey replaced it, and its Vue view, session and
+components were then removed. The R module and its endpoints described next
+remain. Part 1 was delivered as
 its own R module (`eqalb_tutorial.R`), two endpoints (`GET /api/tutorial` and
 `POST /api/tutorial/part1`) and an isolated Vue session
 (`useTutorialSession`) plus a `views/TutorialView.vue` and a
@@ -67,9 +71,9 @@ same isolated session. It reuses
 `assess_hta_decision_summary()`, and no tutorial rule, wording or number is
 reproduced in TypeScript. It is documented in `api/api_contract.md`.
 
-The redesigned Guided Tutorial is being built as a separate teaching sequence,
-additively and behind `/app?journey=1`, so the tutorial above stays the default
-entry and is unchanged. Its first slice — the case brief and Chapter 2 (base
+The redesigned Guided Tutorial was built as a separate teaching sequence,
+additively and behind `/app?journey=1`, so at the time the tutorial above stayed
+the default entry and was unchanged; it is now The Journey. Its first slice — the case brief and Chapter 2 (base
 case) — is implemented in `eqalb_tutorial_journey.R`, its endpoints
 (`GET /api/tutorial/journey`, `POST /api/tutorial/journey/base-case` and one per
 later chapter), an isolated session (`useTutorialJourney`) and
@@ -284,9 +288,13 @@ set of padding, type and spacing rules. The chapter-transition bridge, the menu 
 prompts, the PSA confirmation, the Part 2 dialogs, presentation mode and the floating information
 popovers all wear it too; short announcements are centred and sized to their content, longer
 informational content stays left-aligned, and the loading card keeps its own treatment untouched.
-Home now offers the narrative tutorial as "The Journey" and
-no longer lists the legacy guided tutorial, whose screen is unchanged and still reachable by
-its own address.
+Home now offers the narrative tutorial as "The Journey" and no longer lists the legacy guided
+tutorial. The UI finishing pass then made The Journey the first-run path: a welcome overlay on
+the first arrival at `/app` Home offers it, the answer is kept in `localStorage`
+(`eqalb.welcome.v2`) so it persists across sessions, and the legacy screen lost its route; its
+frontend code has since been removed. The same pass added three illustrative assumption
+scenarios under "Reset model inputs" (1 red, 2 yellow, 3 green), which set inputs only and are
+not validated clinical cases.
 
 **How the tutorial was extended (delivered).** The journey's purpose is now
 dual: every chapter must work as a beat in the whole case *and* as a standalone
@@ -756,7 +764,8 @@ endpoint whose response is a union, which is worth having typed early.
 - Deferred with honest limitation notes on the affected tabs, in the results
   package README and in `frontend/README.md`: the Kaplan-Meier patient-level
   dataset export and the R figure-rendering (PNG/PDF) endpoint.
-- The Guided Tutorial Part 1 is implemented in Vue. It is a self-contained
+- (Historical — retired from the frontend; the R module and endpoints remain.)
+  The Guided Tutorial Part 1 was implemented in Vue. It is a self-contained
   session — its own screen, inputs, results and step — driven entirely by
   `eqalb_tutorial.R` through `GET /api/tutorial` and `POST /api/tutorial/part1`,
   which publish the tutorial's defaults, control metadata, fixed values
@@ -805,8 +814,7 @@ frontend/
     main.ts, App.vue   # shell
     api/client.ts      # typed fetch client
     api/types.ts       # response contracts mirroring the R return shapes
-    composables/       # useModel (state), useTutorialSession (isolated tutorial state),
-                       # useTutorialJourney (the redesigned tutorial's own isolated state),
+    composables/       # useModel (state), useTutorialJourney (The Journey's own isolated state),
                        # useTheme (palette), useEcharts (charts), useAppView (which page is shown, and the
                        # /, /blog, /blog/<slug>, /app and /about addresses with the history entries and document
                        # title), useLandingTheme (the landing page's and the blog's own light/dark choice),
@@ -819,9 +827,9 @@ frontend/
                        # line under a long wait: the sentence list, the 7 s interval, the crossfade),
                        # usePageEntrance (the page-entry fade: which entries fade and which are shown
                        # immediately)
-    components/        # presentation only; charts/ holds the chart options; tutorial/ the four Part 1 steps, Part 2's five sections and the step stage that transitions between them; journey/ the redesigned tutorial's case brief, its seven chapters' figures and the shared spotlight guidance; blog/ the blog's shell and its date formatting; ResultTrace is the trace that passes under a panel heading; ButtonLabel is the two-label run button (idle / pending); DownloadNotice is the prepared-download card; InfoTip is the help control; AppLoadingIndicator is the loading indicator
+    components/        # presentation only; charts/ holds the chart options; tutorial/ the two pieces The Journey reuses (TutorialControl and the TutorialStepStage fade); journey/ The Journey's case brief, its seven chapters' figures and the shared spotlight guidance; blog/ the blog's shell and its date formatting; ResultTrace is the trace that passes under a panel heading; ButtonLabel is the two-label run button (idle / pending); DownloadNotice is the prepared-download card; InfoTip is the help control; AppLoadingIndicator is the loading indicator
     views/             # OpenHealth landing (/), the blog (/blog and /blog/<slug>), the eQalb Home screen (/app,
-                       # with the Guided tutorial, Project description and Download results subviews) and About
+                       # with The Journey, Project description and Download results subviews) and About
                        # OpenHealth (/about)
     content/blog/      # the blog's posts: one module per post, the registry that publishes them, the content
                        # model, and the format and workflow documentation
@@ -974,15 +982,15 @@ project owner.
   the overlay first.
 - Journey position is in-memory session state and is not restored after a page
   reload, by design: the Home control reads "The Journey (resume)" while a journey
-  is in progress and "The Journey" otherwise. The legacy tutorial behaves the same
-  way and is documented as cleared by reload.
-- Every dialog contains its own focus. The four real modals (the welcome question,
-  the PSA confirmation, the case facts and the congratulation) move the focus to
+  is in progress and "The Journey" otherwise. (The retired legacy tutorial behaved
+  the same way.)
+- Every dialog contains its own focus. The real modals (among them the welcome
+  question and the PSA confirmation) move the focus to
   their own first action when they open, wrap Tab and Shift+Tab inside themselves,
   make everything outside them `inert` while they are up — through their relatives,
   never through an ancestor, and restoring each element's prior state — and return
   the focus to the control that opened them, with the welcome question falling back
-  to the selected analysis tab (it is asked on arrival, so it has no button to
+  to the Home screen's first menu choice (it is asked on arrival, so it has no button to
   return to) and a dialog whose opener is disabled (Continue, which disables the run
   button as it starts the run) leaving the focus where the dialog left it. That is
   `frontend/src/composables/useModalFocus.ts`, wired once per dialog.
