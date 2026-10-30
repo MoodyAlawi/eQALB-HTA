@@ -24,7 +24,7 @@ export const TIPS: Readonly<Record<TipTopic, readonly string[]>> = {
   ],
   readiness: [
     'Unlike a pill, a digital therapeutic only works while patients actually open the app. Model follow-up engagement drop-off early, or your 10-year QALY projection is pure fiction.',
-    'If your digital tool saves €20 in medication costs but takes a cardiologist 15 minutes per patient to review the dashboard, your hidden workflow burden will sink implementation.',
+    'If a digital tool saves €20 in healthcare-use costs but requires extra clinician time to review its dashboard, that hidden workflow burden can undermine implementation.',
     'High digital health efficacy in a clinical trial rarely survives contact with an unintegrated hospital IT system. Check interoperability before celebrating the ICER.',
     'Digital exclusion is an HTA variable too. If 30% of your target demographic lacks smartphone literacy, your real-world population reach shrinks before day one.',
   ],
