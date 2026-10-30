@@ -1861,6 +1861,12 @@ code {
   --preset-bg: var(--warning-bg);
 }
 
+/* The light theme's warning amber is 4.24:1 on the panel, under the 4.5:1 a small
+   numeral needs; this button alone takes a darker amber there (5.38:1). */
+:root:not([data-theme='dark']) .presets__button--yellow {
+  --preset: #9a5c00;
+}
+
 .presets__button--green {
   --preset: var(--success);
   --preset-bg: var(--success-bg);
