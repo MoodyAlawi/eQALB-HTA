@@ -237,9 +237,11 @@ src/
   wording `GET /api/defaults` publishes (`info_text` and each parameter's `info`),
   which is `CC_INFO_TEXT` from `eqalb_ui_copy.R` — the same strings Shiny shows.
   The HTA tab renders `rules`, `evidence_note` and `rule_note` from
-  `/api/hta-summary` the same way, and the Guided Tutorial renders the tutorial
-  copy — control labels and explanations, step titles, teaching paragraphs,
-  traffic-light rules and table headings — from `GET /api/tutorial`. Three kinds of
+  `/api/hta-summary` the same way, and The Journey renders its copy — chapter
+  titles, teaching paragraphs, control labels and explanations, graph labels and
+  table headings — from `GET /api/tutorial/journey` and its per-chapter endpoints.
+  (The retired Guided Tutorial screen read `GET /api/tutorial`; that endpoint is
+  still served, but the browser no longer calls it.) Three kinds of
   text are not from `/api/defaults`: the explanatory subtext a chart used to carry
   beneath it, moved verbatim into the information button beside that chart's
   header (base case, PSA, simulated survival, value of information and
@@ -310,13 +312,14 @@ src/
   [`ResultTrace.vue`](./src/components/ResultTrace.vue) is the trace
   (`aria-hidden`, so it adds nothing to a heading's accessible name), and its
   strip is reserved in the heading block at every state — hidden it is only
-  transparent — so nothing shifts when it draws or leaves. Tutorial steps and
-  Part 2 sections cross-fade with a few pixels of horizontal travel through
-  [`TutorialStepStage.vue`](./src/components/tutorial/TutorialStepStage.vue),
-  which renders exactly one step at a time (Vue's own `out-in` transition can
-  leave the outgoing step in the document when a second move interrupts it, which
-  would duplicate the step heading's `id`), lands on the newest step however fast
-  Next and Back are repeated, moves focus to the arriving step's heading, and
+  transparent — so nothing shifts when it draws or leaves. The Journey's chapters
+  cross-fade with a few pixels of horizontal travel through
+  [`TutorialStepStage.vue`](./src/components/tutorial/TutorialStepStage.vue)
+  (kept from the retired Guided Tutorial and now used by `JourneyView.vue`),
+  which renders exactly one chapter at a time (Vue's own `out-in` transition can
+  leave the outgoing chapter in the document when a second move interrupts it,
+  which would duplicate its heading's `id`), lands on the newest chapter however
+  fast the learner moves, moves focus to the arriving chapter's heading, and
   takes no request, input or result with it. `prefers-reduced-motion: reduce`
   removes both outright — the stage swaps in one frame — and `@media print`
   removes the entrance.
