@@ -200,7 +200,7 @@ harmonise the two and does not apply a budget ceiling.
 
 The readiness chapter is the seventh chapter, and the first that runs **no model and no
 economic function at all**: it is `calculate_readiness()`, the
-assessment the DHT readiness tab and Part 2 already use, called once per request. It
+assessment the DHT readiness tab uses (as the retired Part 2 did), called once per request. It
 asks about the four things that describe a deployment — how the app exchanges data
 with the clinical record system, how the algorithm changes after it is deployed, how
 much clinician review each patient takes a month, and how many languages are offered —
@@ -285,7 +285,7 @@ control back to the final chart — and it is now the *same box* as every other 
 (`EcgOverlay`): one ECG perimeter instead of a card border, one interior surface, one opening
 sequence (origins, perimeter, then interior and words together, then the looping signal) and one
 set of padding, type and spacing rules. The chapter-transition bridge, the menu and welcome
-prompts, the PSA confirmation, the Part 2 dialogs, presentation mode and the floating information
+prompts, the PSA confirmation, presentation mode and the floating information
 popovers all wear it too; short announcements are centred and sized to their content, longer
 informational content stays left-aligned, and the loading card keeps its own treatment untouched.
 Home now offers the narrative tutorial as "The Journey" and no longer lists the legacy guided
@@ -476,10 +476,11 @@ both uncommitted for local review: an analysis result fades in under a one-shot 
 trace when it is committed — the trace draws itself beneath the panel heading as a
 soft teal highlight runs along it, then the whole strip fades away and the heading
 is left clean (never on a tab switch, a theme change, an input edit or a failed
-request, and again on each new run even when the numbers match) — and tutorial
-steps and Part 2 sections cross-fade with a
-few pixels of horizontal travel through `components/tutorial/TutorialStepStage.vue`,
-which renders one step at a time and moves focus to the arriving step's heading.
+request, and again on each new run even when the numbers match) — and The
+Journey's chapters cross-fade with a
+few pixels of horizontal travel through `components/tutorial/TutorialStepStage.vue`
+(kept from the retired Guided Tutorial and now used by `JourneyView.vue`),
+which renders one chapter at a time and moves focus to the arriving chapter's heading.
 `prefers-reduced-motion` removes both. See the private project record for the details and the verification.
 
 A further frontend-only pass, also uncommitted, polished five routine interactions
@@ -798,9 +799,13 @@ api/
   api_contract.md      # request/response contract, worker design, error codes
 eqalb_ui_copy.R        # CC_INFO_TEXT and the HTA rule text, shared with app.R verbatim
 eqalb_price.R          # value-based price: supported annual price, headroom and scan
-eqalb_tutorial.R       # Guided Tutorial: Part 1 (defaults, statuses, wording, decision summary) and
-                       # Part 2 (cases, facts, price rules and curve, value-for-money, budget-impact,
-                       # readiness and recommendation results)
+eqalb_tutorial.R       # shared tutorial helpers the Journey calls (eqalb_tutorial_ce(), the tutorial
+                       # defaults, controls, fixed values, statuses and formatting, the contract's
+                       # table headings, the coverage constants), plus the legacy Guided Tutorial's
+                       # Part 1 (defaults, statuses, wording, decision summary) and Part 2 (cases,
+                       # facts, price rules and curve, value-for-money, budget-impact, readiness and
+                       # recommendation results), still served by /api/tutorial* but no longer
+                       # called by the browser
 eqalb_tutorial_journey.R  # redesigned tutorial: the fixed case, the chapter list and every chapter's
                        # copy and sentences, the base case (through eqalb_tutorial_ce()), the price
                        # chapter's balance and solve, the budget chapter's coverage sweep (through

@@ -1081,14 +1081,17 @@ export interface ValueBasedPriceResponse extends Notice {
   warnings: string[]
 }
 
-// --- Guided Tutorial Part 1 --------------------------------------------------
+// --- Shared tutorial shapes and The Journey ----------------------------------
 //
-// The tutorial is a presentation layer over eqalb_tutorial.R: every default,
-// range, label, status, threshold, interpretation and formatted string the four
-// steps show arrives from `GET /api/tutorial` (the contract) or
-// `POST /api/tutorial/part1` (the results). Nothing here derives, classifies or
-// rewords a tutorial value, and the tutorial never shares state with the
-// analysis dashboard.
+// The Tutorial* shapes below are the ones eqalb_tutorial.R builds. The legacy
+// Guided Tutorial screen that first rendered them has been retired from the
+// browser, but The Journey reuses them: eqalb_tutorial_journey.R calls
+// eqalb_tutorial.R's helpers, so its responses carry TutorialCe's table rows and
+// chart, a TutorialStatus code, ControlDescriptor controls and the tutorial
+// contract's table_headings. `GET /api/tutorial` and `POST /api/tutorial/part1`
+// still serve the full contract and results, but the browser no longer calls
+// them. Nothing here derives, classifies or rewords a tutorial value. The
+// Journey's own types follow.
 
 /** A tutorial traffic light. `Not assessed` is what R reports when it has none. */
 export type TutorialStatus = 'Green' | 'Amber' | 'Red' | 'Not assessed'
@@ -1283,19 +1286,6 @@ export interface JourneyRecap {
   lines: string[]
   question: string
   advance_label: string
-}
-
-/** One answer, with R's feedback for choosing it. */
-export interface JourneyAnswerOption {
-  id: string
-  label: string
-  correct: boolean
-  feedback: string
-}
-
-export interface JourneyQuestion {
-  stem: string
-  options: JourneyAnswerOption[]
 }
 
 /** The graph's own labels, so the chart never invents one. */
