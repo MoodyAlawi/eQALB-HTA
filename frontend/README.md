@@ -312,15 +312,18 @@ src/
   [`ResultTrace.vue`](./src/components/ResultTrace.vue) is the trace
   (`aria-hidden`, so it adds nothing to a heading's accessible name), and its
   strip is reserved in the heading block at every state — hidden it is only
-  transparent — so nothing shifts when it draws or leaves. The Journey's chapters
-  cross-fade with a few pixels of horizontal travel through
-  [`TutorialStepStage.vue`](./src/components/tutorial/TutorialStepStage.vue)
-  (kept from the retired Guided Tutorial and now used by `JourneyView.vue`),
-  which renders exactly one chapter at a time (Vue's own `out-in` transition can
-  leave the outgoing chapter in the document when a second move interrupts it,
-  which would duplicate its heading's `id`), lands on the newest chapter however
-  fast the learner moves, moves focus to the arriving chapter's heading, and
-  takes no request, input or result with it. `prefers-reduced-motion: reduce`
+  transparent — so nothing shifts when it draws or leaves. The Journey's screens
+  sit on [`TutorialStepStage.vue`](./src/components/tutorial/TutorialStepStage.vue)
+  (kept from the retired Guided Tutorial and now used by `JourneyView.vue`). Only
+  the move from the case brief to the first chapter plays the full cross-fade, a
+  fade-out and a fade-in with a few pixels of horizontal travel. Later chapters
+  share one panel, so the Journey turns the fade-out off and the panel is carried
+  across rather than rebuilt; the stage's short entrance class still applies. The
+  stage renders exactly one screen at a time (Vue's own `out-in` transition can
+  leave the outgoing screen in the document when a second move interrupts it,
+  which would duplicate its heading's `id`), lands on the newest screen however
+  fast the learner moves, moves focus to the arriving screen's heading, and takes
+  no request, input or result with it. `prefers-reduced-motion: reduce`
   removes both outright — the stage swaps in one frame — and `@media print`
   removes the entrance.
 - **Routine interactions are refined, not reinvented.** Five small things, all
