@@ -642,6 +642,85 @@ html[data-landing-theme='dark'] .landing__sql-logo {
   color: var(--landing-on-accent);
 }
 
+/* The first-visit entrance (useIntro.ts): the button presses (0-140 ms) and one
+   teal signal - the app's ECG signal colour, with its glow - runs once around its
+   outline (40-360 ms) while the intro's dark stage sweeps in over the page. It is
+   only ever set by a click into the intro, which reduced-motion visitors never
+   get, and the page is replaced afterwards, so nothing here needs undoing. */
+.landing__cta {
+  position: relative;
+}
+
+.landing__cta.is-pressed {
+  animation: landing-cta-press 140ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes landing-cta-press {
+  from {
+    transform: scale(0.97);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+  }
+
+  to {
+    transform: scale(1);
+  }
+}
+
+.landing__cta-pulse {
+  position: absolute;
+  inset: -5px;
+  width: calc(100% + 10px);
+  height: calc(100% + 10px);
+  overflow: visible;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.landing__cta-pulse rect {
+  width: calc(100% - 3px);
+  height: calc(100% - 3px);
+  fill: none;
+  stroke: #1aa5b3;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 18 100;
+  stroke-dashoffset: 18;
+  filter: drop-shadow(0 0 6px rgba(26, 165, 179, 0.55));
+}
+
+.landing__cta.is-pressed .landing__cta-pulse {
+  animation: landing-cta-pulse-show 320ms linear 40ms both;
+}
+
+.landing__cta.is-pressed .landing__cta-pulse rect {
+  animation: landing-cta-pulse-run 320ms cubic-bezier(0.4, 0, 0.2, 1) 40ms both;
+}
+
+@keyframes landing-cta-pulse-show {
+  0% {
+    opacity: 0;
+  }
+
+  15%,
+  80% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes landing-cta-pulse-run {
+  from {
+    stroke-dashoffset: 18;
+  }
+
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
 /* The invitation onwards: a link to the next panel, so it works with the
    keyboard and reads as text rather than as decoration. */
 .landing__scroll {

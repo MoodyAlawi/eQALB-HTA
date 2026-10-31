@@ -43,6 +43,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import { followLink, pagePath, useAppView } from '../composables/useAppView'
 import { useLandingTheme } from '../composables/useLandingTheme'
 import { useAppLaunch } from '../composables/useAppLaunch'
+import { useIntro } from '../composables/useIntro'
 
 /**
  * The portrait in the About me panel. It is imported rather than referenced from
@@ -67,6 +68,9 @@ const { page, show } = useAppView()
 
 const { isDark, toggle: toggleTheme } = useLandingTheme()
 const { launching, startLaunch } = useAppLaunch()
+const { active: introActive, introDue, startIntro } = useIntro()
+/** "Open the app" has been pressed into the first-visit intro: its press and pulse play. */
+const ctaPressed = ref(false)
 
 type SectionId = 'eqalb' | 'openhealth' | 'about-me'
 
@@ -472,17 +476,30 @@ function goToSection(event: MouseEvent, id: SectionId): void {
  * and the app is mounted and interactive from that moment, with the overlay
  * dissolving over it - and `useAppLaunch` drops the whole thing for a visitor
  * who asked for reduced motion.
+ *
+ * On a first visit in this browser profile the click enters the intro instead:
+ * the button presses and a teal pulse runs once around it while the intro's dark
+ * stage sweeps in (useIntro.ts, IntroTrailer.vue). The intro ends in the same
+ * launch with the same hand-over, so a returning visitor's way in is unchanged.
  */
 function openApp(event: MouseEvent): void {
   if (event.defaultPrevented || event.button !== 0) return
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
   event.preventDefault()
+  // One way in at a time: a repeated click (or Enter) while the intro or the launch
+  // is already under way does nothing.
+  if (launching.value || introActive.value) return
   // The hand-over only happens if the landing page is still the page the visitor
   // is on: if something moved them on during the crossing, the sequence's own
   // timer must not drag them to /app afterwards.
-  startLaunch(() => {
+  const navigate = () => {
     if (page.value === 'openhealth') show('home')
-  })
+  }
+  if (introDue() && startIntro('landing', navigate)) {
+    ctaPressed.value = true
+    return
+  }
+  startLaunch(navigate)
 }
 
 onMounted(() => {
@@ -736,9 +753,19 @@ onBeforeUnmount(() => {
               :inert="activeSlide === 0 ? undefined : true"
             >
               <p class="landing__lede">An interactive introduction to health-economic modelling.</p>
-              <a class="landing__cta" :href="pagePath('home')" @click="openApp($event)">
+              <a
+                class="landing__cta"
+                :class="{ 'is-pressed': ctaPressed }"
+                :href="pagePath('home')"
+                @click="openApp($event)"
+              >
                 Open the app
                 <span aria-hidden="true">↗</span>
+                <!-- The first-visit entrance's pulse: one teal signal around the
+                     button's outline. Decoration only. -->
+                <svg class="landing__cta-pulse" aria-hidden="true" focusable="false">
+                  <rect x="1.5" y="1.5" rx="999" pathLength="100" />
+                </svg>
               </a>
             </div>
 

@@ -12,11 +12,21 @@
     />
     <title>OpenHealth</title>
     <script>
-      // Applied before the first paint so a stored dark theme does not flash light.
+      // Applied before the first paint so the app's theme never flashes. The app is
+      // dark unless the visitor has explicitly chosen light (or dark) with the theme
+      // button; the operating system's preference is not consulted, and a browser
+      // that refuses storage is simply dark. useTheme.ts follows the same rule.
+      var appTheme = 'dark'
       try {
         var stored = localStorage.getItem('eqalb.theme')
+        if (stored === 'light' || stored === 'dark') appTheme = stored
+      } catch (error) {
+        /* no readable preference: the default stands */
+      }
+      document.documentElement.dataset.theme = appTheme
+
+      try {
         var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-        document.documentElement.dataset.theme = stored || (prefersDark ? 'dark' : 'light')
 
         // The landing page keeps its own theme, under its own key, and only "/app"
         // (the whole eQalb application) and "/about" are not landing addresses.
@@ -29,7 +39,7 @@
           document.documentElement.dataset.landingTheme = landing || (prefersDark ? 'dark' : 'light')
         }
       } catch (error) {
-        document.documentElement.dataset.theme = 'light'
+        /* the landing page applies its own theme when it mounts */
       }
     </script>
   </head>

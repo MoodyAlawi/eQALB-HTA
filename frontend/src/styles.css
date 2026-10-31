@@ -6866,3 +6866,181 @@ button:focus-visible {
     animation-duration: 140ms;
   }
 }
+
+/* --- First-visit intro -------------------------------------------------------
+   The eQalb trailer shown once per browser profile on the first entry into /app
+   (IntroTrailer.vue, useIntro.ts). It sits just below the launch overlay (z-index
+   70), which fades in over it at the hand-over and then dissolves into Home.
+
+   Its colours are fixed rather than themed: the video is dark whatever the
+   visitor's theme, and its last frame is the dark --bg (#101a1f), so the overlay
+   is that colour in both themes. A visitor who chose light mode sees the launch
+   overlay's light veil fade in over it, which is the accepted hand-over.
+
+   The video is shown whole (16:9, contained, never stretched or cropped) on the
+   same dark background, so on a screen of any other shape the space around it is
+   the video's own edge colour. */
+
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  overflow: hidden;
+  color-scheme: dark;
+}
+
+/* A direct /app load starts as the plain app background. From the landing page the
+   overlay itself is clear, so the button's press and pulse stay visible until the
+   stage sweeps over them; it still takes every click, so nothing is pressed twice. */
+.intro--direct {
+  background: #101a1f;
+}
+
+.intro__stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #101a1f;
+}
+
+.intro--landing .intro__stage {
+  clip-path: inset(0 100% 0 0);
+  animation: intro-sweep 420ms cubic-bezier(0.4, 0, 0.2, 1) 220ms both;
+}
+
+@keyframes intro-sweep {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.intro--direct .intro__stage {
+  animation: intro-settle 300ms ease both;
+}
+
+@keyframes intro-settle {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* The video's box: the largest 16:9 rectangle that fits, carrying the video's own
+   vignette behind it, so the first frame lands on the background it was drawn on
+   at any screen size. */
+.intro__frame {
+  width: min(100vw, 177.78vh);
+  width: min(100vw, 177.78dvh);
+  aspect-ratio: 16 / 9;
+  background: radial-gradient(ellipse 80% 70% at 50% 45%, #13232b 0%, #101a1f 70%);
+}
+
+.intro__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: transparent;
+}
+
+/* The sweep's leading edge: a soft band of the app's teal light, travelling with
+   the edge of the stage and gone as the stage completes. */
+.intro__edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 18vw;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(127, 209, 216, 0.16) 34%,
+    rgba(127, 209, 216, 0.42) 50%,
+    rgba(127, 209, 216, 0.16) 66%,
+    transparent 100%
+  );
+  transform: translateX(-9vw);
+  opacity: 0;
+  animation: intro-edge 420ms cubic-bezier(0.4, 0, 0.2, 1) 220ms both;
+}
+
+@keyframes intro-edge {
+  0% {
+    transform: translateX(-9vw);
+    opacity: 1;
+  }
+
+  85% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(91vw);
+    opacity: 0;
+  }
+}
+
+/* Skip: visible from the first frame, inside the safe area, readable on the dark
+   video in either theme. */
+.intro__skip {
+  position: absolute;
+  top: max(1rem, env(safe-area-inset-top));
+  right: max(1rem, env(safe-area-inset-right));
+  z-index: 1;
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(127, 209, 216, 0.45);
+  border-radius: 999px;
+  background: rgba(16, 26, 31, 0.72);
+  color: #e6edf1;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  animation: intro-skip-in 150ms ease both;
+  transition: border-color var(--motion-fast) ease;
+}
+
+.intro__skip:hover {
+  border-color: #7fd1d8;
+}
+
+.intro__skip:focus-visible {
+  outline: 2px solid #7fd1d8;
+  outline-offset: 2px;
+}
+
+@keyframes intro-skip-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Reduced-motion visitors are never shown the intro; if one is, nothing moves
+     and playback starts from the component's own safety timer. */
+  .intro__stage,
+  .intro__edge,
+  .intro__skip {
+    clip-path: none;
+    animation: none;
+  }
+
+  .intro__edge {
+    display: none;
+  }
+}

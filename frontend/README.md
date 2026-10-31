@@ -78,10 +78,13 @@ only; it does not check the surrounding prose or appearance.
 ## Layout
 
 ```
-index.html              # mounts the app; applies the stored theme before first paint (the app's
-                        # eqalb.theme, and the landing page's own openhealth.landing.theme on the
-                        # landing addresses), and declares the browser-tab icons
+index.html              # mounts the app; applies the theme before first paint (the app's
+                        # eqalb.theme - dark unless light or dark was explicitly saved - and the
+                        # landing page's own openhealth.landing.theme on the landing addresses),
+                        # and declares the browser-tab icons
 public/
+  media/eqalb-intro.mp4 # the first-visit intro video (30 s, 1080p, silent), copied unchanged from
+                        # the separate eqalb-trailer project; fetched only when the intro is shown
   favicon.ico           # the OpenHealth mark at 16, 32 and 48 px, generated from
                         # src/assets/onlylogo.png
   favicon-16x16.png     # the same mark at 16 and 32 px, for the tab icon and its density variant
@@ -93,11 +96,14 @@ src/
     client.ts           # typed fetch client; no defaults, no model arithmetic
   composables/
     useModel.ts         # shared store: inputs, results, busy/error state, runs
-    useTheme.ts         # the app's light/dark state and the chart palette (eqalb.theme / data-theme)
+    useTheme.ts         # the app's light/dark state and the chart palette (eqalb.theme / data-theme);
+                        # dark by default, saved only on an explicit choice, storage guarded
     useLandingTheme.ts  # the landing page's and the blog's own light/dark choice (openhealth.landing.theme /
                         # data-landing-theme), alive only while one of those pages is mounted
     useAppLaunch.ts     # the landing page's transition into the app: the sequence, its timings and
                         # its safety clears; the look is in landing.css/styles.css
+    useIntro.ts         # the first-visit intro: whether it is due (eqalb.intro.v1), the one guarded
+                        # finish() into the launch above, and the hold on Home and the welcome question
     useEcharts.ts       # ECharts instance lifecycle for a Vue ref
     useAppView.ts       # which page is shown, plus the /, /blog, /blog/<slug>, /app and /about addresses, the history entries and the document title
     useDisclosure.ts    # Escape closes the disclosure the focus is inside, app-wide
@@ -145,6 +151,8 @@ src/
                             # the south-west and north-east corners, then a signal passing along the same path for ever
     LaunchTransition.vue    # the landing page's arrival into the app: a still copy of the Home screen's
                             # eQalb composition, wiped in behind a passing band of light (decoration only)
+    IntroTrailer.vue        # the first-visit intro overlay: the entrance (sweep or direct reveal), the video,
+                            # Skip/Escape, and the startup, stall and cap watchdogs that fall through to the app
     AssumptionsForm.vue # the 16 model inputs + the reference WTP threshold
     BaseCasePanel.vue   # base case: metrics, deterministic plane, decompositions on demand
     CostEffectivenessPanel.vue  # PSA, plane, CEAC, threshold table
@@ -909,7 +917,30 @@ overlays, and are not framed.
   link, Back or Forward) settles it too. The choice is kept in `localStorage` under
   `eqalb.welcome.v2`, so it persists across browser sessions rather than being asked once
   per session; a browser that answered the earlier per-session question is asked this one
-  once.
+  once. After a first-visit intro it waits until the intro and its launch have finished.
+- The app's theme is dark unless the visitor has explicitly chosen one with the theme
+  button. A valid saved `eqalb.theme` (light or dark) always wins; the operating system's
+  preference is not consulted, the default is never written to storage, and a browser that
+  refuses storage is dark for the visit with the button still working. The pre-paint
+  script in `index.html` and `useTheme.ts` apply the same rule. The landing page's own
+  theme is separate and unchanged.
+- **First-visit intro.** The first entry into `/app` in a browser profile - from the
+  landing page's "Open the app" or a direct load - plays a 30-second silent introduction
+  (`public/media/eqalb-intro.mp4`) before the usual launch:
+  - From the landing page the button presses, a teal signal runs once around it, and a
+    dark stage sweeps in from the left (about 640 ms); a direct load reveals the stage
+    from the app background (300 ms). Playback is attempted when that entrance ends.
+  - Skip is visible and focused from the start, and Escape skips. A rejected `play()`, a
+    media error, no playback within 1.5 s of the attempt, no progress for 4 s once
+    playing, or a 45 s cap all fall through into the app the same way.
+  - Every exit goes through one guarded `finish()` (`useIntro.ts`): it records
+    `eqalb.intro.v1 = done` and starts the existing launch, whose hand-over mounts Home.
+    The intro overlay is removed as soon as the launch overlay has faded in over it.
+  - Returning visitors, reduced-motion visitors (flag left unset) and browsers whose
+    storage cannot be read bypass it, and never download the video. It makes no model
+    request.
+  - To replay it locally, remove `eqalb.intro.v1` from local storage (DevTools →
+    Application → Local Storage) and open `/` or `/app` again.
 - Each analysis module's heading carries a "How this is calculated" control
   (`MethodInfo`), a muted periwinkle button distinct from the teal accent, that opens R's
   method note in place. The note is written for a reader who knows mathematics and nothing

@@ -52,7 +52,9 @@ import BlogPostView from './views/BlogPostView.vue'
 import AppLoadingIndicator from './components/AppLoadingIndicator.vue'
 import DownloadNotice from './components/DownloadNotice.vue'
 import LaunchTransition from './components/LaunchTransition.vue'
+import IntroTrailer from './components/IntroTrailer.vue'
 import EcgOverlay from './components/EcgOverlay.vue'
+import { useIntro } from './composables/useIntro'
 import { useTabUnderline } from './composables/useTabUnderline'
 import { usePageEntrance } from './composables/usePageEntrance'
 import { DIALOG_TRANSITION_NAME, onDialogLeave } from './composables/useDialogTransition'
@@ -84,6 +86,23 @@ const model = useModel()
 const { theme, toggle } = useTheme()
 const { page, show, showJourney, postSlug, dashboardTab: activeTab, setDashboardTab } =
   useAppView()
+
+/**
+ * The first-visit intro (see useIntro.ts). A direct load of /app that is due for it
+ * starts it here, during setup, so the very first render already holds Home back
+ * and the visitor never sees Home before the intro. The landing page starts its own
+ * from "Open the app".
+ */
+const {
+  active: introActive,
+  homeHeld,
+  holding: introHolding,
+  introDue,
+  startIntro,
+} = useIntro()
+if (page.value === 'home' && introDue()) {
+  startIntro('direct', () => {})
+}
 
 /**
  * The welcome overlay.
@@ -138,6 +157,9 @@ let welcomeSettled = welcomeAlreadySeen()
  */
 function settleWelcome(next: string): void {
   if (welcomeSettled) return
+  // After a first-visit intro, the question waits until the intro and the launch it
+  // handed over to have both finished; it is asked as soon as they have.
+  if (introHolding.value) return
   if (next === 'journey') {
     welcomeSettled = true
     markWelcomeSeen()
@@ -150,6 +172,9 @@ function settleWelcome(next: string): void {
 }
 
 watch(page, settleWelcome)
+watch(introHolding, (holding) => {
+  if (!holding) settleWelcome(page.value)
+})
 onMounted(() => settleWelcome(page.value))
 
 /**
@@ -479,7 +504,9 @@ watch(page, (next) => {
            post's branch, which answers it with its own not-found state. -->
       <BlogIndexView v-else-if="page === 'blog' && !postSlug" />
       <BlogPostView v-else-if="page === 'blog'" />
-      <HomeView v-else-if="page === 'home'" />
+      <!-- Held back only while a direct /app first-visit intro runs; the launch's
+           hand-over mounts it, so its own entrance plays as the launch dissolves. -->
+      <HomeView v-else-if="page === 'home' && !homeHeld" />
       <JourneyView v-else-if="page === 'journey'" />
       <ProjectDescriptionView v-else-if="page === 'description'" />
       <DownloadResultsView v-else-if="page === 'export'" />
@@ -498,6 +525,11 @@ watch(page, (next) => {
          It is decoration only - aria-hidden, nothing focusable, no pointer
          events - so the app it is dissolving over is live underneath it. -->
     <LaunchTransition />
+
+    <!-- The first-visit intro: the eQalb trailer, once per browser profile, on the
+         first entry into /app. It sits just below the launch overlay, which fades
+         in over it at the hand-over; it is removed as soon as it is covered. -->
+    <IntroTrailer v-if="introActive" />
 
     <!-- The first-visit welcome question. It reuses the app's existing modal
          pattern, and closing it never blocks the app: the page underneath is

@@ -14,23 +14,40 @@ export type ThemeName = 'light' | 'dark'
 
 const STORAGE_KEY = 'eqalb.theme'
 
-function initialTheme(): ThemeName {
-  if (typeof localStorage !== 'undefined') {
+/**
+ * The app is dark unless the visitor has explicitly chosen a theme. A valid saved
+ * choice - light or dark - always wins; the operating system's preference is not
+ * consulted, and a browser that refuses storage is dark for the visit. The
+ * pre-paint script in index.html applies the same rule before Vue mounts.
+ */
+function storedTheme(): ThemeName | null {
+  try {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored === 'light' || stored === 'dark') return stored
+  } catch {
+    // No readable preference: the default applies.
   }
-  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark'
-  }
-  return 'light'
+  return null
 }
 
-const theme = ref<ThemeName>(initialTheme())
+/**
+ * Only an explicit selection is saved, so the default is never written down as if
+ * it had been chosen. Saving is best-effort: when storage is unavailable the
+ * button still switches the theme for the current visit.
+ */
+function saveTheme(value: ThemeName): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, value)
+  } catch {
+    /* the current visit still switches */
+  }
+}
+
+const theme = ref<ThemeName>(storedTheme() ?? 'dark')
 
 watchEffect(() => {
   if (typeof document === 'undefined') return
   document.documentElement.dataset.theme = theme.value
-  localStorage.setItem(STORAGE_KEY, theme.value)
 })
 
 export interface ChartPalette {
@@ -100,9 +117,11 @@ export function useTheme() {
     isDark: computed(() => theme.value === 'dark'),
     toggle: () => {
       theme.value = theme.value === 'dark' ? 'light' : 'dark'
+      saveTheme(theme.value)
     },
     set: (value: ThemeName) => {
       theme.value = value
+      saveTheme(value)
     },
   }
 }
