@@ -1079,7 +1079,7 @@ cc_assumptions_modal <- function(values, open_section = NULL) {
   # Adjustable inputs -------------------------------------------------------
   global_inputs <- data.frame(
     Input = c(
-      "Annual intervention price (€ per active user per year)",
+      "Annual intervention price (€ per year)",
       "Implementation cost (€ per new user, one-off)",
       "Annual healthcare savings (€ per active user per year)",
       "Relative risk reduction",
@@ -3240,7 +3240,7 @@ ui <- fluidPage(
             numericInput(
               "price",
               cc_label(
-                "Annual intervention price (€ per active user per year)",
+                "Annual intervention price (€ per year)",
                 "intervention price",
                 "intervention_price", "price_info"
               ),

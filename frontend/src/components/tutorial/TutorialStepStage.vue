@@ -1,6 +1,8 @@
 <script setup lang="ts">
 /**
- * The stage a tutorial step — or a commissioning section — is rendered on.
+ * The stage The Journey's screens are rendered on: the case brief, then the
+ * chapters. It was written for the legacy Guided Tutorial, whose screen has been
+ * retired, and is kept because the Journey uses it (`views/JourneyView.vue`).
  *
  * It plays one short transition when the step changes: the step being left fades
  * out and slides a few pixels toward the side it is leaving for, then the step
@@ -23,11 +25,9 @@
  * Focus: once the arriving step is rendered, its heading is focused, so a
  * keyboard or screen-reader user is told which step they are on. The heading is
  * the step's existing focus target (`.tutorial__step-title`, `tabindex="-1"`);
- * when the arriving step has none — a section whose result is still being
- * evaluated, say — focus is left where it was rather than sent somewhere
- * arbitrary. `focusHeading` lets the caller keep its own focus decision: Part 2's
- * congratulation takes the focus when it opens, and it must not be taken back by
- * the section that arrives underneath it.
+ * when the arriving step has none, focus is left where it was rather than sent
+ * somewhere arbitrary. `focusHeading` lets a caller keep its own focus decision
+ * instead; the Journey does not set it, so the arriving heading takes the focus.
  *
  * Under `prefers-reduced-motion: reduce` no transition runs at all: the swap
  * happens straight away, so no content ever waits on an animation. Setting up the
@@ -41,20 +41,22 @@ import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 const props = withDefaults(
   defineProps<{
     /**
-     * The step on screen, as its position in its own sequence: the step number in
-     * Part 1, the section index in Part 2, and one past the last step for the
-     * completion card. The number is both the step's identity and its order, which
-     * is what lets a move's direction be read from it.
+     * The step on screen, as its position in its own sequence: in the Journey, the
+     * case brief is 1 and each chapter follows in R's order. The number is both the
+     * step's identity and its order, which is what lets a move's direction be read
+     * from it.
      */
     step: number
     /** Whether the arriving step's heading may take the focus. */
     focusHeading?: boolean
     /**
-     * Whether a move between steps plays the fade. Part 1 and Part 2 always want
-     * it, so it defaults to on. The journey's chapters are one continuous panel
-     * rather than successive cards, so the journey turns it off and the panel is
-     * simply carried from one chapter to the next: nothing fades out, nothing is
-     * rebuilt, and the chart inside it keeps its instance.
+     * Whether a move between steps plays the fade-out. It defaults to on. The
+     * Journey keeps it on only for the move from the case brief to the first
+     * chapter, which are two different components. Its chapters are one continuous
+     * panel rather than successive cards, so for every later move it turns this off
+     * and the panel is simply carried from one chapter to the next: nothing fades
+     * out, nothing is rebuilt, and the chart inside it keeps its instance. The
+     * arrival still sets the entering class.
      */
     animate?: boolean
   }>(),

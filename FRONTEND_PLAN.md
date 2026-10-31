@@ -477,10 +477,12 @@ trace when it is committed — the trace draws itself beneath the panel heading 
 soft teal highlight runs along it, then the whole strip fades away and the heading
 is left clean (never on a tab switch, a theme change, an input edit or a failed
 request, and again on each new run even when the numbers match) — and The
-Journey's chapters cross-fade with a
+Journey's case brief cross-fades into the first chapter with a
 few pixels of horizontal travel through `components/tutorial/TutorialStepStage.vue`
-(kept from the retired Guided Tutorial and now used by `JourneyView.vue`),
-which renders one chapter at a time and moves focus to the arriving chapter's heading.
+(kept from the retired Guided Tutorial and now used by `JourneyView.vue`); later
+chapters share one panel, so the fade-out is turned off and the panel is carried
+across rather than rebuilt, while the stage's short entrance class still applies. The
+stage renders one screen at a time and moves focus to the arriving screen's heading.
 `prefers-reduced-motion` removes both. See the private project record for the details and the verification.
 
 A further frontend-only pass, also uncommitted, polished five routine interactions
